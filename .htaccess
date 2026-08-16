@@ -1,0 +1,73 @@
+# ============================================================
+# Life Hub — cấu hình máy chủ (Apache / LiteSpeed / Hostinger)
+#
+# Thư mục gốc của repo CHÍNH LÀ thư mục chạy thật. Git kéo về
+# public_html là dùng được ngay, không có bước dựng nào ở giữa.
+#
+# File này bắt buộc phải lên máy chủ. Trong File Manager của
+# Hostinger nhớ bật "Show hidden files" mới nhìn thấy nó.
+# ============================================================
+
+# ---------- luôn dùng https ----------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+# ---------- kiểu tệp ----------
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+  AddType text/javascript           .js
+  AddType image/svg+xml             .svg
+  AddCharset UTF-8 .html .css .js .json .webmanifest
+</IfModule>
+
+# ---------- nén ----------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json application/manifest+json image/svg+xml
+</IfModule>
+
+# ---------- bộ nhớ đệm ----------
+# Không còn bước dựng nên tên tệp không đổi theo phiên bản nữa.
+# Vì vậy css/js phải LUÔN hỏi lại máy chủ, nếu không thì đẩy code mới
+# lên mà trình duyệt vẫn hiện bản cũ — đúng lỗi vừa gặp.
+# Hỏi lại rất rẻ: nội dung không đổi thì máy chủ trả 304 rỗng.
+# Phần chạy nhanh do service worker lo, không phải do cache trình duyệt.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|css|js|webmanifest|json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  # ảnh thì hiếm khi đổi, giữ lâu được
+  <FilesMatch "\.(png|svg|ico|webp|jpg|jpeg)$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
+  # app riêng tư — đừng để bị lập chỉ mục
+  Header set X-Robots-Tag "noindex, nofollow"
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "no-referrer"
+</IfModule>
+
+# ---------- không cho liệt kê thư mục ----------
+Options -Indexes
+DirectoryIndex index.html
+
+# ---------- chặn những thứ không phải của người dùng ----------
+# Vì gốc repo là thư mục chạy thật nên vài tệp chỉ dùng lúc phát triển
+# cũng bị kéo lên theo. Chặn lại để không ai tải về đọc được.
+<FilesMatch "^(serve\.js|supabase-schema\.sql|README\.md|\.gitignore|\.gitattributes|package(-lock)?\.json)$">
+  Require all denied
+</FilesMatch>
+
+# tệp ẩn (.git, .env, .htpasswd…) và mã nguồn phụ trợ
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+<FilesMatch "\.(md|sql|sqlite|sqlite-wal|sqlite-shm|db|log|bak)$">
+  Require all denied
+</FilesMatch>
+
+# thư mục .git nếu Hostinger để lại sau khi kéo về — cực kỳ không nên lộ
+RedirectMatch 404 /\.git(/|$)
+RedirectMatch 404 /tools(/|$)

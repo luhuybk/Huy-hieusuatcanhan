@@ -273,8 +273,18 @@ switch ($action) {
     $s = (int)db()->query('SELECT COUNT(*) c FROM sessions')->fetch()['c'];
     $last = db()->query('SELECT MAX(updated_at) m FROM items')->fetch()['m'];
     global $DB_FILE;
+
+    /* Gốc repo giờ chính là public_html. Nếu file dữ liệu cũng nằm trong đó
+       thì một lần deploy dọn sạch thư mục là mất hết. Cảnh báo ngay. */
+    $inWebRoot = false;
+    $root = realpath($_SERVER['DOCUMENT_ROOT'] ?? '');
+    $dbDir = realpath(dirname($DB_FILE));
+    if ($root && $dbDir) $inWebRoot = str_starts_with($dbDir . DIRECTORY_SEPARATOR,
+                                                      $root . DIRECTORY_SEPARATOR);
+
     out(['ok' => true, 'records' => $n, 'trashed' => $d, 'devices' => $s, 'last' => $last,
-         'size' => is_file($DB_FILE) ? filesize($DB_FILE) : 0]);
+         'size' => is_file($DB_FILE) ? filesize($DB_FILE) : 0,
+         'dbInWebRoot' => $inWebRoot, 'dbDir' => $inWebRoot ? dirname($DB_FILE) : '']);
   }
 
   default: fail('Không hiểu yêu cầu: ' . $action, 404);

@@ -17,7 +17,14 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <!-- Đặt chủ đề trước khi vẽ, tránh loé sáng/tối một nhịp khi mở app -->
 <script>try{var t=localStorage.getItem('lifehub.theme');if(t){document.documentElement.dataset.theme=t;
-document.getElementById('tc').content=t==='light'?'#f4f6fa':'#0e1014';}}catch(e){}</script>
+document.getElementById('tc').content=t==='light'?'#f4f6fa':'#0e1014';}}catch(e){}
+/* Service worker báo "máy chủ đã có code mới" rất sớm — ngay lúc tải css,
+   trước khi app.js kịp chạy. Phải lắng nghe từ đây, nếu không tin báo sẽ
+   rơi vào khoảng trống và bạn không bao giờ thấy lời mời tải lại. */
+window.__lhUpdate=false;
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',function(e){
+  if(e.data&&e.data.type==='lifehub-update'){window.__lhUpdate=true;
+    if(window.updateBar)window.updateBar();}});</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>

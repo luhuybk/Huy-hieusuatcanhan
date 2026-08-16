@@ -1,11 +1,10 @@
-/* Máy chủ chạy thử trên máy — phục vụ dist/ VÀ giả lập api/index.php.
+/* Máy chủ chạy thử trên máy — CHỈ dùng khi phát triển, không đưa lên hosting.
 
-   Phần API ở đây viết lại đúng logic của bản PHP (cùng thuật toán mật khẩu,
-   cùng cách trộn bản ghi, cùng con trỏ đồng bộ) để thử đăng nhập và đồng bộ
-   ngay trên máy, không cần cài PHP.
+   Phục vụ thẳng thư mục gốc của dự án (chính là thứ chạy thật trên máy chủ),
+   và giả lập api/index.php bằng Node để thử đăng nhập, đồng bộ và lịch nhắc
+   mà không cần cài PHP. Phần giả lập viết lại đúng logic của bản PHP.
 
-     node build.js && node serve.js     → http://localhost:5199
-     node serve.js --src                → phục vụ thư mục nguồn
+     node serve.js      → http://localhost:5199
 
    Cần api/config.php (chép từ config.example.php, dán mã của
    "node tools/hash-password.js" vào) thì phần đăng nhập mới chạy.        */
@@ -14,8 +13,7 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 
-const useSrc = process.argv.includes('--src');
-const ROOT = path.join(__dirname, useSrc ? '.' : 'dist');
+const ROOT = __dirname;          // gốc repo = thư mục chạy thật
 const PORT = process.env.PORT || 5199;
 const TYPES = {
   '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
@@ -24,11 +22,6 @@ const TYPES = {
   '.png':'image/png', '.txt':'text/plain; charset=utf-8',
   '.sql':'text/plain; charset=utf-8', '.md':'text/plain; charset=utf-8'
 };
-
-if (!useSrc && !fs.existsSync(ROOT)){
-  console.error('Chưa có dist/. Chạy "node build.js" trước.');
-  process.exit(1);
-}
 
 /* ---------------- cấu hình: đọc thẳng từ api/config.php ---------------- */
 function loadPassword(){
@@ -334,7 +327,8 @@ function api(req, res, body){
         trashed: q('SELECT COUNT(*) c FROM items WHERE deleted = 1').c,
         devices: q('SELECT COUNT(*) c FROM sessions').c,
         last:    q('SELECT MAX(updated_at) m FROM items').m,
-        size:    fs.existsSync(f) ? fs.statSync(f).size : 0});
+        size:    fs.existsSync(f) ? fs.statSync(f).size : 0,
+        dbInWebRoot: true, dbDir: path.join(__dirname, 'api/data')});
     }
   }
   return fail('Không hiểu yêu cầu: ' + inp.action, 404);
@@ -359,14 +353,20 @@ http.createServer((req, res) => {
   if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end('forbidden'); }
   fs.readFile(file, (err, data) => {
     if (err){ res.writeHead(404); return res.end('not found'); }
+    /* Gửi ETag giống Apache/LiteSpeed để chạy thử ở đây giống chạy thật:
+       service worker dựa vào dấu này để biết máy chủ đã có bản mới. */
+    const etag = '"' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 16) + '"';
+    if (req.headers['if-none-match'] === etag){ res.writeHead(304, {ETag: etag}); return res.end(); }
     res.writeHead(200, {
       'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-store'
+      'Content-Length': data.length,
+      'ETag': etag,
+      'Cache-Control': 'no-cache, must-revalidate'
     });
     res.end(data);
   });
 }).listen(PORT, () => {
-  console.log('Life Hub (' + (useSrc ? 'nguồn' : 'dist') + ') → http://localhost:' + PORT);
+  console.log('Life Hub → http://localhost:' + PORT);
   console.log(LH_PASSWORD ? 'API: bật · đăng nhập bằng mật khẩu trong api/config.php'
                           : 'API: chưa có api/config.php → app chạy chế độ chỉ lưu trên máy');
 });

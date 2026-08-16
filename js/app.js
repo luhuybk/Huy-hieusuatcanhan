@@ -1163,6 +1163,10 @@ document.addEventListener('click', e => {
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;
 
+    /* bản mới của app */
+    case 'doRefresh': doRefresh(); break;
+    case 'hideUpd': { const b = document.querySelector('.updbar'); if (b) b.remove(); break; }
+
     /* nhắc lặp lại */
     case 'addRem':  addRem(); break;
     case 'editRem': editRem(id); break;
@@ -1238,7 +1242,11 @@ document.addEventListener('click', e => {
       Server.stats().then(d => {
         const kb = Math.round(d.size / 1024);
         $('#srvinfo').innerHTML = `${d.records} bản ghi · ${d.trashed} đã xoá · ${d.devices} thiết bị đang đăng nhập
-          · ${kb} KB${d.last ? ' · thay đổi gần nhất ' + fmtDate(d.last) : ''}`;
+          · ${kb} KB${d.last ? ' · thay đổi gần nhất ' + fmtDate(d.last) : ''}`
+          + (d.dbInWebRoot ? `<div class="chip bad" style="margin-top:8px;white-space:normal;text-align:left">
+              ⚠︎ File dữ liệu đang nằm trong thư mục web (${esc(d.dbDir)}).
+              Deploy bằng Git có thể xoá mất nó. Xem mục "Chỗ để file dữ liệu" trong README
+              để chuyển ra ngoài public_html.</div>` : '');
       }).catch(err => { $('#srvinfo').textContent = err.message; });
       break;
     }
@@ -1323,6 +1331,29 @@ function applyTheme(){
   if (tc) tc.content = t === 'light' ? '#f4f6fa' : '#0e1014';
 }
 
+/* Thanh mời tải lại khi máy chủ đã có bản mới. Chỉ hiện một lần,
+   và không tự tải lại — đang gõ dở mà trang nhảy thì rất khó chịu. */
+let _updateShown = false;
+function updateBar(){
+  if (_updateShown) return;
+  _updateShown = true;
+  const el = document.createElement('div');
+  el.className = 'updbar';
+  el.innerHTML = `<span>Đã có bản mới của app.</span>
+    <button class="btn sm pri" data-act="doRefresh">Tải lại</button>
+    <button class="iconbtn" data-act="hideUpd" title="Để sau">✕</button>`;
+  document.body.appendChild(el);
+}
+window.updateBar = updateBar;
+
+function doRefresh(){
+  /* bảo service worker bỏ bộ nhớ đệm rồi mới tải lại, nếu không
+     lần tải kế tiếp vẫn có thể lấy đúng bản cũ đang lưu */
+  const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (sw) sw.postMessage({type:'lifehub-refresh'});
+  setTimeout(() => location.reload(), 220);
+}
+
 /* Nếu dữ liệu hỏng tới mức không vẽ được, đừng để lại trang trắng —
    phải còn đường lấy sao lưu ra trước khi xoá. */
 function panic(err){
@@ -1348,8 +1379,12 @@ function boot(){
   const isEmpty  = COLLECTIONS.every(k => !alive(db[k]).length);
 
   Sync.onChange(() => renderSide());
-  if (location.protocol.startsWith('http') && 'serviceWorker' in navigator)
+  if (location.protocol.startsWith('http') && 'serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    /* Tin báo có bản mới có thể đã tới TRƯỚC khi file này chạy — thẻ script
+       trong <head> bắt sẵn và để lại cờ ở đây. */
+    if (window.__lhUpdate) updateBar();
+  }
 
   /* Có thư mục api/ trên máy chủ thì phải đăng nhập mới vào được.
      Không có (mở bằng file, hay bản gộp một tệp) thì chạy như cũ. */

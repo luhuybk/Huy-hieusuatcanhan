@@ -383,3 +383,15 @@ body.locked .app,body.locked .fab{display:none}
 .mono{background:var(--bg3);border-radius:8px;padding:9px 11px;margin:6px 0;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
   word-break:break-all;-webkit-user-select:all;user-select:all;color:var(--tx2)}
+
+/* ---------------- MỜI TẢI LẠI KHI CÓ BẢN MỚI ---------------- */
+.updbar{
+  position:fixed;left:50%;transform:translateX(-50%);z-index:190;
+  bottom:calc(16px + env(safe-area-inset-bottom));
+  display:flex;align-items:center;gap:10px;
+  background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+  padding:9px 10px 9px 15px;box-shadow:var(--shadow);
+  font-size:13.5px;font-weight:600;max-width:calc(100vw - 24px);
+}
+.updbar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.updbar .iconbtn{width:30px;height:30px;font-size:13px}

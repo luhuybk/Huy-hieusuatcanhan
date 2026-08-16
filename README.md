@@ -6,54 +6,76 @@ App cá nhân để quản lý **mối quan hệ** và **công việc nhiều m�
 
 ## Dùng thử ngay
 
-Mở file kèm `?demo` để nạp sẵn một bộ dữ liệu mẫu đầy đủ (12 người bốn nhóm, 16 lượt trao đổi, 15 việc có lặp và chuỗi, 14 thẻ giao việc cho 4 nhân sự, 7 dịp lễ có âm lịch):
+Mở app kèm `?demo` để nạp một bộ dữ liệu mẫu đầy đủ (12 người năm nhóm, 16 lượt trao đổi, 15 việc có lặp và chuỗi, 17 thẻ giao việc cho 4 nhân sự, 7 dịp lễ có âm lịch):
 
 ```
-life-hub-standalone.html?demo
+https://tenmien-cua-ban.com/?demo
 ```
 
 Chỉ nạp khi dữ liệu còn trống nên không sợ đè lên dữ liệu thật. Hoặc bấm **Dùng dữ liệu mẫu** ở màn hình chào. Xoá sạch trong Cài đặt là về trắng.
 
-## Chạy thế nào
-
-**Cách nhanh nhất — 1 file:** mở `life-hub-standalone.html` bằng trình duyệt. Gửi đúng file đó sang điện thoại là dùng được ngay.
-
-**Cách đầy đủ — cả thư mục:** dựng rồi chạy máy chủ thử. Cài như app thật (biểu tượng riêng, toàn màn hình) và thông báo nhắc nhở chỉ chạy qua http/https, không chạy với `file://`:
+## Chạy thử trên máy
 
 ```bash
-node build.js && node serve.js
+node serve.js
 ```
 
-rồi mở `http://localhost:5199`. Trên điện thoại: mở link đó (cùng wifi, thay `localhost` bằng IP máy tính) → Chia sẻ → **Thêm vào Màn hình chính**.
+rồi mở `http://localhost:5199`. `serve.js` phục vụ thẳng thư mục gốc — đúng thứ chạy trên máy chủ — và giả lập luôn phần PHP bằng Node, nên thử được cả đăng nhập, đồng bộ và lịch nhắc Telegram mà không cần cài PHP.
+
+Trên điện thoại cùng wifi: thay `localhost` bằng IP máy tính.
 
 ---
 
 ## Đưa lên Hostinger
 
-```bash
-node build.js
+**Không có bước dựng nào cả.** Thư mục gốc của repo chính là thư mục chạy thật.
+
+### Cách dùng: Git tự động deploy
+
+Trong hPanel → **Git**, trỏ tới repo này và nhánh `main`, đường dẫn đích là `public_html`. Từ đó mỗi lần bạn `git push`, Hostinger tự kéo về và trang đổi theo.
+
+Không cần chạy lệnh gì trước khi push. Sửa code → commit → push → xong.
+
+### Ba điều phải nhớ
+
+1. **Bật SSL** trong hPanel. Không có `https` thì trình duyệt chặn cài app, chặn thông báo, chặn micro, và cookie đăng nhập cũng không gửi đi được.
+
+2. **`.htaccess` phải lên được máy chủ.** File này quyết định việc trình duyệt có chịu lấy code mới hay không. File Manager của Hostinger mặc định giấu file bắt đầu bằng dấu chấm — bật **Show hidden files** để kiểm tra nó có trong `public_html` không.
+
+3. **`api/config.php` bạn tự tạo trên máy chủ, git không đụng tới.** Nó nằm trong `.gitignore` nên các lần deploy sau không ghi đè và cũng không xoá mất.
+
+### Chỗ để file dữ liệu — đọc kỹ phần này
+
+Mặc định cơ sở dữ liệu nằm ở `api/data/lifehub.sqlite`, tức là **bên trong vùng mà Git deploy quản lý**. Tuỳ cách Hostinger dọn thư mục trước mỗi lần kéo về, file này có thể bị xoá — mất sạch dữ liệu.
+
+Cách chắc chắn: để nó **ra ngoài** `public_html`. Tạo một thư mục bằng File Manager, ví dụ `/home/uXXXXXXXX/lifehub-data/`, rồi mở `api/config.php` thêm dòng:
+
+```php
+define('LH_DB_FILE', '/home/uXXXXXXXX/lifehub-data/lifehub.sqlite');
 ```
 
-Lệnh này tạo thư mục **`dist/`**. Upload **toàn bộ nội dung bên trong `dist/`** (không phải cả thư mục `dist`) vào `public_html` bằng File Manager hoặc FTP. Xong. Không cần PHP, không cần cơ sở dữ liệu, không cần cài gì thêm.
+(thay `uXXXXXXXX` bằng mã tài khoản thật của bạn — nhìn thấy trong File Manager)
 
-Muốn đặt ở đường dẫn con (`tenmien.com/lifehub/`) thì tạo thư mục đó trong `public_html` rồi bỏ nội dung vào — mọi đường dẫn đều tương đối nên chạy được ngay.
+Nếu file dữ liệu đang nằm trong vùng web, màn hình **Cài đặt → Xem máy chủ** sẽ hiện cảnh báo đỏ nhắc bạn chuyển đi.
 
-**Nhớ ba điều:**
+Dù để ở đâu, vẫn nên thỉnh thoảng bấm **Xuất sao lưu** trong app.
 
-1. **Bật SSL** trong hPanel (Hostinger cấp miễn phí). Không có `https` thì Chrome và Safari sẽ chặn cài app, chặn thông báo và chặn micro.
-2. `dist/` đã kèm sẵn `.htaccess` (ép https, nén, đặt hạn bộ nhớ đệm, chặn lập chỉ mục) và `robots.txt`. File Manager của Hostinger mặc định giấu file bắt đầu bằng dấu chấm — bật **Show hidden files** để thấy và kiểm tra `.htaccess` đã lên chưa.
-3. **Chỉ upload `dist/`.** Đừng upload cả thư mục dự án: `supabase-schema.sql`, `README.md`, `build.js`, `serve.js` mà nằm trên máy chủ thì ai gõ đúng đường dẫn cũng tải về đọc được.
+### Cập nhật code mới có tới người dùng không?
 
-Muốn có **đăng nhập bằng mật khẩu** và **đồng bộ điện thoại ⇄ máy tính** thì làm thêm mục [Đăng nhập & đồng bộ qua máy chủ của bạn](#đăng-nhập--đồng-bộ-qua-máy-chủ-của-bạn) bên dưới — thêm đúng một bước đổi tên file trên máy chủ.
+Có, và đây là chỗ trước đây bị hỏng. Ba lớp cùng lo việc này:
 
-**Cập nhật về sau:** sửa mã nguồn → `node build.js` → upload đè `dist/`. Mỗi lần dựng, `css`/`js` được gắn mã phiên bản mới nên trình duyệt và service worker tự lấy bản mới, không kẹt ở bản cũ.
+- `.htaccess` bắt `html`/`css`/`js` **luôn hỏi lại máy chủ**. Nội dung không đổi thì máy chủ trả 304 rỗng, gần như không tốn gì.
+- Service worker dùng bản đã lưu để mở nhanh, đồng thời tải lại ngầm để so. Tệp nhỏ nên nó so cả nội dung chứ không chỉ dựa vào ETag.
+- Thấy khác là hiện thanh **"Đã có bản mới của app · Tải lại"** ở cuối màn hình. Bấm là xoá bộ nhớ đệm rồi nạp lại sạch. Không tự tải lại — đang gõ dở mà trang nhảy thì rất khó chịu.
 
-**Riêng tư đến đâu:**
+Nếu vì lý do gì đó vẫn kẹt ở bản cũ: mở app, Cài đặt → Đăng xuất, rồi xoá dữ liệu duyệt web của riêng trang đó. Cách này gỡ luôn service worker cũ.
 
-- *Chưa cài `api/`* — dữ liệu chỉ nằm trong trình duyệt của bạn, không có gì trên máy chủ. Người lạ mở đúng địa chỉ thấy một app trắng trơn.
-- *Đã cài `api/`* — dữ liệu nằm trên máy chủ và **phải có mật khẩu mới xem được**. Người lạ mở địa chỉ chỉ thấy màn hình đăng nhập.
+### Riêng tư
 
-Trong cả hai trường hợp, mã nguồn tải về không chứa mật khẩu hay khoá nào.
+- *Chưa cài `api/config.php`* — dữ liệu chỉ nằm trong trình duyệt của bạn. Người lạ mở đúng địa chỉ thấy một app trắng trơn.
+- *Đã cài* — dữ liệu nằm trên máy chủ và **phải có mật khẩu mới xem được**. Người lạ chỉ thấy màn hình đăng nhập.
+
+Vì gốc repo là thư mục chạy thật nên vài file chỉ dùng lúc phát triển (`serve.js`, `README.md`, `tools/`, `supabase-schema.sql`) cũng bị kéo lên theo. `.htaccess` đã chặn không cho tải chúng về.
 
 ---
 
@@ -71,7 +93,9 @@ Trong cả hai trường hợp, mã nguồn tải về không chứa mật khẩ
 | `js/notify.js` | thông báo nhắc nhở |
 | `js/views.js` | dựng HTML từng màn hình |
 | `js/app.js` | biểu mẫu + xử lý sự kiện |
-| `sw.js`, `manifest.webmanifest` | cài như app, chạy offline |
+| `sw.js`, `manifest.webmanifest` | cài như app, chạy offline, báo có bản mới |
+| `.htaccess` | ép https, nén, chặn cache cũ, giấu file phát triển |
+| `robots.txt` | không cho công cụ tìm kiếm lập chỉ mục |
 | `api/index.php` | máy chủ: đăng nhập + đồng bộ (SQLite) |
 | `api/lib.php` | phần dùng chung: dữ liệu, Telegram, bộ hẹn giờ |
 | `api/cron.php` | hPanel gọi mỗi 5 phút để gửi nhắc nhở |
@@ -79,11 +103,12 @@ Trong cả hai trường hợp, mã nguồn tải về không chứa mật khẩ
 | `tools/hash-password.js` | tạo mã mật khẩu để dán vào `config.php` |
 | `icon.svg`, `assets/*.png` | biểu tượng (PNG cần cho iOS và cho thông báo) |
 | `tools/make-icons.js` | sinh PNG từ `icon.svg`, không cần thư viện ngoài |
-| `build.js` | tạo `dist/` + `life-hub-standalone.html` |
 | `serve.js` | máy chủ thử trên máy (có giả lập luôn phần PHP) |
 | `supabase-schema.sql` | chỉ cần nếu dùng cách đồng bộ cũ |
 
-`build.js`, `serve.js`, `tools/`, `supabase-schema.sql`, `README.md` chỉ dùng lúc phát triển — `build.js` không đưa chúng vào `dist/`. Riêng `api/config.php` (chứa mã mật khẩu của bạn) cũng không bao giờ vào `dist/` và không vào git.
+Mọi thứ trong bảng này đều nằm ở thư mục gốc và đều lên máy chủ — không có bước dựng, không có thư mục `dist`. Bốn dòng cuối chỉ dùng lúc phát triển nên `.htaccess` chặn không cho tải về.
+
+Riêng `api/config.php` (mã mật khẩu) và `api/data/` (cơ sở dữ liệu) **không** vào git: bạn tạo chúng một lần trên máy chủ, deploy về sau không đụng tới.
 
 ---
 
@@ -299,13 +324,13 @@ node tools/hash-password.js
 
 Gõ mật khẩu bạn muốn. Nó in ra một dòng `define('LH_PASSWORD', 'pbkdf2_sha256$…');`. Mật khẩu thật không đi đâu cả — dòng này chỉ là mã băm, từ đó không suy ngược lại được.
 
-**2. Dựng và upload**
+**2. Đưa code lên**
 
 ```bash
-node build.js
+git push
 ```
 
-Upload nội dung `dist/` vào `public_html` như thường. Trong đó đã có sẵn thư mục `api/`.
+Hostinger tự kéo về, trong đó đã có sẵn thư mục `api/`.
 
 **3. Tạo file cấu hình trên máy chủ**
 
@@ -333,7 +358,7 @@ Xong. Mở app trên trình duyệt, nó sẽ hỏi mật khẩu.
 
 ### Đổi mật khẩu
 
-Chạy lại `node tools/hash-password.js`, thay dòng đó trong `api/config.php`, upload đè. Các máy đang đăng nhập vẫn giữ phiên; muốn đá hết ra thì bấm **Đăng xuất mọi thiết bị** trong Cài đặt.
+Chạy lại `node tools/hash-password.js`, rồi sửa `api/config.php` **thẳng trên máy chủ** bằng File Manager (file này không nằm trong git nên push không đổi được nó). Các máy đang đăng nhập vẫn giữ phiên; muốn đá hết ra thì bấm **Đăng xuất mọi thiết bị** trong Cài đặt.
 
 ### Đăng xuất
 
@@ -344,7 +369,7 @@ Cài đặt → Đăng xuất, chọn một trong hai:
 
 ### Sao lưu dữ liệu trên máy chủ
 
-Tải file `api/data/lifehub.sqlite` về bằng File Manager. Hoặc dùng Cài đặt → **Xuất sao lưu** trong app cho nhanh.
+Tải file `.sqlite` về bằng File Manager (chỗ để nó xem mục [Chỗ để file dữ liệu](#chỗ-để-file-dữ-liệu--đọc-kỹ-phần-này)). Hoặc dùng Cài đặt → **Xuất sao lưu** trong app cho nhanh.
 
 > **Nói thẳng về mức bảo vệ:** mật khẩu do máy chủ kiểm, lưu dạng PBKDF2-SHA256 210.000 vòng, sai quá 8 lần thì khoá IP 15 phút. Phiên giữ trong cookie HttpOnly nên JavaScript không đọc được. Như vậy là đủ chắc cho một app cá nhân. Nhưng nó **không** phải hệ thống nhiều người dùng có phân quyền, và không có xác thực hai lớp. Bắt buộc bật SSL — không có https thì mật khẩu đi qua mạng ở dạng trần.
 

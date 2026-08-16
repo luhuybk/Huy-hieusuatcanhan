@@ -1,19 +1,28 @@
-# Kết quả dựng — chạy "node build.js" là có lại, không cần lưu vào git
-dist/
-life-hub-standalone.html
-*.zip
+# ============================================================
+# Thư mục gốc của repo CHÍNH LÀ thư mục chạy thật trên Hostinger.
+# Git kéo về public_html là dùng được ngay — không có bước dựng nào.
+#
+# Vì vậy danh sách dưới đây phải giữ thật ngắn. Bất cứ thứ gì bị chặn
+# ở đây sẽ KHÔNG có trên máy chủ. Không bao giờ thêm css/, js/,
+# assets/, api/, index.html, sw.js, .htaccess vào file này.
+# ============================================================
 
-# rác của macOS
-.DS_Store
-
-# sao lưu dữ liệu cá nhân, lỡ tay để trong thư mục dự án
-life-hub-*.json
-
-# cấu hình máy chủ: chứa mã mật khẩu của bạn, không đưa lên GitHub
+# --- chỉ có trên máy chủ, cố ý không đưa lên GitHub ---
+# Mã mật khẩu đăng nhập của bạn. Bạn tự tạo file này một lần trên
+# Hostinger; git không đụng tới nên các lần deploy sau không ghi đè.
 api/config.php
+
+# Cơ sở dữ liệu thật. Xem cảnh báo trong README: nên để nó RA NGOÀI
+# public_html, vì thư mục này nằm trong vùng git deploy.
 api/data/
 *.sqlite
-*.sqlite-*
+*.sqlite-wal
+*.sqlite-shm
 
-# bản giải nén của dist (do zip bung ra), không phải mã nguồn
-life-hub-dist/
+# --- rác cục bộ ---
+.DS_Store
+Thumbs.db
+node_modules/
+
+# --- sao lưu dữ liệu cá nhân lỡ tay để trong thư mục dự án ---
+life-hub-*.json
