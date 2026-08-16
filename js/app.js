@@ -92,7 +92,7 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, extra, t
     else if (f.type === 'date')     inp = `<input id="f_${f.k}" type="date" value="${esc(String(v).slice(0,10))}">`;
     else if (f.type === 'color')    inp = `<input id="f_${f.k}" type="color" value="${esc(v||'#5b8cff')}" style="height:44px;padding:4px">`;
     else if (f.type === 'tel')      inp = `<input id="f_${f.k}" type="tel" inputmode="tel" placeholder="${esc(f.ph||'')}" value="${esc(v)}">`;
-    else if (f.type === 'time')     inp = `<input id="f_${f.k}" type="time" value="${esc(v || '08:00')}">`;
+    else if (f.type === 'time')     inp = `<input id="f_${f.k}" type="time" value="${esc(v || '')}">`;
     else if (f.type === 'days'){
       const sel = Array.isArray(v) ? v.map(Number) : [];
       inp = `<div class="wdays" id="f_${f.k}">` + WDAYS.map(([n, lbl]) =>
