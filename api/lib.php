@@ -358,10 +358,16 @@ function buildWeekly(): array {
   foreach (itemsOf('people') as $p)
     if (!empty($p['lastContact']) && (string)$p['lastContact'] >= $from) $touched++;
 
-  $lines[] = "✓ <b>$doneCount việc xong</b> · 📇 <b>$cardsDone thẻ giao xong</b> · ☎️ <b>$touched người</b> đã hỏi thăm";
+  $lines[] = "✓ <b>$doneCount</b> việc xong";
+  $lines[] = "📇 <b>$cardsDone</b> thẻ giao xong";
+  $lines[] = "☎️ <b>$touched</b> người đã hỏi thăm";
+
+  /* mỗi khối cách nhau một vạch ngang, dễ nhìn hơn để trống suông —
+     tin nhiều mục dồn lại một chỗ nhìn rất rối trên điện thoại */
+  $sep = function () use (&$lines) { $lines[] = ''; $lines[] = '─────────────'; $lines[] = ''; };
 
   if ($lateTasks) {
-    $lines[] = '';
+    $sep();
     $lines[] = '⚠️ <b>Đang trễ — dời hay bỏ? (' . count($lateTasks) . ')</b>';
     foreach (array_slice($lateTasks, 0, 6) as $t) $lines[] = '   • ' . tgEsc(cutTitle($t['title'] ?? ''));
     if (count($lateTasks) > 6) $lines[] = '   … và ' . (count($lateTasks) - 6) . ' việc nữa';
@@ -376,7 +382,7 @@ function buildWeekly(): array {
   }
   if ($forgotten) {
     usort($forgotten, function ($a, $b) { return $b[1] - $a[1]; });
-    $lines[] = '';
+    $sep();
     $lines[] = '🙈 <b>Lâu rồi chưa hỏi thăm</b>';
     foreach (array_slice($forgotten, 0, 5) as $f)
       $lines[] = '   • ' . tgEsc((string)($f[0]['name'] ?? '')) . ' — trễ ' . $f[1] . ' ngày';
@@ -386,7 +392,7 @@ function buildWeekly(): array {
   foreach (itemsOf('cards') as $c)
     if (!empty($c['extra']) && empty($c['extraPaidDate'])) { $owed += (int)($c['extraPay'] ?? 0); $owedN++; }
   if ($owed) {
-    $lines[] = '';
+    $sep();
     $lines[] = '💰 Còn nợ công ngoài luồng: <b>' . number_format($owed, 0, ',', '.') . '₫</b>' . " ($owedN việc)";
   }
 

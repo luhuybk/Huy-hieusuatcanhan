@@ -192,10 +192,15 @@ function buildWeekly(atMs){
   let touched = 0;
   for (const p of itemsOf('people')) if (p.lastContact && String(p.lastContact) >= from) touched++;
 
-  lines.push(`✓ ${doneCount} việc xong · 📇 ${cardsDone} thẻ giao xong · ☎️ ${touched} người đã hỏi thăm`);
+  lines.push(`✓ ${doneCount} việc xong`);
+  lines.push(`📇 ${cardsDone} thẻ giao xong`);
+  lines.push(`☎️ ${touched} người đã hỏi thăm`);
+
+  const sep = () => lines.push('', '─────────────', '');
 
   if (lateTasks.length){
-    lines.push('', `⚠️ Đang trễ — dời hay bỏ? (${lateTasks.length})`);
+    sep();
+    lines.push(`⚠️ Đang trễ — dời hay bỏ? (${lateTasks.length})`);
     lateTasks.slice(0,6).forEach(t => lines.push('   • ' + t.title));
     if (lateTasks.length > 6) lines.push(`   … và ${lateTasks.length - 6} việc nữa`);
   }
@@ -208,13 +213,14 @@ function buildWeekly(atMs){
   }
   if (forgotten.length){
     forgotten.sort((a,b) => b[1] - a[1]);
-    lines.push('', '🙈 Lâu rồi chưa hỏi thăm');
+    sep();
+    lines.push('🙈 Lâu rồi chưa hỏi thăm');
     forgotten.slice(0,5).forEach(f => lines.push(`   • ${f[0].name || ''} — trễ ${f[1]} ngày`));
   }
 
   let owed = 0, owedN = 0;
   for (const c of itemsOf('cards')) if (c.extra && !c.extraPaidDate){ owed += +(c.extraPay || 0); owedN++; }
-  if (owed) lines.push('', `💰 Còn nợ công ngoài luồng: ${owed.toLocaleString('vi-VN')}₫ (${owedN} việc)`);
+  if (owed){ sep(); lines.push(`💰 Còn nợ công ngoài luồng: ${owed.toLocaleString('vi-VN')}₫ (${owedN} việc)`); }
 
   return lines;
 }
