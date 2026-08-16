@@ -1,0 +1,10 @@
+# Kết quả dựng — chạy "node build.js" là có lại, không cần lưu vào git
+dist/
+life-hub-standalone.html
+*.zip
+
+# rác của macOS
+.DS_Store
+
+# sao lưu dữ liệu cá nhân, lỡ tay để trong thư mục dự án
+life-hub-*.json
