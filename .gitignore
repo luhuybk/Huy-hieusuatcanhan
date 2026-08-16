@@ -8,3 +8,9 @@ life-hub-standalone.html
 
 # sao lưu dữ liệu cá nhân, lỡ tay để trong thư mục dự án
 life-hub-*.json
+
+# cấu hình máy chủ: chứa mã mật khẩu của bạn, không đưa lên GitHub
+api/config.php
+api/data/
+*.sqlite
+*.sqlite-*

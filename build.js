@@ -16,7 +16,7 @@ const dir  = __dirname;
 const DIST = path.join(dir, 'dist');
 const read = p => fs.readFileSync(path.join(dir, p), 'utf8');
 
-const JS = ['js/state.js','js/lunar.js','js/voice.js','js/sync.js',
+const JS = ['js/state.js','js/lunar.js','js/voice.js','js/api.js','js/sync.js',
             'js/notify.js','js/views.js','js/app.js'];
 const ASSETS = ['assets/icon-192.png','assets/icon-512.png','assets/icon-maskable-512.png',
                 'assets/apple-touch-icon.png','assets/favicon-32.png'];
@@ -48,6 +48,11 @@ JS.forEach(copy);
 copy('manifest.webmanifest');
 copy('icon.svg');
 ASSETS.forEach(copy);
+
+/* api/: máy chủ đăng nhập + đồng bộ.
+   KHÔNG chép config.php — mã mật khẩu của bạn chỉ nằm trên máy chủ,
+   không đi qua git và không nằm trong thư mục dựng. */
+['api/index.php', 'api/config.example.php', 'api/.htaccess'].forEach(copy);
 
 /* sw.js: đóng dấu phiên bản + danh sách tệp có kèm ?v= */
 const swAssets = ['./', './index.html', `./css/style.css?v=${VERSION}`,
@@ -141,3 +146,6 @@ const total = walk(DIST).reduce((s,f) => s + fs.statSync(f).size, 0);
 console.log(`✓ dist/                     ${walk(DIST).length} tệp · ${Math.round(total/1024)} KB · phiên bản ${VERSION}`);
 console.log(`✓ life-hub-standalone.html  ${size(out)} KB`);
 console.log('\nUpload toàn bộ NỘI DUNG trong dist/ vào public_html trên Hostinger.');
+console.log('Lần đầu: đổi tên api/config.example.php thành api/config.php rồi dán');
+console.log('mã mật khẩu (node tools/hash-password.js) vào. Chưa làm bước này thì');
+console.log('app sẽ báo "Chưa có api/config.php" ngay ở màn đăng nhập.');

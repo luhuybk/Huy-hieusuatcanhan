@@ -213,7 +213,7 @@ function blank(){
       role:'owner',          // 'owner' | 'staff'
       staffName:''
     },
-    meta:{ notified:{}, lastPull:null }
+    meta:{ notified:{}, lastPull:null, lastPush:null, srvPull:'', srvPush:'' }
   };
 }
 let db = blank();

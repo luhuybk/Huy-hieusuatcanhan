@@ -28,7 +28,8 @@ function renderSide(){
   const dotCls = !st.on ? '' : st.state === 'error' ? 'bad' : st.state === 'syncing' ? 'sync' : 'ok';
   const stText = !st.on ? 'Chỉ lưu trên máy này'
                : st.state === 'error' ? 'Đồng bộ lỗi'
-               : st.state === 'syncing' ? 'Đang đồng bộ…' : 'Đã đồng bộ · ' + st.workspace;
+               : st.state === 'syncing' ? 'Đang đồng bộ…'
+               : st.mode === 'server' ? 'Đã đồng bộ · máy chủ' : 'Đã đồng bộ · ' + st.workspace;
 
   const nDue  = dueTasks().length;
   const nLate = lateCards().length;
@@ -1104,11 +1105,36 @@ function vSettings(){
     </div>
   </div>
 
-  ${secHd('Đồng bộ nhiều thiết bị (Supabase)')}
+  ${Server.available() ? `
+  ${secHd('Tài khoản & máy chủ')}
   <div class="card">
     <div class="row" style="margin-bottom:12px">
+      <span class="dot ${st.state==='error'?'bad':'ok'}"></span>
+      <div class="grow dim">${st.state==='error' ? esc(st.lastError)
+        : 'Đã đăng nhập · dữ liệu đồng bộ qua máy chủ của bạn'}</div>
+    </div>
+    <div class="dim" id="srvinfo" style="margin-bottom:12px">Bấm "Xem máy chủ" để lấy số liệu.</div>
+    <div class="btns">
+      <button class="btn sm" data-act="syncNow">Đồng bộ ngay</button>
+      <button class="btn sm" data-act="srvStats">Xem máy chủ</button>
+      <button class="btn sm" data-act="logout">Đăng xuất</button>
+      <button class="btn sm dngr" data-act="logoutAll">Đăng xuất mọi thiết bị</button>
+    </div>
+    <div class="dim" style="margin-top:12px;line-height:1.6">
+      Đổi mật khẩu: chạy <b>node tools/hash-password.js</b> ở máy, dán dòng nó in ra vào
+      <b>api/config.php</b> rồi upload đè. Các máy đang đăng nhập vẫn giữ phiên —
+      muốn đá hết ra thì bấm "Đăng xuất mọi thiết bị".
+    </div>
+  </div>` : ''}
+
+  ${secHd(Server.available() ? 'Đồng bộ dự phòng qua Supabase' : 'Đồng bộ nhiều thiết bị (Supabase)')}
+  <div class="card">
+    ${Server.available() ? `<div class="dim" style="margin-bottom:12px;line-height:1.6">
+      Bạn đang dùng máy chủ riêng nên phần này không cần thiết. Cứ để trống.</div>` : ''}
+    <div class="row" style="margin-bottom:12px">
       <span class="dot ${!st.on?'':st.state==='error'?'bad':'ok'}"></span>
-      <div class="grow dim">${!st.on ? 'Đang tắt — dữ liệu chỉ nằm trên máy này'
+      <div class="grow dim">${st.mode === 'server' ? 'Đang dùng máy chủ riêng'
+        : !st.on ? 'Đang tắt — dữ liệu chỉ nằm trên máy này'
         : st.state==='error' ? esc(st.lastError) : 'Đang bật · không gian "' + esc(st.workspace) + '"'}</div>
     </div>
     <div class="fgrid">

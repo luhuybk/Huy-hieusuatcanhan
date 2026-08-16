@@ -4,7 +4,7 @@
 const VERSION = 'dev';
 const ASSETS = [
   './', './index.html', './css/style.css',
-  './js/state.js', './js/lunar.js', './js/voice.js', './js/sync.js',
+  './js/state.js', './js/lunar.js', './js/voice.js', './js/api.js', './js/sync.js',
   './js/notify.js', './js/views.js', './js/app.js',
   './manifest.webmanifest', './icon.svg',
   './assets/icon-192.png', './assets/icon-512.png',

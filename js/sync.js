@@ -1,7 +1,13 @@
 /* ============================================================
-   sync.js — đồng bộ nhiều thiết bị qua Supabase (REST, không cần SDK)
-   Mô hình: mỗi bản ghi là một dòng. Trộn theo updatedAt, ai mới hơn thì thắng.
-   Không cấu hình gì thì app vẫn chạy bình thường 100% offline.
+   sync.js — đồng bộ nhiều thiết bị
+
+   Hai đường đi, tự chọn cái nào đang sẵn sàng:
+     1. Máy chủ của bạn (thư mục api/ trên Hostinger) — mặc định
+     2. Supabase — giữ lại cho ai đã trót cấu hình
+
+   Mô hình chung: mỗi bản ghi là một dòng, trộn theo updatedAt,
+   ai mới hơn thì thắng. Không có đường nào thì app vẫn chạy 100%
+   offline như thường.
    ============================================================ */
 "use strict";
 
@@ -12,15 +18,77 @@ const Sync = (() => {
   const listeners = [];
 
   const cfg = () => db.settings;
-  const on  = () => !!(cfg().supabaseUrl && cfg().supabaseKey && cfg().workspace);
+  const supaOn = () => !!(cfg().supabaseUrl && cfg().supabaseKey && cfg().workspace);
+  const srvOn  = () => !!(window.Server && Server.authed());
+
+  const mode = () => srvOn() ? 'server' : supaOn() ? 'supabase' : 'off';
+  const on   = () => mode() !== 'off';
 
   function setState(s, err){
     state = s; lastError = err || '';
     listeners.forEach(f => { try { f(state, lastError); } catch(e){} });
   }
   function onChange(f){ listeners.push(f); }
-  function status(){ return {state, lastError, on:on(), workspace:cfg().workspace}; }
+  function status(){
+    return {state, lastError, on:on(), mode:mode(),
+            workspace: mode() === 'server' ? 'máy chủ của bạn' : cfg().workspace};
+  }
 
+  /* ---- gom bản ghi local thành dòng ---- */
+  function localRows(sinceISO){
+    const rows = [];
+    COLLECTIONS.forEach(kind => {
+      db[kind].forEach(rec => {
+        if (sinceISO && rec.updatedAt <= sinceISO) return;
+        rows.push({kind, item_id:rec.id, data:rec, updated_at:rec.updatedAt, deleted:!!rec.deleted});
+      });
+    });
+    return rows;
+  }
+  /* ---- nhận một dòng từ xa vào kho local ---- */
+  function absorb(row){
+    if (!COLLECTIONS.includes(row.kind)) return 0;
+    const arr = db[row.kind];
+    const i = arr.findIndex(x => x.id === row.item_id);
+    const remote = Object.assign({}, row.data, {
+      id: row.item_id, updatedAt: row.updated_at, deleted: !!row.deleted
+    });
+    if (i < 0){ arr.push(remote); return 1; }
+    if ((arr[i].updatedAt || '') < remote.updatedAt){ arr[i] = remote; return 1; }
+    return 0;
+  }
+
+  /* ============ đường 1: máy chủ của bạn ============ */
+  async function srvPush(){
+    const since = db.meta.srvPush || '';
+    const rows = localRows(since);
+    if (!rows.length) return 0;
+    /* chia lô để không vượt giới hạn kích thước yêu cầu */
+    for (let i = 0; i < rows.length; i += 400){
+      await Server.push(rows.slice(i, i + 400));
+    }
+    db.meta.srvPush = rows.reduce((m,r) => r.updated_at > m ? r.updated_at : m, since);
+    return rows.length;
+  }
+  async function srvPull(){
+    let cursor = db.meta.srvPull || '';
+    let changed = 0, guard = 0;
+    while (guard++ < 200){
+      const d = await Server.pull(cursor);
+      d.rows.forEach(r => { changed += absorb(r); });
+      if (d.rows.length){
+        const max = d.rows.reduce((m,r) => r.updated_at > m ? r.updated_at : m, cursor);
+        if (max === cursor && !d.more) break;      // không tiến thêm được nữa
+        cursor = max;
+      }
+      if (!d.more) break;
+    }
+    db.meta.srvPull = cursor;
+    db.meta.lastPull = now();
+    return changed;
+  }
+
+  /* ============ đường 2: Supabase ============ */
   function headers(extra){
     return Object.assign({
       'apikey': cfg().supabaseKey,
@@ -29,36 +97,13 @@ const Sync = (() => {
     }, extra || {});
   }
   const endpoint = () => cfg().supabaseUrl.replace(/\/+$/,'') + '/rest/v1/lifehub_items';
-
-  /* fetch nhưng đổi lỗi mạng thành câu tiếng Việt dễ hiểu */
   async function req(url, opts){
     try { return await fetch(url, opts); }
-    catch(e){ throw new Error('Không kết nối được tới Supabase — kiểm tra URL và mạng'); }
+    catch(e){ throw new Error('Không kết nối được — kiểm tra đường truyền'); }
   }
-
-  /* ---- gom toàn bộ bản ghi local thành dòng ---- */
-  function localRows(sinceISO){
-    const rows = [];
-    COLLECTIONS.forEach(kind => {
-      db[kind].forEach(rec => {
-        if (sinceISO && rec.updatedAt <= sinceISO) return;
-        rows.push({
-          workspace: cfg().workspace,
-          kind: kind,
-          item_id: rec.id,
-          data: rec,
-          updated_at: rec.updatedAt,
-          deleted: !!rec.deleted
-        });
-      });
-    });
-    return rows;
-  }
-
-  /* ---- đẩy lên ---- */
-  async function push(){
+  async function supaPush(){
     const since = db.meta.lastPush || null;
-    const rows = localRows(since);
+    const rows = localRows(since).map(r => Object.assign({workspace: cfg().workspace}, r));
     if (!rows.length) return 0;
     const res = await req(endpoint(), {
       method:'POST',
@@ -69,56 +114,38 @@ const Sync = (() => {
     db.meta.lastPush = rows.reduce((m,r) => r.updated_at > m ? r.updated_at : m, since || '');
     return rows.length;
   }
-
-  /* ---- kéo về ----
-     Supabase chỉ trả tối đa 1000 dòng mỗi lượt. Phải lấy theo trang,
-     nếu không thì khi dữ liệu vượt 1000 bản ghi phần dư sẽ âm thầm mất. */
+  /* Supabase chỉ trả tối đa 1000 dòng mỗi lượt → phải lấy theo trang */
   const PAGE = 1000;
-  async function pullPage(offset){
-    const url = endpoint() + '?workspace=eq.' + encodeURIComponent(cfg().workspace)
-              + '&select=kind,item_id,data,updated_at,deleted'
-              + '&order=updated_at.asc&limit=' + PAGE + '&offset=' + offset;
-    const res = await req(url, {headers: headers()});
-    if (!res.ok) throw new Error('Tải dữ liệu lỗi ' + res.status + ': ' + (await res.text()).slice(0,140));
-    return res.json();
-  }
-  async function pull(){
-    const rows = [];
-    for (let off = 0, guard = 0; guard < 100; guard++, off += PAGE){
-      const page = await pullPage(off);
-      rows.push(...page);
-      if (page.length < PAGE) break;
-    }
+  async function supaPull(){
     let changed = 0;
-    for (const row of rows){
-      if (!COLLECTIONS.includes(row.kind)) continue;
-      const arr = db[row.kind];
-      const i = arr.findIndex(x => x.id === row.item_id);
-      const remote = Object.assign({}, row.data, {
-        id: row.item_id, updatedAt: row.updated_at, deleted: !!row.deleted
-      });
-      if (i < 0){ arr.push(remote); changed++; }
-      else if ((arr[i].updatedAt || '') < remote.updatedAt){ arr[i] = remote; changed++; }
-    }
-    if (changed){
-      ensure();
-      persist();      // lưu thẳng, không qua save() để khỏi đánh dấu dirty lại
+    for (let off = 0, guard = 0; guard < 100; guard++, off += PAGE){
+      const url = endpoint() + '?workspace=eq.' + encodeURIComponent(cfg().workspace)
+                + '&select=kind,item_id,data,updated_at,deleted'
+                + '&order=updated_at.asc&limit=' + PAGE + '&offset=' + off;
+      const res = await req(url, {headers: headers()});
+      if (!res.ok) throw new Error('Tải dữ liệu lỗi ' + res.status + ': ' + (await res.text()).slice(0,140));
+      const page = await res.json();
+      page.forEach(r => { changed += absorb(r); });
+      if (page.length < PAGE) break;
     }
     db.meta.lastPull = now();
     return changed;
   }
 
+  /* ============ điều phối ============ */
   async function run(silent){
-    if (!on() || state === 'syncing') return;
+    const m = mode();
+    if (m === 'off' || state === 'syncing') return;
     setState('syncing');
     try {
-      await push();
-      const changed = await pull();
+      let changed;
+      if (m === 'server'){ await srvPush(); changed = await srvPull(); }
+      else               { await supaPush(); changed = await supaPull(); }
+      if (changed) ensure();
       persist();
       setState('idle');
       if (changed && window.render) render();
-      if (!silent && changed) toast('Đã đồng bộ · ' + changed + ' thay đổi');
-      else if (!silent) toast('Đã đồng bộ');
+      if (!silent) toast(changed ? 'Đã đồng bộ · ' + changed + ' thay đổi' : 'Đã đồng bộ');
     } catch(e){
       setState('error', e.message || String(e));
       if (!silent) toast('Lỗi đồng bộ: ' + (e.message || e));
@@ -132,7 +159,7 @@ const Sync = (() => {
     pushTimer = setTimeout(() => run(true), 2500);
   }
 
-  /* start() được gọi lại mỗi lần lưu cấu hình, nên chỉ gắn một lần */
+  /* start() được gọi lại mỗi lần đổi cấu hình, nên chỉ gắn sự kiện một lần */
   let hooked = false;
   function start(){
     clearInterval(timer);
@@ -143,12 +170,13 @@ const Sync = (() => {
     if (!hooked){
       hooked = true;
       document.addEventListener('visibilitychange', () => { if (!document.hidden && on()) run(true); });
+      window.addEventListener('online', () => { if (on()) run(true); });
     }
   }
 
-  /* kiểm tra kết nối + tạo bảng chưa? */
+  /* kiểm tra cấu hình Supabase */
   async function test(){
-    if (!on()) throw new Error('Chưa nhập đủ URL, khoá và tên không gian');
+    if (!supaOn()) throw new Error('Chưa nhập đủ URL, khoá và tên không gian');
     const res = await req(endpoint() + '?select=item_id&limit=1', {headers: headers()});
     if (res.status === 404 || res.status === 400)
       throw new Error('Chưa có bảng lifehub_items — hãy chạy file supabase-schema.sql trong SQL Editor');
@@ -156,6 +184,12 @@ const Sync = (() => {
     return true;
   }
 
-  return {start, run, push, pull, markDirty, status, onChange, test, on};
+  /* Máy này vừa đăng nhập lần đầu: quên mốc cũ để kéo lại từ đầu */
+  function resetCursor(){
+    db.meta.srvPull = ''; db.meta.srvPush = '';
+    db.meta.lastPull = null; db.meta.lastPush = null;
+  }
+
+  return {start, run, markDirty, status, onChange, test, on, mode, resetCursor};
 })();
 window.Sync = Sync;

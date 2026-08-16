@@ -1,6 +1,6 @@
 # Life Hub
 
-App cá nhân để quản lý **mối quan hệ** và **công việc nhiều mảng** — chạy offline, dữ liệu nằm trên máy bạn, có thể bật đồng bộ nhiều thiết bị khi cần.
+App cá nhân để quản lý **mối quan hệ** và **công việc nhiều mảng** — chạy offline, cài được như app trên điện thoại, và khi đưa lên hosting thì có **đăng nhập bằng mật khẩu** cùng **đồng bộ giữa các thiết bị** qua máy chủ của chính bạn.
 
 ---
 
@@ -44,9 +44,16 @@ Muốn đặt ở đường dẫn con (`tenmien.com/lifehub/`) thì tạo thư m
 2. `dist/` đã kèm sẵn `.htaccess` (ép https, nén, đặt hạn bộ nhớ đệm, chặn lập chỉ mục) và `robots.txt`. File Manager của Hostinger mặc định giấu file bắt đầu bằng dấu chấm — bật **Show hidden files** để thấy và kiểm tra `.htaccess` đã lên chưa.
 3. **Chỉ upload `dist/`.** Đừng upload cả thư mục dự án: `supabase-schema.sql`, `README.md`, `build.js`, `serve.js` mà nằm trên máy chủ thì ai gõ đúng đường dẫn cũng tải về đọc được.
 
+Muốn có **đăng nhập bằng mật khẩu** và **đồng bộ điện thoại ⇄ máy tính** thì làm thêm mục [Đăng nhập & đồng bộ qua máy chủ của bạn](#đăng-nhập--đồng-bộ-qua-máy-chủ-của-bạn) bên dưới — thêm đúng một bước đổi tên file trên máy chủ.
+
 **Cập nhật về sau:** sửa mã nguồn → `node build.js` → upload đè `dist/`. Mỗi lần dựng, `css`/`js` được gắn mã phiên bản mới nên trình duyệt và service worker tự lấy bản mới, không kẹt ở bản cũ.
 
-**Riêng tư đến đâu:** dữ liệu nằm trong trình duyệt của bạn (localStorage), *không* nằm trên máy chủ Hostinger. Người lạ mở đúng địa chỉ chỉ thấy một app trắng trơn. Nếu bật đồng bộ Supabase thì khoá cũng chỉ lưu trên từng máy, không nằm trong mã nguồn tải về. Muốn kín hơn nữa: đặt app trong thư mục con tên khó đoán, hoặc bật **Password Protect Directories** trong hPanel.
+**Riêng tư đến đâu:**
+
+- *Chưa cài `api/`* — dữ liệu chỉ nằm trong trình duyệt của bạn, không có gì trên máy chủ. Người lạ mở đúng địa chỉ thấy một app trắng trơn.
+- *Đã cài `api/`* — dữ liệu nằm trên máy chủ và **phải có mật khẩu mới xem được**. Người lạ mở địa chỉ chỉ thấy màn hình đăng nhập.
+
+Trong cả hai trường hợp, mã nguồn tải về không chứa mật khẩu hay khoá nào.
 
 ---
 
@@ -59,18 +66,22 @@ Muốn đặt ở đường dẫn con (`tenmien.com/lifehub/`) thì tạo thư m
 | `js/state.js` | dữ liệu, ngày tháng, tiền tệ, migration |
 | `js/lunar.js` | đổi dương ⇄ âm lịch (thuật toán Hồ Ngọc Đức) |
 | `js/voice.js` | đọc thành chữ tiếng Việt |
-| `js/sync.js` | đồng bộ Supabase |
+| `js/api.js` | gọi máy chủ + màn hình đăng nhập |
+| `js/sync.js` | đồng bộ (máy chủ riêng hoặc Supabase) |
 | `js/notify.js` | thông báo nhắc nhở |
 | `js/views.js` | dựng HTML từng màn hình |
 | `js/app.js` | biểu mẫu + xử lý sự kiện |
 | `sw.js`, `manifest.webmanifest` | cài như app, chạy offline |
+| `api/index.php` | máy chủ: đăng nhập + đồng bộ (SQLite) |
+| `api/config.example.php` | mẫu cấu hình — chép thành `config.php` trên máy chủ |
+| `tools/hash-password.js` | tạo mã mật khẩu để dán vào `config.php` |
 | `icon.svg`, `assets/*.png` | biểu tượng (PNG cần cho iOS và cho thông báo) |
 | `tools/make-icons.js` | sinh PNG từ `icon.svg`, không cần thư viện ngoài |
 | `build.js` | tạo `dist/` + `life-hub-standalone.html` |
-| `serve.js` | máy chủ thử trên máy |
-| `supabase-schema.sql` | chạy một lần trên Supabase |
+| `serve.js` | máy chủ thử trên máy (có giả lập luôn phần PHP) |
+| `supabase-schema.sql` | chỉ cần nếu dùng cách đồng bộ cũ |
 
-Bốn dòng cuối chỉ dùng lúc phát triển — `build.js` không đưa chúng vào `dist/`.
+`build.js`, `serve.js`, `tools/`, `supabase-schema.sql`, `README.md` chỉ dùng lúc phát triển — `build.js` không đưa chúng vào `dist/`. Riêng `api/config.php` (chứa mã mật khẩu của bạn) cũng không bao giờ vào `dist/` và không vào git.
 
 ---
 
@@ -211,7 +222,76 @@ Cài đặt → Nhắc nhở → Bật, chọn giờ. Mỗi ngày một thông b
 
 ---
 
-## Đồng bộ nhiều thiết bị
+## Đăng nhập & đồng bộ qua máy chủ của bạn
+
+Đây là cách nên dùng khi app đã nằm trên Hostinger: dữ liệu ở máy chủ, muốn xem phải nhập mật khẩu, điện thoại và máy tính thấy cùng một thứ.
+
+### Cài lần đầu (làm một lần)
+
+**1. Tạo mã mật khẩu ở máy bạn**
+
+```bash
+node tools/hash-password.js
+```
+
+Gõ mật khẩu bạn muốn. Nó in ra một dòng `define('LH_PASSWORD', 'pbkdf2_sha256$…');`. Mật khẩu thật không đi đâu cả — dòng này chỉ là mã băm, từ đó không suy ngược lại được.
+
+**2. Dựng và upload**
+
+```bash
+node build.js
+```
+
+Upload nội dung `dist/` vào `public_html` như thường. Trong đó đã có sẵn thư mục `api/`.
+
+**3. Tạo file cấu hình trên máy chủ**
+
+Trong File Manager của Hostinger, vào `public_html/api/`:
+
+- Đổi tên `config.example.php` → `config.php`
+- Mở nó ra, thay dòng `define('LH_PASSWORD', 'DAN_MA_VAO_DAY');` bằng dòng bạn vừa tạo ở bước 1
+- Lưu lại
+
+Xong. Mở app trên trình duyệt, nó sẽ hỏi mật khẩu.
+
+### Kiểm tra nhanh sau khi upload
+
+1. Mở app → phải thấy màn hình nhập mật khẩu, không thấy dữ liệu.
+2. Gõ sai một lần → phải báo *"Sai mật khẩu. Còn 7 lần thử."* Nếu báo *"Chưa có api/config.php"* thì bước 3 chưa xong.
+3. Đăng nhập → vào được → Cài đặt → **Xem máy chủ**, phải hiện số bản ghi.
+4. Mở trên điện thoại, đăng nhập → dữ liệu phải hiện đầy đủ.
+
+### Cách nó chạy
+
+- Dữ liệu vẫn nằm trong máy để app mở nhanh và chạy được khi mất mạng, nhưng bản gốc ở máy chủ.
+- Mỗi bản ghi có mốc thời gian riêng, ai sửa sau thì bản đó thắng. Xoá là đánh dấu xoá nên xoá ở máy này sẽ lan sang máy kia.
+- Đẩy lên sau mỗi thay đổi 2,5 giây; kéo về mỗi 45 giây, mỗi lần mở lại app và mỗi lần có mạng trở lại.
+- Phiên đăng nhập sống 60 ngày. Mất mạng thì vẫn mở được app trong khoảng đó; **hết hạn mà vẫn mất mạng thì phải nhập lại mật khẩu** — không có đường vòng.
+
+### Đổi mật khẩu
+
+Chạy lại `node tools/hash-password.js`, thay dòng đó trong `api/config.php`, upload đè. Các máy đang đăng nhập vẫn giữ phiên; muốn đá hết ra thì bấm **Đăng xuất mọi thiết bị** trong Cài đặt.
+
+### Đăng xuất
+
+Cài đặt → Đăng xuất, chọn một trong hai:
+
+- **Chỉ đăng xuất** — giữ bản sao trên máy, lần sau mở rất nhanh.
+- **Đăng xuất và xoá dữ liệu trên máy này** — dùng khi mượn máy người khác. Dữ liệu trên máy chủ không mất, đăng nhập lại là tải về đủ.
+
+### Sao lưu dữ liệu trên máy chủ
+
+Tải file `api/data/lifehub.sqlite` về bằng File Manager. Hoặc dùng Cài đặt → **Xuất sao lưu** trong app cho nhanh.
+
+> **Nói thẳng về mức bảo vệ:** mật khẩu do máy chủ kiểm, lưu dạng PBKDF2-SHA256 210.000 vòng, sai quá 8 lần thì khoá IP 15 phút. Phiên giữ trong cookie HttpOnly nên JavaScript không đọc được. Như vậy là đủ chắc cho một app cá nhân. Nhưng nó **không** phải hệ thống nhiều người dùng có phân quyền, và không có xác thực hai lớp. Bắt buộc bật SSL — không có https thì mật khẩu đi qua mạng ở dạng trần.
+
+**Nếu hosting không bật `pdo_sqlite`:** app sẽ báo thẳng ra ở màn đăng nhập. Lúc đó vào hPanel → PHP Configuration bật extension đó lên, hoặc nhắn tôi để chuyển `api/index.php` sang MySQL (đổi vài dòng kết nối, phần còn lại giữ nguyên).
+
+---
+
+## Đồng bộ qua Supabase (cách cũ, không bắt buộc)
+
+Cách này có từ trước khi có máy chủ riêng. Nếu bạn đã cài api/ theo mục trên thì bỏ qua hẳn phần này — app tự ưu tiên máy chủ của bạn.
 
 1. Tạo project trên [supabase.com](https://supabase.com) (bản miễn phí là đủ).
 2. Vào **SQL Editor** → dán toàn bộ `supabase-schema.sql` → **Run**.

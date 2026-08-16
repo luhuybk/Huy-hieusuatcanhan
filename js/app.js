@@ -1070,6 +1070,36 @@ document.addEventListener('click', e => {
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;
 
+    /* tài khoản trên máy chủ */
+    case 'logout': logoutBox(); break;
+    case 'doLogout': {
+      const wipe = el.dataset.wipe === '1';
+      closeModal();
+      Server.logout().then(() => {
+        if (wipe){
+          /* Chỉ xoá bản sao trên máy này. Dữ liệu trên máy chủ không đụng tới —
+             đăng nhập lại là tải về đủ. */
+          const keep = db.settings;
+          db = blank(); db.settings = keep;
+          persist();
+        }
+        Gate.show(wipe ? 'Đã đăng xuất và xoá dữ liệu trên máy này.' : 'Đã đăng xuất.');
+      });
+      break;
+    }
+    case 'logoutAll': confirmBox('Đá tất cả thiết bị ra khỏi phiên đăng nhập?', () => {
+        Server.logoutAll().then(() => Gate.show('Mọi thiết bị đã bị đăng xuất.'))
+                          .catch(err => toast(err.message));
+      }, 'Đăng xuất hết'); break;
+    case 'srvStats': {
+      Server.stats().then(d => {
+        const kb = Math.round(d.size / 1024);
+        $('#srvinfo').innerHTML = `${d.records} bản ghi · ${d.trashed} đã xoá · ${d.devices} thiết bị đang đăng nhập
+          · ${kb} KB${d.last ? ' · thay đổi gần nhất ' + fmtDate(d.last) : ''}`;
+      }).catch(err => { $('#srvinfo').textContent = err.message; });
+      break;
+    }
+
     /* đồng bộ */
     case 'saveSync': {
       db.settings.supabaseUrl = $('#set_url').value.trim();
@@ -1096,6 +1126,21 @@ document.addEventListener('keydown', e => {
   else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j'){ e.preventDefault(); quickCapture(); }
   else if (e.key === 'Escape') closeModal();
 });
+
+function logoutBox(){
+  $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+    <h2>Đăng xuất</h2>
+    <div class="dim" style="margin:-8px 0 14px;line-height:1.6">
+      Dữ liệu trên máy chủ không bị đụng tới trong cả hai lựa chọn.
+    </div>
+    <div class="btns" style="flex-direction:column">
+      <button class="btn full pri" data-act="doLogout" data-wipe="0">Chỉ đăng xuất</button>
+      <div class="dim" style="margin:-4px 0 6px">Giữ bản sao trên máy này, lần sau mở lại rất nhanh.</div>
+      <button class="btn full dngr" data-act="doLogout" data-wipe="1">Đăng xuất và xoá dữ liệu trên máy này</button>
+      <div class="dim" style="margin:-4px 0 6px">Dùng khi đang mượn máy người khác. Đăng nhập lại sẽ tải về từ máy chủ.</div>
+      <button class="btn full" data-close>Huỷ</button>
+    </div></div></div>`;
+}
 
 function quickAdd(){
   $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
@@ -1158,12 +1203,19 @@ function boot(){
   /* mở kèm ?demo để nạp sẵn dữ liệu mẫu (chỉ khi còn trống, không đè dữ liệu thật) */
   const wantDemo = /[?&]demo\b/.test(location.search);
   const isEmpty  = COLLECTIONS.every(k => !alive(db[k]).length);
-  render();
-  if (wantDemo && isEmpty) seedDemo();
+
   Sync.onChange(() => renderSide());
-  Sync.start();
-  Notify.start();
   if (location.protocol.startsWith('http') && 'serviceWorker' in navigator)
     navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  /* Có thư mục api/ trên máy chủ thì phải đăng nhập mới vào được.
+     Không có (mở bằng file, hay bản gộp một tệp) thì chạy như cũ. */
+  Server.probe().then(m => {
+    if (m === 'anon'){ Gate.show(); return; }
+    render();
+    if (wantDemo && isEmpty) seedDemo();
+    Sync.start();
+    Notify.start();
+  });
 }
 boot();

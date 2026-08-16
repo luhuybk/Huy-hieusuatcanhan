@@ -1,0 +1,14 @@
+# Chỉ index.php được gọi từ ngoài. Cấu hình và dữ liệu thì không.
+
+<FilesMatch "^(config.*\.php|.*\.sqlite.*|.*\.db)$">
+  Require all denied
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set Cache-Control "no-store"
+  Header always set X-Content-Type-Options "nosniff"
+</IfModule>
+
+Options -Indexes
