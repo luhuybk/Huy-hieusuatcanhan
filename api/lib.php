@@ -415,8 +415,64 @@ function markSent(string $key): void {
   db()->prepare('DELETE FROM sent WHERE at < ?')->execute([time() - 30 * 86400]);
 }
 
+/* ---------------- vì sao lời nhắc chưa chạy ----------------
+   Trả lời thẳng cho từng đầu việc có hẹn giờ, thay vì để người dùng
+   đoán mò giữa: máy chủ chưa có dữ liệu, sai ngày hạn, chưa tới giờ,
+   đã gửi rồi, hay cron không chạy. Chỉ đọc, không gửi gì. */
+function tgWhy(): array {
+  $now = time();
+  $today = date('Y-m-d');
+  $items = [];
+
+  foreach ([['tasks', 'Việc'], ['cards', 'Thẻ giao việc']] as $spec) {
+    list($kind, $label) = $spec;
+    foreach (itemsOf($kind) as $t) {
+      $at = trim((string)($t['remindAt'] ?? ''));
+      if ($at === '') continue;
+      $due = substr((string)($t['due'] ?? ''), 0, 10);
+      $row = ['kind' => $label, 'title' => (string)($t['title'] ?? ''),
+              'at' => $at, 'due' => $due, 'ok' => false];
+
+      if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done')
+        $row['why'] = 'Đã đánh dấu xong — không nhắc nữa';
+      elseif (!preg_match('/^(\d{1,2}):(\d{2})$/', $at, $m))
+        $row['why'] = 'Giờ hẹn không hợp lệ';
+      elseif ($due === '')
+        $row['why'] = 'Chưa đặt hạn — chỉ nhắc đúng ngày hạn';
+      elseif ($due !== $today)
+        $row['why'] = 'Hạn ' . $due . ', không phải hôm nay';
+      else {
+        $when = mktime((int)$m[1], (int)$m[2], 0, (int)date('n'), (int)date('j'), (int)date('Y'));
+        $key  = 'item:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $today . ':' . $at;
+        if (alreadySent($key))
+          $row['why'] = 'Đã gửi rồi';
+        elseif ($now < $when)
+          $row['why'] = 'Chưa tới giờ — còn ' . (int)ceil(($when - $now) / 60) . ' phút';
+        elseif ($now - $when > REM_WINDOW)
+          $row['why'] = 'Quá 1 tiếng so với giờ hẹn — bỏ lần này';
+        else { $row['why'] = 'Sẽ gửi ở lần cron kế tiếp'; $row['ok'] = true; }
+      }
+      $items[] = $row;
+    }
+  }
+
+  $lastCron = confGet('last_cron', '');
+  return [
+    'now'       => date('H:i:s d/m/Y'),
+    'lastCron'  => $lastCron === '' ? null : (int)((time() - (int)$lastCron) / 60),
+    'enabled'   => (bool)confGet('tg_enabled', ''),
+    'hasToken'  => confGet('tg_token', '') !== '',
+    'hasChat'   => confGet('tg_chat', '') !== '',
+    'items'     => $items,
+  ];
+}
+
 function runSchedule(bool $dry = false): array {
   $done = [];
+  /* Ghi mốc trước mọi thứ khác: câu hỏi hay gặp nhất khi tin không tới
+     là "cron có thật sự chạy không", phải trả lời được kể cả khi
+     Telegram đang tắt hoặc không có gì để gửi. */
+  if (!$dry) confSet('last_cron', (string)time());
   if (!confGet('tg_enabled')) return ['skipped' => 'Telegram đang tắt'];
 
   $now   = time();
@@ -463,7 +519,11 @@ function runSchedule(bool $dry = false): array {
       $when = mktime((int)$m[1], (int)$m[2], 0, (int)date('n'), (int)date('j'), (int)date('Y'));
       if ($now < $when || $now - $when > REM_WINDOW) continue;
 
-      $key = 'item:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $today;
+      /* Giờ hẹn nằm trong khoá: đổi giờ nhắc của cùng một việc trong
+         cùng một ngày phải được coi là lời nhắc mới. Trước đây khoá chỉ
+         có ngày, nên đặt 23:20 rồi sửa thành 23:25 là lần sau bị chặn
+         im lặng tới hết ngày — đúng thao tác người ta hay làm khi thử. */
+      $key = 'item:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $today . ':' . $at;
       if (alreadySent($key)) continue;
 
       $extra = $kind === 'cards' && trim((string)($t['assignee'] ?? '')) !== ''

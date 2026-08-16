@@ -1123,6 +1123,7 @@ function tgBlock(){
     ${live ? `<div class="btns" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm grow" data-act="workNow">Gửi bảng công việc ngay</button>
       <button class="btn sm grow" data-act="weeklyNow">Gửi tóm tắt tuần ngay</button>
+      <button class="btn sm grow" data-act="tgWhy">Vì sao chưa gửi?</button>
     </div>` : ''}
     ${live ? `<div class="dim" style="margin-top:12px;line-height:1.65">
       <b>Nút "✅ Xong" dưới tin nhắc:</b> bấm là việc tự đánh dấu xong, không cần mở app.

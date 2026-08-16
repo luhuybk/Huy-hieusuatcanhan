@@ -230,9 +230,52 @@ function buildWeekly(atMs){
 const alreadySent = k => !!db().prepare('SELECT 1 FROM sent WHERE k = ?').get(k);
 const markSent = k => db().prepare('INSERT OR IGNORE INTO sent (k,at) VALUES (?,?)').run(k, Math.floor(Date.now()/1000));
 
+/* vì sao lời nhắc chưa chạy — bản song sinh của tgWhy() bên PHP */
+function tgWhy(atMs){
+  const now = atMs ? new Date(atMs) : new Date();
+  const nowSec = Math.floor(now.getTime()/1000);
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const items = [];
+
+  for (const [kind, label] of [['tasks','Việc'], ['cards','Thẻ giao việc']]){
+    for (const t of itemsOf(kind)){
+      const at = String(t.remindAt || '').trim();
+      if (!at) continue;
+      const due = String(t.due || '').slice(0,10);
+      const row = {kind:label, title:t.title || '', at, due, ok:false};
+      const m = /^(\d{1,2}):(\d{2})$/.exec(at);
+
+      if (kind === 'tasks' ? t.done : t.col === 'done') row.why = 'Đã đánh dấu xong — không nhắc nữa';
+      else if (!m)          row.why = 'Giờ hẹn không hợp lệ';
+      else if (!due)        row.why = 'Chưa đặt hạn — chỉ nhắc đúng ngày hạn';
+      else if (due !== today) row.why = `Hạn ${due}, không phải hôm nay`;
+      else {
+        const when = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), +m[1], +m[2], 0).getTime()/1000);
+        const key = `item:${kind}:${t.id}:${today}:${at}`;
+        if (alreadySent(key))               row.why = 'Đã gửi rồi';
+        else if (nowSec < when)             row.why = `Chưa tới giờ — còn ${Math.ceil((when-nowSec)/60)} phút`;
+        else if (nowSec - when > REM_WINDOW) row.why = 'Quá 1 tiếng so với giờ hẹn — bỏ lần này';
+        else { row.why = 'Sẽ gửi ở lần cron kế tiếp'; row.ok = true; }
+      }
+      items.push(row);
+    }
+  }
+
+  const lastCron = confGet('last_cron', '');
+  return {
+    now: now.toLocaleString('vi-VN'),
+    lastCron: lastCron === '' || lastCron == null ? null : Math.floor((Date.now()/1000 - +lastCron)/60),
+    enabled: !!confGet('tg_enabled',''),
+    hasToken: (confGet('tg_token','') || '') !== '',
+    hasChat: (confGet('tg_chat','') || '') !== '',
+    items,
+  };
+}
+
 /* atMs: cho phép giả lập "bây giờ là mấy giờ" khi chạy thử */
 function runSchedule(dry, atMs){
   const done = [];
+  if (!dry) confSet('last_cron', String(Math.floor((atMs || Date.now())/1000)));
   if (!confGet('tg_enabled')) return {skipped:'Telegram đang tắt'};
   const now = atMs ? new Date(atMs) : new Date();
   const nowSec = Math.floor(now.getTime()/1000);
@@ -263,7 +306,7 @@ function runSchedule(dry, atMs){
       const at = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(),
                                      +m[1], +m[2], 0).getTime() / 1000);
       if (nowSec < at || nowSec - at > REM_WINDOW) continue;
-      const key = `item:${kind}:${t.id}:${today}`;
+      const key = `item:${kind}:${t.id}:${today}:${t.remindAt}`;
       if (alreadySent(key)) continue;
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
@@ -541,6 +584,10 @@ function api(req, res, body){
       console.log('[telegram thử · công việc] nhánh='
         + (confGet('tg_work_topic','') || confGet('tg_topic','') || 'chính') + '\n' + lines.join('\n'));
       return send({ok:true, lines:lines.length});
+    }
+    case 'tg_why': {
+      if (!need()) return;
+      return send(Object.assign({ok:true}, tgWhy(inp.at)));
     }
     case 'tg_weekly_now': {
       if (!need()) return;

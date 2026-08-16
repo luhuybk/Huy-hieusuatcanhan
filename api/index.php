@@ -287,6 +287,12 @@ switch ($action) {
     out(['ok' => true, 'lines' => count($lines)]);
   }
 
+  /* Vì sao lời nhắc chưa tới Telegram — chỉ đọc, không gửi gì. */
+  case 'tg_why': {
+    requireAuth();
+    out(array_merge(['ok' => true], tgWhy()));
+  }
+
   /* Gửi tóm tắt tuần ngay, không chờ tới Chủ nhật. */
   case 'tg_weekly_now': {
     requireAuth();

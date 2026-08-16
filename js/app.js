@@ -742,6 +742,48 @@ function tgBox(){
     }});
 }
 
+/* Máy chủ đang thấy gì? Câu hỏi "sao đặt giờ mà không có tin" có tới
+   năm sáu nguyên nhân khác nhau, đoán mò rất mất thời gian. */
+function tgWhyBox(){
+  $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+    <h2>Máy chủ đang thấy gì</h2>
+    <div class="dim" style="margin:-8px 0 14px">Đang hỏi máy chủ…</div></div></div>`;
+
+  Server.call('tg_why').then(d => {
+    const cron = d.lastCron == null
+      ? `<span style="color:var(--bad)">chưa chạy lần nào</span> — hẹn giờ cron chưa hoạt động`
+      : d.lastCron > 20
+        ? `<span style="color:var(--bad)">${d.lastCron} phút trước</span> — quá lâu, cron có vẻ đã ngừng`
+        : `<span style="color:var(--ok)">${d.lastCron} phút trước</span>`;
+
+    const rows = (d.items || []).length
+      ? d.items.map(i => `<div class="row" style="padding:7px 0;border-top:1px solid var(--line)">
+          <div class="grow"><div class="ell" style="font-weight:600;font-size:14px">${esc(i.title)}</div>
+            <div class="dim">${esc(i.kind)} · hẹn ${esc(i.at)}${i.due ? ' · hạn ' + esc(i.due) : ''}</div></div>
+          <span class="chip ${i.ok ? 'ok' : ''}">${esc(i.why)}</span></div>`).join('')
+      : `<div class="dim" style="padding:8px 0">Máy chủ <b>không thấy</b> đầu việc nào có hẹn giờ.
+         Nếu bạn vừa đặt trên máy này thì dữ liệu chưa đồng bộ lên —
+         bấm <b>Đồng bộ ngay</b> ở mục Tài khoản rồi mở lại bảng này.</div>`;
+
+    $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+      <h2>Máy chủ đang thấy gì</h2>
+      <div class="dim" style="margin:-8px 0 14px;line-height:1.8">
+        Giờ máy chủ: <b>${esc(String(d.now || ''))}</b><br>
+        Cron chạy lần cuối: ${cron}<br>
+        Telegram: ${d.enabled ? 'đang bật' : '<span style="color:var(--bad)">đang tắt</span>'} ·
+        ${d.hasToken ? 'có mã bot' : '<span style="color:var(--bad)">chưa có mã bot</span>'} ·
+        ${d.hasChat ? 'đã chọn group' : '<span style="color:var(--bad)">chưa chọn group</span>'}
+      </div>
+      ${rows}
+      <button class="btn full" style="margin-top:14px" data-close>Đóng</button></div></div>`;
+  }).catch(err => {
+    $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+      <h2>Không hỏi được máy chủ</h2>
+      <div class="dim" style="margin:-8px 0 14px">${esc(err.message)}</div>
+      <button class="btn full" data-close>Đóng</button></div></div>`;
+  });
+}
+
 /* ---------------- sao lưu ---------------- */
 function exportJSON(){
   const blob = new Blob([JSON.stringify(db, null, 2)], {type:'application/json'});
@@ -1216,6 +1258,7 @@ document.addEventListener('click', e => {
                                  : 'Đã đẩy bảng công việc vào Telegram'))
         .catch(err => toast(err.message));
       break;
+    case 'tgWhy': tgWhyBox(); break;
     case 'weeklyNow':
       toast('Đang gửi…');
       Server.call('tg_weekly_now')

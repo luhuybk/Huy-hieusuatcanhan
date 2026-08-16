@@ -357,6 +357,14 @@ Thẻ giao việc thì kèm luôn tên người nhận. Việc đã đánh dấu
 
 Cùng quy tắc giờ giấc như lời nhắc lặp lại: cron 5 phút một nhịp nên tin tới trong khoảng 5 phút sau giờ hẹn, trễ quá một tiếng thì bỏ lần đó, và mỗi việc chỉ nhắn một lần mỗi ngày. Việc lặp lại thì hạn tự dời sang kỳ sau khi bạn đánh dấu xong, nên giờ nhắc theo luôn mà không cần đặt lại.
 
+**Đặt giờ mà không thấy tin — bấm "Vì sao chưa gửi?"** Nút này ở Cài đặt → Thông báo Telegram, hỏi thẳng máy chủ xem nó đang thấy gì:
+
+- **Giờ máy chủ** và **cron chạy lần cuối cách đây bao lâu**. Quá 20 phút là cron đã ngừng — đó là nguyên nhân phổ biến nhất.
+- Từng đầu việc có hẹn giờ, kèm lý do cụ thể: *chưa tới giờ — còn 8 phút*, *hạn 17/08 không phải hôm nay*, *chưa đặt hạn*, *đã đánh dấu xong*, *đã gửi rồi*, *quá 1 tiếng so với giờ hẹn*.
+- Nếu bảng trống hoàn toàn → máy chủ **chưa nhận được** dữ liệu bạn vừa đặt, bấm **Đồng bộ ngay** ở mục Tài khoản.
+
+Bảng này chỉ đọc, không gửi gì cả, nên bấm bao nhiêu lần cũng được.
+
 **Báo trễ leo thang.** Cài đặt → Thông báo Telegram → bật *Báo trễ leo thang*. Việc (hoặc thẻ giao việc) nào trễ đúng **3, 7, 14 hoặc 30 ngày** sẽ có một tin riêng, tách khỏi bảng công việc hằng ngày:
 
 ```

@@ -159,6 +159,31 @@ const Sync = (() => {
     pushTimer = setTimeout(() => run(true), 2500);
   }
 
+  /* Đẩy dứt điểm ngay trước khi app xuống nền hoặc trang đóng.
+     Không gọi thẳng run() được: nếu đang có lượt đồng bộ chạy dở thì
+     run() thoát ngay lập tức, mà timer 45s và debounce 2.5s đều bị
+     trình duyệt di động treo khi app xuống nền — thay đổi vừa gõ sẽ
+     kẹt lại trên máy, cron không thấy gì để gửi.
+     sendBeacon giao gói tin cho trình duyệt gửi tiếp kể cả sau khi
+     trang đã đóng, nên đây là đường duy nhất chắc chắn đi được. */
+  function flush(){
+    if (!on()) return;
+    if (mode() !== 'server'){ run(true); return; }
+    const rows = localRows(db.meta.srvPush || '');
+    if (!rows.length) return;
+    let sent = false;
+    try {
+      if (navigator.sendBeacon){
+        const blob = new Blob([JSON.stringify({action:'push', rows})], {type:'application/json'});
+        sent = navigator.sendBeacon(Server.url(), blob);
+      }
+    } catch(e){}
+    /* Cố ý KHÔNG dời mốc srvPush: beacon không trả lời nên không dám
+       coi là đã lưu xong. Lượt đồng bộ sau đẩy lại, máy chủ so
+       updated_at rồi bỏ qua bản trùng — thừa một lượt, không sai dữ liệu. */
+    if (!sent) run(true);
+  }
+
   /* start() được gọi lại mỗi lần đổi cấu hình, nên chỉ gắn sự kiện một lần */
   let hooked = false;
   function start(){
@@ -169,15 +194,11 @@ const Sync = (() => {
     timer = setInterval(() => run(true), 45000);
     if (!hooked){
       hooked = true;
-      /* Khi màn hình vừa tắt hoặc chuyển app: đẩy ngay, đừng chờ debounce
-         2.5s hay hẹn giờ 45s — trình duyệt trên điện thoại tạm ngưng các
-         timer đó khi app xuống nền, nên một lời nhắc vừa đặt trước khi
-         khoá màn hình có thể mắc kẹt ở máy, cron không thấy để gửi. */
       document.addEventListener('visibilitychange', () => {
-        if (document.hidden){ clearTimeout(pushTimer); if (on()) run(true); }
+        if (document.hidden) flush();
         else if (on()) run(true);
       });
-      window.addEventListener('pagehide', () => { if (on()) run(true); });
+      window.addEventListener('pagehide', flush);
       window.addEventListener('online', () => { if (on()) run(true); });
     }
   }

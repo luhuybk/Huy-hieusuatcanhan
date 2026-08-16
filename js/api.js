@@ -128,7 +128,7 @@ const Server = (() => {
   const push  = rows  => call('push', {rows});
   const stats = ()    => call('stats');
 
-  return {probe, login, logout, logoutAll, pull, push, stats, available, authed, state, call,
+  return {probe, login, logout, logoutAll, pull, push, stats, available, authed, state, call, url,
           problem: () => problem};
 })();
 window.Server = Server;
