@@ -66,6 +66,8 @@ function itemsOf(kind){
     .filter(d => d && !d.deleted);
 }
 const REM_WINDOW = 3600;
+const ESCALATE_DAYS = [3, 7, 14, 30];
+const TIER_PING = {S:14, S2:21, A:30, B:60, C:150};
 const pad = n => String(n).padStart(2,'0');
 
 function buildDigest(){
@@ -169,6 +171,54 @@ function buildWork(atMs){
   return lines;
 }
 
+/* tóm tắt cuối tuần — bản song sinh của buildWeekly() bên PHP */
+function buildWeekly(atMs){
+  const now = atMs ? new Date(atMs) : new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const fromD = new Date(now); fromD.setDate(fromD.getDate() - 7);
+  const from = `${fromD.getFullYear()}-${pad(fromD.getMonth()+1)}-${pad(fromD.getDate())}`;
+  const lines = [];
+
+  let doneCount = 0;
+  for (const t of itemsOf('tasks')){
+    if (t.repeat) (t.doneLog || []).forEach(d => { if (String(d) >= from) doneCount++; });
+    else if (t.done && String(t.doneAt || '') >= from) doneCount++;
+  }
+  let cardsDone = 0;
+  for (const c of itemsOf('cards')) if (c.col === 'done' && String(c.doneAt || '') >= from) cardsDone++;
+
+  const lateTasks = itemsOf('tasks').filter(t => !t.done && t.due && String(t.due).slice(0,10) < today);
+
+  let touched = 0;
+  for (const p of itemsOf('people')) if (p.lastContact && String(p.lastContact) >= from) touched++;
+
+  lines.push(`✓ ${doneCount} việc xong · 📇 ${cardsDone} thẻ giao xong · ☎️ ${touched} người đã hỏi thăm`);
+
+  if (lateTasks.length){
+    lines.push('', `⚠️ Đang trễ — dời hay bỏ? (${lateTasks.length})`);
+    lateTasks.slice(0,6).forEach(t => lines.push('   • ' + t.title));
+    if (lateTasks.length > 6) lines.push(`   … và ${lateTasks.length - 6} việc nữa`);
+  }
+
+  const forgotten = [];
+  for (const p of itemsOf('people')){
+    const gap = p.lastContact ? Math.round((new Date(today+'T00:00:00') - new Date(String(p.lastContact)+'T00:00:00')) / 86400000) : 9999;
+    const over = gap - (TIER_PING[p.tier] || 60);
+    if (over > 0) forgotten.push([p, over]);
+  }
+  if (forgotten.length){
+    forgotten.sort((a,b) => b[1] - a[1]);
+    lines.push('', '🙈 Lâu rồi chưa hỏi thăm');
+    forgotten.slice(0,5).forEach(f => lines.push(`   • ${f[0].name || ''} — trễ ${f[1]} ngày`));
+  }
+
+  let owed = 0, owedN = 0;
+  for (const c of itemsOf('cards')) if (c.extra && !c.extraPaidDate){ owed += +(c.extraPay || 0); owedN++; }
+  if (owed) lines.push('', `💰 Còn nợ công ngoài luồng: ${owed.toLocaleString('vi-VN')}₫ (${owedN} việc)`);
+
+  return lines;
+}
+
 const alreadySent = k => !!db().prepare('SELECT 1 FROM sent WHERE k = ?').get(k);
 const markSent = k => db().prepare('INSERT OR IGNORE INTO sent (k,at) VALUES (?,?)').run(k, Math.floor(Date.now()/1000));
 
@@ -210,6 +260,34 @@ function runSchedule(dry, atMs){
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
       done.push({[what]:t.title, ok:true, topic:confGet('tg_work_topic','') || confGet('tg_topic','')});
+    }
+  }
+
+  /* báo trễ leo thang — chỉ một lần ở mỗi mốc ngày trễ */
+  if (confGet('tg_escalate')){
+    for (const [kind, what] of [['tasks','việc của mình'], ['cards','việc đã giao']]){
+      for (const t of itemsOf(kind)){
+        if (kind === 'tasks' ? t.done : t.col === 'done') continue;
+        const due = String(t.due || '').slice(0,10); if (due.length < 10) continue;
+        const daysLate = Math.floor((new Date(today+'T00:00:00') - new Date(due+'T00:00:00')) / 86400000);
+        if (!ESCALATE_DAYS.includes(daysLate)) continue;
+        const key = `esc:${kind}:${t.id}:${daysLate}`;
+        if (alreadySent(key)) continue;
+        if (dry){ done.push({escalate:t.title, days:daysLate, dry:true}); continue; }
+        markSent(key);
+        done.push({escalate:t.title, days:daysLate, ok:true});
+      }
+    }
+  }
+
+  /* tóm tắt cuối tuần — chỉ Chủ nhật */
+  const weekH = +confGet('tg_weekly_hour', '-1');
+  if (wday === 0 && weekH >= 0 && now.getHours() >= weekH){
+    const key = 'weekly:' + today;
+    if (!alreadySent(key)){
+      const lines = buildWeekly(now.getTime());
+      if (dry) done.push({weekly:lines.length, dry:true});
+      else { markSent(key); done.push({weekly:lines.length, ok:true, lines}); }
     }
   }
 
@@ -274,6 +352,46 @@ function session(req){
   }
   return row;
 }
+
+/* giả lập webhook.php — bản song sinh của api/webhook.php, chỉ khác là
+   không gọi Telegram thật, chỉ ghi log để kiểm luồng cập nhật dữ liệu */
+function webhook(req, res, body){
+  const send = obj => { res.writeHead(200, {'Content-Type':'application/json'}); res.end(JSON.stringify(obj)); };
+  const secret = confGet('tg_webhook_secret', '');
+  const given  = req.headers['x-telegram-bot-api-secret-token'] || '';
+  if (!secret || secret !== given){ res.writeHead(403); return res.end('{}'); }
+
+  let upd; try { upd = JSON.parse(body || '{}'); } catch(e){ return send({}); }
+  const cb = upd.callback_query;
+  if (!cb) return send({});
+
+  const data = String(cb.data || '');
+  const chatId = String((cb.message && cb.message.chat && cb.message.chat.id) || '');
+  const confChat = confGet('tg_chat', '');
+  if (!confChat || chatId !== String(confChat)) return send({});
+
+  const m = /^done:(tasks|cards):(.+)$/.exec(data);
+  if (m){
+    const [, kind, id] = m;
+    const row = db().prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?').get(kind, id);
+    let ok = false;
+    if (row){
+      const item = JSON.parse(row.data);
+      if (item && !item.deleted){
+        const now = iso();
+        if (kind === 'tasks'){ item.done = true; item.doneAt = today_(); }
+        else { item.col = 'done'; item.doneAt = today_(); }
+        item.updatedAt = now;
+        db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
+            .run(JSON.stringify(item), now, kind, id);
+        ok = true;
+      }
+    }
+    console.log('[telegram thử · webhook] ' + data + ' → ' + (ok ? 'đánh dấu xong' : 'không tìm thấy'));
+  }
+  send({});
+}
+function today_(){ const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
 function api(req, res, body){
   const send = (obj, code = 200, extra = {}) => {
@@ -372,6 +490,9 @@ function api(req, res, body){
         const w = inp.workHour == null ? -1 : +inp.workHour;
         confSet('tg_work_hour', (w >= 0 && w <= 23) ? w : -1);
         confSet('tg_work_topic', String(inp.workTopic || '').trim());
+        const wk = inp.weeklyHour == null ? -1 : +inp.weeklyHour;
+        confSet('tg_weekly_hour', (wk >= 0 && wk <= 23) ? wk : -1);
+        confSet('tg_escalate', inp.escalate ? '1' : '');
         confSet('tg_enabled', inp.enabled ? '1' : '');
       }
       if (!confGet('cron_key')) confSet('cron_key', crypto.randomBytes(12).toString('hex'));
@@ -381,6 +502,9 @@ function api(req, res, body){
         digestHour: +confGet('tg_digest_hour','-1'),
         workHour: +confGet('tg_work_hour','-1'),
         workTopic: confGet('tg_work_topic',''),
+        weeklyHour: +confGet('tg_weekly_hour','-1'),
+        escalate: !!confGet('tg_escalate',''),
+        webhookOn: !!confGet('tg_webhook_on',''),
         enabled: !!confGet('tg_enabled',''),
         cron: '/usr/bin/php ' + path.join(__dirname, 'api/cron.php'),
         cronUrl: 'http://localhost:' + PORT + '/api/cron.php?key=' + confGet('cron_key','')});
@@ -399,7 +523,8 @@ function api(req, res, body){
     }
     case 'tg_dryrun': {
       if (!need()) return;
-      return send({ok:true, result:runSchedule(true, inp.at), digest:buildDigest(), work:buildWork(inp.at)});
+      return send({ok:true, result:runSchedule(true, inp.at), digest:buildDigest(),
+                   work:buildWork(inp.at), weekly:buildWeekly(inp.at)});
     }
     case 'tg_work_now': {
       if (!need()) return;
@@ -408,6 +533,27 @@ function api(req, res, body){
       console.log('[telegram thử · công việc] nhánh='
         + (confGet('tg_work_topic','') || confGet('tg_topic','') || 'chính') + '\n' + lines.join('\n'));
       return send({ok:true, lines:lines.length});
+    }
+    case 'tg_weekly_now': {
+      if (!need()) return;
+      const lines = buildWeekly(inp.at);
+      console.log('[telegram thử · tuần] nhánh='
+        + (confGet('tg_work_topic','') || confGet('tg_topic','') || 'chính') + '\n' + lines.join('\n'));
+      return send({ok:true, lines:lines.length});
+    }
+    case 'tg_webhook_enable': {
+      if (!need()) return;
+      if (!confGet('tg_token','')) return fail('Chưa có mã bot Telegram');
+      if (!confGet('tg_webhook_secret')) confSet('tg_webhook_secret', crypto.randomBytes(16).toString('hex'));
+      confSet('tg_webhook_on', '1');
+      const url = 'http://localhost:' + PORT + '/api/webhook.php';
+      console.log('[telegram thử] đã "đăng ký" webhook giả lập tại ' + url);
+      return send({ok:true, url});
+    }
+    case 'tg_webhook_disable': {
+      if (!need()) return;
+      confSet('tg_webhook_on', '');
+      return send({ok:true});
     }
     case 'tg_runnow': {          // chỉ có ở máy chủ thử, để kiểm bộ hẹn giờ
       if (!need()) return;
@@ -438,6 +584,17 @@ http.createServer((req, res) => {
     let body = '';
     req.on('data', c => { body += c; if (body.length > 12e6) req.destroy(); });
     req.on('end', () => { try { api(req, res, body); } catch(e){
+      res.writeHead(500, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({ok:false, error:e.message}));
+    }});
+    return;
+  }
+
+  /* giả lập webhook.php — nút "✅ Xong" gọi lại đây khi ai bấm trên Telegram */
+  if (p === '/api/webhook.php'){
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 2e6) req.destroy(); });
+    req.on('end', () => { try { webhook(req, res, body); } catch(e){
       res.writeHead(500, {'Content-Type':'application/json'});
       res.end(JSON.stringify({ok:false, error:e.message}));
     }});

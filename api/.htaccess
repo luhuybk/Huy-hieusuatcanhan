@@ -1,4 +1,4 @@
-# Chỉ index.php được gọi từ ngoài. Cấu hình và dữ liệu thì không.
+# index.php và webhook.php gọi được từ ngoài. Cấu hình và dữ liệu thì không.
 
 <FilesMatch "^(config.*\.php|.*\.sqlite.*|.*\.db)$">
   Require all denied

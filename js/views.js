@@ -1114,10 +1114,24 @@ function tgBlock(){
         ? ` Bảng công việc gửi lúc <b>${String(t.workHour).padStart(2,'0')}:00</b>${
             t.workTopic ? ' vào nhánh ' + esc(String(t.workTopic)) : ''}.`
         : ' Bảng công việc đang tắt.'}
+      ${t.weeklyHour != null && t.weeklyHour >= 0
+        ? ` Tóm tắt tuần gửi Chủ nhật lúc <b>${String(t.weeklyHour).padStart(2,'0')}:00</b>.`
+        : ' Tóm tắt tuần đang tắt.'}
+      ${t.escalate ? ' Báo trễ leo thang đang <b>bật</b> — trễ 3/7/14/30 ngày sẽ có tin riêng.' : ''}
     </div>
-    ${live ? `<div class="btns" style="margin-top:12px">
+    ${live ? `<div class="btns" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm grow" data-act="workNow">Gửi bảng công việc ngay</button>
+      <button class="btn sm grow" data-act="weeklyNow">Gửi tóm tắt tuần ngay</button>
     </div>` : ''}
+    ${live ? `<div class="dim" style="margin-top:12px;line-height:1.65">
+      <b>Nút "✅ Xong" dưới tin nhắc:</b> bấm là việc tự đánh dấu xong, không cần mở app.
+      ${t.webhookOn ? 'Đang <b>bật</b>.' : 'Đang tắt — cần tên miền chạy https.'}
+      </div>
+      <div class="btns" style="margin-top:8px">
+        ${t.webhookOn
+          ? `<button class="btn sm grow dngr" data-act="webhookOff">Tắt nút Xong</button>`
+          : `<button class="btn sm grow" data-act="webhookOn">Bật nút Xong</button>`}
+      </div>` : ''}
     ${t.cron ? `<div class="dim" style="margin-top:12px;line-height:1.6">
       <b>Bước cuối — hẹn giờ cho máy chủ.</b> Vào hPanel → Cron Jobs, tạo lịch chạy
       <b>mỗi 5 phút</b> với lệnh:

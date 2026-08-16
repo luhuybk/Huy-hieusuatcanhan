@@ -87,6 +87,9 @@ function tgState(): array {
     'digestHour' => (int)confGet('tg_digest_hour', '-1'),
     'workHour'   => (int)confGet('tg_work_hour', '-1'),
     'workTopic'  => confGet('tg_work_topic', ''),
+    'weeklyHour' => (int)confGet('tg_weekly_hour', '-1'),
+    'escalate'   => (bool)confGet('tg_escalate', ''),
+    'webhookOn'  => (bool)confGet('tg_webhook_on', ''),
     'enabled'    => (bool)confGet('tg_enabled', ''),
     'cron'       => '/usr/bin/php ' . __DIR__ . '/cron.php',
     'cronUrl'    => $base . '/cron.php?key=' . cronKey()];
@@ -227,6 +230,9 @@ switch ($action) {
     $w = isset($in['workHour']) ? (int)$in['workHour'] : -1;
     confSet('tg_work_hour', ($w >= 0 && $w <= 23) ? $w : -1);
     confSet('tg_work_topic', trim((string)($in['workTopic'] ?? '')));
+    $wk = isset($in['weeklyHour']) ? (int)$in['weeklyHour'] : -1;
+    confSet('tg_weekly_hour', ($wk >= 0 && $wk <= 23) ? $wk : -1);
+    confSet('tg_escalate', !empty($in['escalate']) ? '1' : '');
     confSet('tg_enabled', !empty($in['enabled']) ? '1' : '');
     out(tgState());
   }
@@ -267,7 +273,8 @@ switch ($action) {
   /* chạy thử bộ hẹn giờ mà không gửi gì — để xem lịch có đúng không */
   case 'tg_dryrun': {
     requireAuth();
-    out(['ok' => true, 'result' => runSchedule(true), 'digest' => buildDigest(), 'work' => buildWork()]);
+    out(['ok' => true, 'result' => runSchedule(true), 'digest' => buildDigest(),
+         'work' => buildWork(), 'weekly' => buildWeekly()]);
   }
 
   /* Gửi bảng công việc ngay bây giờ, không chờ tới giờ đã hẹn. */
@@ -278,6 +285,42 @@ switch ($action) {
     $res = tgSend('🗂 <b>Công việc · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), workTopic());
     if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
     out(['ok' => true, 'lines' => count($lines)]);
+  }
+
+  /* Gửi tóm tắt tuần ngay, không chờ tới Chủ nhật. */
+  case 'tg_weekly_now': {
+    requireAuth();
+    $lines = buildWeekly();
+    $res = tgSend('📅 <b>Tuần này · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), workTopic());
+    if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
+    out(['ok' => true, 'lines' => count($lines)]);
+  }
+
+  /* Bật nút "✅ Xong" dưới các tin nhắc — cần đăng ký webhook với Telegram
+     để nó biết gọi ngược về đâu khi có người bấm nút. */
+  case 'tg_webhook_enable': {
+    requireAuth();
+    $token = (string)confGet('tg_token', '');
+    if ($token === '') fail('Chưa có mã bot Telegram');
+    $secret = webhookSecret();
+    $base = (isHttps() ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? '')
+          . str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php'));
+    if (!isHttps()) fail('Cần https để Telegram gọi ngược lại — bật SSL cho tên miền trước.');
+    $hookUrl = $base . '/webhook.php';
+    $res = httpPostJson("https://api.telegram.org/bot$token/setWebhook", [
+      'url' => $hookUrl, 'secret_token' => $secret, 'allowed_updates' => ['callback_query'],
+    ]);
+    if (empty($res['ok'])) fail($res['error'] ?? 'Không bật được nút Xong', 502);
+    confSet('tg_webhook_on', '1');
+    out(['ok' => true, 'url' => $hookUrl]);
+  }
+
+  case 'tg_webhook_disable': {
+    requireAuth();
+    $token = (string)confGet('tg_token', '');
+    if ($token !== '') httpPostJson("https://api.telegram.org/bot$token/deleteWebhook", []);
+    confSet('tg_webhook_on', '');
+    out(['ok' => true]);
   }
 
   /* vài con số để hiện trong Cài đặt */

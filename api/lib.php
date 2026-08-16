@@ -16,6 +16,7 @@ const FAIL_MAX    = 8;       // sai mật khẩu bao nhiêu lần thì khoá
 const FAIL_WIN    = 900;     // trong bao nhiêu giây (15 phút)
 const PULL_LIMIT  = 500;     // số bản ghi tối đa mỗi lượt kéo về
 const REM_WINDOW  = 3600;    // trễ quá 1 tiếng thì thôi, không gửi nữa
+const ESCALATE_DAYS = [3, 7, 14, 30];   // mốc ngày trễ để báo leo thang, mỗi mốc chỉ báo một lần
 
 /* Cùng định dạng thời gian với JavaScript (…T…Z, có phần nghìn giây) để
    hai bên so sánh chuỗi ngày với nhau lúc nào cũng ra đúng kết quả. */
@@ -145,7 +146,7 @@ function httpPostJson(string $url, array $body, int $timeout = 15): array {
   return ['ok' => true, 'result' => $d['result'] ?? null];
 }
 
-function tgSend(string $text, $topic = null): array {
+function tgSend(string $text, $topic = null, ?array $keyboard = null): array {
   $token  = (string)confGet('tg_token', '');
   $chatId = (string)confGet('tg_chat', '');
   if ($token === '') return ['ok' => false, 'error' => 'Chưa có mã bot Telegram'];
@@ -159,8 +160,23 @@ function tgSend(string $text, $topic = null): array {
     'disable_web_page_preview' => true,
   ];
   if ($thread !== '' && ctype_digit($thread)) $body['message_thread_id'] = (int)$thread;
+  if ($keyboard !== null) $body['reply_markup'] = ['inline_keyboard' => $keyboard];
 
   return httpPostJson("https://api.telegram.org/bot$token/sendMessage", $body);
+}
+
+/* Nút "✅ Xong" dưới tin nhắc — chỉ đính kèm khi đã bật webhook, nếu
+   không bấm vào cũng chẳng có gì lắng nghe, chỉ gây khó hiểu. */
+function tgDoneKeyboard(string $kind, string $id): ?array {
+  if (!confGet('tg_webhook_on')) return null;
+  return [[['text' => '✅ Xong', 'callback_data' => 'done:' . $kind . ':' . $id]]];
+}
+
+/* khoá bí mật để Telegram tự xác thực khi gọi webhook.php — sinh một lần */
+function webhookSecret(): string {
+  $k = confGet('tg_webhook_secret');
+  if (!$k) { $k = bin2hex(random_bytes(16)); confSet('tg_webhook_secret', $k); }
+  return (string)$k;
 }
 /* chữ do người dùng nhập phải rào lại, nếu không dấu < > sẽ làm hỏng thẻ HTML */
 function tgEsc(string $s): string { return htmlspecialchars($s, ENT_NOQUOTES, 'UTF-8'); }
@@ -310,6 +326,73 @@ function buildWork(): array {
   return $lines;
 }
 
+/* ---------------- tóm tắt cuối tuần ----------------
+   Gửi một lần vào Chủ nhật — bản song sinh của màn "Ôn lại tuần" trong
+   app, chỉ gọn hơn vì đây là tin nhắn chứ không phải một trang để cuộn. */
+function tierPing(string $tier): int {
+  static $p = ['S' => 14, 'S2' => 21, 'A' => 30, 'B' => 60, 'C' => 150];
+  return $p[$tier] ?? 60;
+}
+
+function buildWeekly(): array {
+  $today = date('Y-m-d');
+  $from  = date('Y-m-d', strtotime('-7 day'));
+  $lines = [];
+
+  /* việc lặp lại không bao giờ ở trạng thái "done", nên đếm theo lịch sử hoàn thành */
+  $doneCount = 0;
+  foreach (itemsOf('tasks') as $t) {
+    if (!empty($t['repeat'])) {
+      foreach ((array)($t['doneLog'] ?? []) as $d) if ((string)$d >= $from) $doneCount++;
+    } elseif (!empty($t['done']) && (string)($t['doneAt'] ?? '') >= $from) $doneCount++;
+  }
+  $cardsDone = 0;
+  foreach (itemsOf('cards') as $c)
+    if ((string)($c['col'] ?? '') === 'done' && (string)($c['doneAt'] ?? '') >= $from) $cardsDone++;
+
+  $lateTasks = [];
+  foreach (itemsOf('tasks') as $t)
+    if (empty($t['done']) && !empty($t['due']) && substr((string)$t['due'], 0, 10) < $today) $lateTasks[] = $t;
+
+  $touched = 0;
+  foreach (itemsOf('people') as $p)
+    if (!empty($p['lastContact']) && (string)$p['lastContact'] >= $from) $touched++;
+
+  $lines[] = "✓ <b>$doneCount việc xong</b> · 📇 <b>$cardsDone thẻ giao xong</b> · ☎️ <b>$touched người</b> đã hỏi thăm";
+
+  if ($lateTasks) {
+    $lines[] = '';
+    $lines[] = '⚠️ <b>Đang trễ — dời hay bỏ? (' . count($lateTasks) . ')</b>';
+    foreach (array_slice($lateTasks, 0, 6) as $t) $lines[] = '   • ' . tgEsc(cutTitle($t['title'] ?? ''));
+    if (count($lateTasks) > 6) $lines[] = '   … và ' . (count($lateTasks) - 6) . ' việc nữa';
+  }
+
+  /* người lâu chưa hỏi thăm, theo mức thân sơ riêng của từng người */
+  $forgotten = [];
+  foreach (itemsOf('people') as $p) {
+    $gap = !empty($p['lastContact']) ? (int)floor((strtotime($today) - strtotime((string)$p['lastContact'])) / 86400) : 9999;
+    $over = $gap - tierPing((string)($p['tier'] ?? 'B'));
+    if ($over > 0) $forgotten[] = [$p, $over];
+  }
+  if ($forgotten) {
+    usort($forgotten, function ($a, $b) { return $b[1] - $a[1]; });
+    $lines[] = '';
+    $lines[] = '🙈 <b>Lâu rồi chưa hỏi thăm</b>';
+    foreach (array_slice($forgotten, 0, 5) as $f)
+      $lines[] = '   • ' . tgEsc((string)($f[0]['name'] ?? '')) . ' — trễ ' . $f[1] . ' ngày';
+  }
+
+  $owed = 0; $owedN = 0;
+  foreach (itemsOf('cards') as $c)
+    if (!empty($c['extra']) && empty($c['extraPaidDate'])) { $owed += (int)($c['extraPay'] ?? 0); $owedN++; }
+  if ($owed) {
+    $lines[] = '';
+    $lines[] = '💰 Còn nợ công ngoài luồng: <b>' . number_format($owed, 0, ',', '.') . '₫</b>' . " ($owedN việc)";
+  }
+
+  return $lines;
+}
+
 /* ---------------- bộ chạy lịch ----------------
    Gọi mỗi 5 phút bởi cron. Trả về danh sách việc đã làm để dễ dò lỗi. */
 function alreadySent(string $key): bool {
@@ -381,9 +464,53 @@ function runSchedule(bool $dry = false): array {
             . ($note !== '' ? "\n\n" . tgEsc(cutTitle($note, 300)) : '');
 
       if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
-      $res = tgSend($text, workTopic());
+      $res = tgSend($text, workTopic(), tgDoneKeyboard($kind, (string)($t['id'] ?? '')));
       if (!empty($res['ok'])) markSent($key);
       $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+    }
+  }
+
+  /* --- báo trễ leo thang: chỉ bắn đúng một lần ở mỗi mốc ngày trễ,
+     không nhắc lại mỗi ngày — việc đã có trong bảng công việc rồi. --- */
+  if (confGet('tg_escalate')) {
+    foreach ([['tasks', 'việc của mình'], ['cards', 'việc đã giao']] as $spec) {
+      list($kind, $what) = $spec;
+      foreach (itemsOf($kind) as $t) {
+        if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
+        $due = substr((string)($t['due'] ?? ''), 0, 10);
+        if (strlen($due) < 10) continue;
+        $daysLate = (int)floor((strtotime($today) - strtotime($due)) / 86400);
+        if (!in_array($daysLate, ESCALATE_DAYS, true)) continue;
+
+        $key = 'esc:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $daysLate;
+        if (alreadySent($key)) continue;
+
+        $who = $kind === 'cards' && trim((string)($t['assignee'] ?? '')) !== ''
+             ? ' — <b>' . tgEsc((string)$t['assignee']) . '</b>' : '';
+        $text = '🆘 <b>Trễ ' . $daysLate . ' ngày:</b> ' . tgEsc(cutTitle($t['title'] ?? '')) . $who;
+
+        if ($dry) { $done[] = ['escalate' => $t['title'] ?? '', 'days' => $daysLate, 'dry' => true]; continue; }
+        $res = tgSend($text, workTopic(), tgDoneKeyboard($kind, (string)($t['id'] ?? '')));
+        if (!empty($res['ok'])) markSent($key);
+        $done[] = ['escalate' => $t['title'] ?? '', 'days' => $daysLate, 'ok' => !empty($res['ok']),
+                   'error' => $res['error'] ?? null];
+      }
+    }
+  }
+
+  /* --- tóm tắt cuối tuần: chỉ Chủ nhật --- */
+  $weekH = confGet('tg_weekly_hour', '-1');
+  if ($wday === 0 && $weekH !== null && (int)$weekH >= 0 && (int)date('G', $now) >= (int)$weekH) {
+    $key = 'weekly:' . $today;
+    if (!alreadySent($key)) {
+      $lines = buildWeekly();
+      $text = '📅 <b>Tuần này · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines);
+      if ($dry) { $done[] = ['weekly' => count($lines), 'dry' => true]; }
+      else {
+        $res = tgSend($text, workTopic());
+        if (!empty($res['ok'])) markSent($key);
+        $done[] = ['weekly' => count($lines), 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+      }
     }
   }
 

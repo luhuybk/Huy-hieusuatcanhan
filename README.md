@@ -357,6 +357,43 @@ Thẻ giao việc thì kèm luôn tên người nhận. Việc đã đánh dấu
 
 Cùng quy tắc giờ giấc như lời nhắc lặp lại: cron 5 phút một nhịp nên tin tới trong khoảng 5 phút sau giờ hẹn, trễ quá một tiếng thì bỏ lần đó, và mỗi việc chỉ nhắn một lần mỗi ngày. Việc lặp lại thì hạn tự dời sang kỳ sau khi bạn đánh dấu xong, nên giờ nhắc theo luôn mà không cần đặt lại.
 
+**Báo trễ leo thang.** Cài đặt → Thông báo Telegram → bật *Báo trễ leo thang*. Việc (hoặc thẻ giao việc) nào trễ đúng **3, 7, 14 hoặc 30 ngày** sẽ có một tin riêng, tách khỏi bảng công việc hằng ngày:
+
+```
+🆘 Trễ 7 ngày: Nộp báo cáo quý
+```
+
+Mỗi mốc chỉ báo đúng một lần cho mỗi việc — không nhắc lại mỗi ngày, vì việc đó vẫn nằm sẵn trong bảng công việc rồi. Tắt tính năng này thì việc trễ chỉ còn hiện trong bảng công việc như bình thường.
+
+**Nút "✅ Xong" ngay dưới tin nhắn.** Cài đặt → Thông báo Telegram → **Bật nút Xong**. Từ đó, các tin nhắc riêng từng đầu việc (và tin báo trễ leo thang) có thêm một nút bấm — bấm là việc tự đánh dấu hoàn thành, không cần mở app:
+
+```
+✓ Gọi nhà cung cấp
+Hạn hôm nay · 14:45
+
+[ ✅ Xong ]
+```
+
+Cần tên miền chạy **https** (Telegram không gọi ngược về địa chỉ http). Khi bấm nút: máy chủ đánh dấu việc xong ngay trong cơ sở dữ liệu, trả lời Telegram bằng một thông báo nhỏ ("Đã đánh dấu xong ✓"), và sửa lại tin nhắn gốc để bạn biết đã bấm rồi — bấm lại không sao, chỉ báo "không tìm thấy" nếu việc đã bị xoá. Chỉ nút bấm từ đúng group đã cấu hình mới có tác dụng, người khác có link webhook cũng không đụng được vào dữ liệu của bạn.
+
+### Tóm tắt cuối tuần
+
+Cài đặt → Thông báo Telegram → ô *Giờ gửi tóm tắt tuần*. Gửi một lần vào **Chủ nhật**, gọn hơn màn "Ôn lại tuần" trong app nhưng cùng ý: việc đã xong trong 7 ngày qua, thẻ giao việc đã xong, số người đã hỏi thăm, việc còn trễ chưa xử lý, và những người lâu chưa liên lạc so với mức độ thân sơ của họ (S/S2 thúc sớm hơn C nhiều).
+
+```
+📅 Tuần này · 16/08/2026
+
+✓ 4 việc xong · 📇 2 thẻ giao xong · ☎️ 3 người đã hỏi thăm
+
+⚠️ Đang trễ — dời hay bỏ? (1)
+   • Nộp báo cáo quý
+
+🙈 Lâu rồi chưa hỏi thăm
+   • Cô Tư — trễ 12 ngày
+```
+
+Nút **Gửi tóm tắt tuần ngay** gửi thử bất cứ lúc nào, không phải chờ tới Chủ nhật.
+
 ### Bản tóm tắt hằng ngày
 
 Gửi một lần mỗi ngày vào giờ bạn chọn, gồm: việc đến hạn (kèm số việc đã trễ), sinh nhật hôm nay và trong 7 ngày tới (cả người quen lẫn nhân viên), dịp và giỗ sắp tới theo số ngày báo trước của từng dịp, việc đã giao đang trễ, và tiền công ngoài luồng còn nợ.

@@ -708,6 +708,10 @@ function tgBox(){
        ph:'0-23', hint:'việc đến hạn, việc trễ, việc đã giao'},
       {k:'workTopic', label:'Nhánh cho công việc', half:true,
        ph:'để trống = dùng nhánh mặc định'},
+      {k:'weeklyHour', label:'Giờ gửi tóm tắt tuần (Chủ nhật)', type:'number', half:true,
+       ph:'0-23', hint:'để trống thì không gửi'},
+      {k:'escalate', label:'Báo trễ leo thang', type:'select', half:true,
+       opts:[['yes','Bật — báo riêng ở mốc 3/7/14/30 ngày trễ'], ['','Tắt']]},
       {k:'enabled', label:'Trạng thái', type:'select', half:true,
        opts:[['yes','Đang bật'], ['','Tạm tắt']]}
     ],
@@ -715,6 +719,8 @@ function tgBox(){
             digestHour: t.digestHour == null ? 7 : t.digestHour,
             workHour: t.workHour == null ? -1 : t.workHour,
             workTopic: t.workTopic || '',
+            weeklyHour: t.weeklyHour == null ? -1 : t.weeklyHour,
+            escalate: t.escalate ? 'yes' : '',
             enabled: t.enabled ? 'yes' : ''},
     extra:`<div class="btns" style="margin-bottom:10px">
         <button type="button" class="btn sm grow" data-act="tgDiscover">Dò group</button>
@@ -726,6 +732,8 @@ function tgBox(){
                     digestHour: v.digestHour === '' ? -1 : +v.digestHour,
                     workHour:   v.workHour   === '' ? -1 : +v.workHour,
                     workTopic:  String(v.workTopic || '').trim(),
+                    weeklyHour: v.weeklyHour === '' ? -1 : +v.weeklyHour,
+                    escalate:   v.escalate === 'yes',
                     enabled: v.enabled === 'yes'};
       if (v.token) body.token = v.token.trim();
       Server.call('tg_save', body)
@@ -1206,6 +1214,23 @@ document.addEventListener('click', e => {
       Server.call('tg_work_now')
         .then(d => toast(d.empty ? 'Không có việc nào đang treo — chưa gửi gì cả'
                                  : 'Đã đẩy bảng công việc vào Telegram'))
+        .catch(err => toast(err.message));
+      break;
+    case 'weeklyNow':
+      toast('Đang gửi…');
+      Server.call('tg_weekly_now')
+        .then(() => toast('Đã đẩy tóm tắt tuần vào Telegram'))
+        .catch(err => toast(err.message));
+      break;
+    case 'webhookOn':
+      toast('Đang bật…');
+      Server.call('tg_webhook_enable')
+        .then(() => tgLoad()).then(() => { render(); toast('Đã bật nút Xong'); })
+        .catch(err => toast(err.message));
+      break;
+    case 'webhookOff':
+      Server.call('tg_webhook_disable')
+        .then(() => tgLoad()).then(() => { render(); toast('Đã tắt nút Xong'); })
         .catch(err => toast(err.message));
       break;
     case 'tgTest': {
