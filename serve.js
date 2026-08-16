@@ -162,7 +162,9 @@ function buildWork(atMs){
     const d = dayOf(due);
     if (d < 0) cLate.push(c); else if (d === 0) cToday.push(c);
   }
-  const who = c => '   • ' + cut(c.title) + (String(c.assignee || '').trim() ? ' — ' + c.assignee : ' — chưa giao');
+  const who = c => '   • ' + cut(c.title) + (c.prio === 'high' ? ' ❗' : '')
+    + (String(c.assignee || '').trim() ? ' — ' + c.assignee : ' — chưa giao')
+    + (c.remindAt ? ` (${c.remindAt})` : '');
   if (cLate.length || cToday.length){
     lines.push((lines.length ? '\n' : '') + '👥 Việc đã giao');
     cLate.slice(0,6).forEach(c => lines.push(who(c) + ` (trễ ${-dayOf(String(c.due).slice(0,10))} ngày)`));

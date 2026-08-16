@@ -416,6 +416,7 @@ function vBoard(){
               <span class="chip">${esc(c.assignee || 'chưa giao')}</span>
               ${c.due ? `<span class="chip ${late?'bad':''}">${dueText(c.due)}</span>` : ''}
               ${c.prio === 'high' ? `<span class="chip bad">gấp</span>` : ''}
+              ${c.remindAt && c.col !== 'done' ? `<span class="chip">🔔 ${esc(c.remindAt)}</span>` : ''}
               ${c.extra ? `<span class="chip ${c.extraPaidDate?'ok':'warn'}">⌁ ngoài luồng${
                 c.extraPay ? ' · ' + moneyShort(c.extraPay) : ''}${c.extraPaidDate ? ' ✓' : ''}</span>` : ''}
             </div>

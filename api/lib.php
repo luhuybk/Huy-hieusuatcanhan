@@ -312,7 +312,11 @@ function buildWork(): array {
   }
   $who = function ($c) {
     $a = trim((string)($c['assignee'] ?? ''));
-    return '   • ' . tgEsc(cutTitle($c['title'] ?? '')) . ($a !== '' ? ' — <b>' . tgEsc($a) . '</b>' : ' — <i>chưa giao</i>');
+    $p = ($c['prio'] ?? '') === 'high' ? ' ❗' : '';
+    $at = (string)($c['remindAt'] ?? '');
+    return '   • ' . tgEsc(cutTitle($c['title'] ?? '')) . $p
+         . ($a !== '' ? ' — <b>' . tgEsc($a) . '</b>' : ' — <i>chưa giao</i>')
+         . ($at !== '' ? ' <i>(' . tgEsc($at) . ')</i>' : '');
   };
   if ($cLate || $cToday) {
     $lines[] = ($lines ? "\n" : '') . '👥 <b>Việc đã giao</b>';
