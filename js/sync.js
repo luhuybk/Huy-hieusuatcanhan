@@ -169,7 +169,15 @@ const Sync = (() => {
     timer = setInterval(() => run(true), 45000);
     if (!hooked){
       hooked = true;
-      document.addEventListener('visibilitychange', () => { if (!document.hidden && on()) run(true); });
+      /* Khi màn hình vừa tắt hoặc chuyển app: đẩy ngay, đừng chờ debounce
+         2.5s hay hẹn giờ 45s — trình duyệt trên điện thoại tạm ngưng các
+         timer đó khi app xuống nền, nên một lời nhắc vừa đặt trước khi
+         khoá màn hình có thể mắc kẹt ở máy, cron không thấy để gửi. */
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden){ clearTimeout(pushTimer); if (on()) run(true); }
+        else if (on()) run(true);
+      });
+      window.addEventListener('pagehide', () => { if (on()) run(true); });
       window.addEventListener('online', () => { if (on()) run(true); });
     }
   }
