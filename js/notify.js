@@ -41,8 +41,8 @@ const Notify = (() => {
     const lines = [];
     const due   = dueTasks();
     const late  = due.filter(t => dayDiff(t.due) < 0);
-    const bdToday = upcomingBirthdays(0);
-    const bdSoon  = upcomingBirthdays(3).filter(x => x.d > 0);
+    const bdToday = allBirthdays(0);
+    const bdSoon  = allBirthdays(3).filter(x => x.d > 0);
     const lc    = lateCards();
     const st    = staleP();
 
@@ -51,8 +51,9 @@ const Notify = (() => {
     if (due.length)     lines.push(`✓ ${due.length} việc đến hạn${late.length ? ` (${late.length} đã trễ)` : ''}`);
     if (occ.length)     lines.push(...occ.slice(0,3).map(x =>
                           `🎊 ${x.o.title}: ${x.d === 0 ? 'hôm nay' : 'còn ' + x.d + ' ngày'}`));
-    if (bdToday.length) lines.push(`🎂 Hôm nay sinh nhật ${bdToday.map(x => x.p.name).join(', ')}`);
-    if (bdSoon.length)  lines.push(`🎁 Sắp sinh nhật: ${bdSoon.map(x => x.p.name).join(', ')}`);
+    const bdName = x => x.name + (x.kind === 'staff' ? ' (nhân viên)' : '');
+    if (bdToday.length) lines.push(`🎂 Hôm nay sinh nhật ${bdToday.map(bdName).join(', ')}`);
+    if (bdSoon.length)  lines.push(`🎁 Sắp sinh nhật: ${bdSoon.map(bdName).join(', ')}`);
     if (lc.length)      lines.push(`⚠︎ ${lc.length} việc đã giao đang trễ`);
     if (st.length)      lines.push(`◍ ${st.length} người lâu rồi bạn chưa hỏi thăm`);
     return lines;

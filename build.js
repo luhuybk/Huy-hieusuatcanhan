@@ -52,7 +52,8 @@ ASSETS.forEach(copy);
 /* api/: máy chủ đăng nhập + đồng bộ.
    KHÔNG chép config.php — mã mật khẩu của bạn chỉ nằm trên máy chủ,
    không đi qua git và không nằm trong thư mục dựng. */
-['api/index.php', 'api/config.example.php', 'api/.htaccess'].forEach(copy);
+['api/index.php', 'api/lib.php', 'api/cron.php',
+ 'api/config.example.php', 'api/.htaccess'].forEach(copy);
 
 /* sw.js: đóng dấu phiên bản + danh sách tệp có kèm ?v= */
 const swAssets = ['./', './index.html', `./css/style.css?v=${VERSION}`,

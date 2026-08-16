@@ -73,6 +73,8 @@ Trong cả hai trường hợp, mã nguồn tải về không chứa mật khẩ
 | `js/app.js` | biểu mẫu + xử lý sự kiện |
 | `sw.js`, `manifest.webmanifest` | cài như app, chạy offline |
 | `api/index.php` | máy chủ: đăng nhập + đồng bộ (SQLite) |
+| `api/lib.php` | phần dùng chung: dữ liệu, Telegram, bộ hẹn giờ |
+| `api/cron.php` | hPanel gọi mỗi 5 phút để gửi nhắc nhở |
 | `api/config.example.php` | mẫu cấu hình — chép thành `config.php` trên máy chủ |
 | `tools/hash-password.js` | tạo mã mật khẩu để dán vào `config.php` |
 | `icon.svg`, `assets/*.png` | biểu tượng (PNG cần cho iOS và cho thông báo) |
@@ -90,15 +92,18 @@ Trong cả hai trường hợp, mã nguồn tải về không chứa mật khẩ
 ### Tổng quan
 Việc đến hạn, việc giao đang trễ, sinh nhật sắp tới, ân tình chưa trả — và mục **“Hôm nay nên hỏi thăm ai”** gợi ý ba người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
 
-### Quan hệ — bốn module S / A / B / C
+### Quan hệ — năm module S / S2 / A / B / C
 Cuộn một mạch từ trên xuống, mỗi nhóm là một khối riêng có tiêu đề và đường ngăn, người bên trong hiển thị dạng **thẻ**.
 
 | Nhóm | Ý nghĩa | Nhắc liên lạc |
 |---|---|---|
-| **S** | Gia đình & người thân như gia đình | 14 ngày |
+| **S** | Ba mẹ, anh chị em, người trong nhà | 14 ngày |
+| **S2** | Cô dì chú bác, họ hàng gần | 21 ngày |
 | **A** | Thân hơn bạn bè, chưa tới mức gia đình | 30 ngày |
 | **B** | Bạn bè, đồng nghiệp thân thiết | 60 ngày |
 | **C** | Có qua lại nhưng không quá sâu | 150 ngày |
+
+**S** và **S2** tách ra vì không phải người nhà nào cũng ở cùng khoảng cách: ba mẹ khác cô dì chú bác, cả về mức độ hỏi thăm lẫn mức quà app gợi ý (S 1tr · S2 800k).
 
 Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa liên lạc, tụt dần theo số ngày im lặng so với chu kỳ của nhóm. Trong mỗi nhóm, người có điểm thấp nhất được xếp lên trước — nhìn là biết ai đang bị bỏ quên.
 
@@ -124,7 +129,9 @@ Bên dưới bảng có khối **Việc ngoài luồng · tiền cần chi thêm
 Cơ chế giống hệt sổ ân tình bên Quan hệ, chỉ khác là với nhân viên.
 
 ### Hồ sơ nhân viên
-Cài đặt → Nhân sự, hoặc chạm tên người trong khối *Tiến độ theo người* dưới bảng. Mỗi nhân sự có: vai trò, **mảng việc phụ trách** (chọn được nhiều), điện thoại, ngày vào làm, ghi chú riêng.
+Cài đặt → Nhân sự, hoặc chạm tên người trong khối *Tiến độ theo người* dưới bảng. Mỗi nhân sự có: vai trò, **mảng việc phụ trách** (chọn được nhiều), điện thoại, **sinh nhật**, ngày vào làm, ghi chú riêng.
+
+Sinh nhật nhân viên hiện chung với sinh nhật người quen ở màn Tổng quan, trên lịch tháng, và trong bản tóm tắt gửi Telegram — có nhãn *(nhân viên)* để bạn biết đường chuẩn bị quà.
 
 Trang hồ sơ gom lại: tổng việc / đang làm / đã xong / đang trễ, tỉ lệ hoàn thành, **tỉ lệ xong đúng hạn**, toàn bộ tiền ngoài luồng đã và chưa trả, và danh sách việc nhóm theo cột. Có nút giao việc thẳng cho người đó.
 
@@ -219,6 +226,62 @@ Dùng Web Speech API có sẵn của trình duyệt: Chrome, Edge, Safari mới 
 Cài đặt → Nhắc nhở → Bật, chọn giờ. Mỗi ngày một thông báo tóm tắt: việc đến hạn, **dịp sắp tới**, sinh nhật, việc giao trễ, người lâu chưa hỏi thăm.
 
 **Giới hạn cần biết:** đây là thông báo cục bộ, không có máy chủ đẩy. Nó chỉ bắn khi app đang mở hoặc đang chạy nền. Nếu cả ngày không mở app thì sẽ không có thông báo — mở ra là thấy đủ trong màn Tổng quan. Trên iPhone bắt buộc phải “Thêm vào Màn hình chính” trước.
+
+---
+
+## Thông báo Telegram
+
+Khác hẳn thông báo trong máy: cái này do **máy chủ** gửi, nên tin vẫn tới kể cả khi bạn đã tắt app, tắt trình duyệt, tắt máy. Cần cài `api/` theo mục trên trước.
+
+### Cài lần đầu
+
+**1. Tạo bot**
+
+Nhắn **@BotFather** trên Telegram → `/newbot` → đặt tên → chép mã bot (dạng `123456:AAE…`).
+
+**2. Cho bot vào group**
+
+Thêm bot vào group của bạn và cho quyền gửi tin. Nếu group có bật **Topics** (nhánh), vào đúng nhánh bạn muốn nhận tin rồi **nhắn một câu bất kỳ** — bước này quan trọng, vì bot chỉ "nhìn thấy" group sau khi có tin nhắn.
+
+**3. Nối vào app**
+
+Cài đặt → Thông báo Telegram → **Cài đặt**:
+
+- Dán mã bot
+- Bấm **Dò group** — app tự điền ID group và số nhánh
+- Chọn giờ gửi bản tóm tắt hằng ngày (để trống thì không gửi)
+- Bấm **Gửi thử** để chắc tin vào đúng nhánh
+- **Lưu cấu hình**
+
+**4. Hẹn giờ cho máy chủ — đừng bỏ bước này**
+
+Vào hPanel → **Cron Jobs**, tạo lịch chạy **mỗi 5 phút** với lệnh app hiện sẵn trong Cài đặt:
+
+```
+/usr/bin/php /home/uXXXXXXXX/public_html/api/cron.php
+```
+
+Gói hosting nào chỉ cho gọi bằng đường link thì dùng địa chỉ `cron.php?key=…`, cũng hiện ngay bên dưới lệnh đó.
+
+Chưa làm bước 4 thì lời nhắc vẫn hiện đầy đủ trong app nhưng **sẽ không có tin nào chạy vào Telegram**.
+
+### Nhắc lặp lại theo thứ và giờ
+
+Cài đặt → **Nhắc lặp lại** → **+ Thêm**. Mỗi lời nhắc gồm: nội dung, giờ, những thứ trong tuần, nhánh riêng (nếu muốn tin này vào nhánh khác), và ghi chú thêm.
+
+Đúng ví dụ bạn nói: *Tập gym · T2·T3·T5·T6·T7 · 18:30* — app hiển thị gọn thành `T2 · T3 · T5 · T6 · T7 lúc 18:30`. Chọn cả 7 thứ thì nó rút thành "hằng ngày", chọn T2→T6 thì thành "thứ 2 → thứ 6".
+
+Nút ➤ bên phải mỗi dòng gửi thử ngay lập tức. Ô vuông bên trái bật/tắt nhanh mà không cần mở ra sửa.
+
+**Về giờ giấc:** máy chủ tính theo giờ Việt Nam. Cron chạy 5 phút một lần nên lời nhắc đặt 18:30 sẽ tới trong khoảng 18:30–18:35. Nếu máy chủ trục trặc và trễ **quá một tiếng** thì app bỏ luôn lần đó chứ không gửi muộn — nhắc "tập gym 18:30" vào lúc 22h chỉ gây khó chịu. Mỗi lời nhắc chỉ gửi một lần mỗi ngày, cron chạy lại bao nhiêu lần cũng không gửi trùng.
+
+### Bản tóm tắt hằng ngày
+
+Gửi một lần mỗi ngày vào giờ bạn chọn, gồm: việc đến hạn (kèm số việc đã trễ), sinh nhật hôm nay và trong 7 ngày tới (cả người quen lẫn nhân viên), dịp và giỗ sắp tới theo số ngày báo trước của từng dịp, việc đã giao đang trễ, và tiền công ngoài luồng còn nợ.
+
+Máy chủ tự tính từ dữ liệu đã đồng bộ nên vẫn đúng dù bạn cả tuần không mở app. Riêng ngày âm lịch được app tính sẵn mỗi lần bạn mở lên rồi gửi kèm — nên nếu bạn không mở app suốt nhiều tháng, ngày giỗ có thể lệch một năm cho tới lần mở kế tiếp.
+
+> **Mã bot để ở đâu:** trong cơ sở dữ liệu trên máy chủ, không nằm trong `config.php`, không đồng bộ xuống máy nào, và API không bao giờ trả nó về trình duyệt — màn hình Cài đặt chỉ biết "đã có mã" hay chưa. Ai cầm được mã bot là nhắn được vào group của bạn, nên nó không đi lung tung.
 
 ---
 

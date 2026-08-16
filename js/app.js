@@ -11,7 +11,7 @@ const TITLES = {
   inbox:['Hộp ghi nhanh','Ghi trước, phân loại sau'],
   money:['Sổ tiền','Chi cho quan hệ và nhân viên'],
   calendar:['Lịch tháng','Việc, dịp và sinh nhật trên một lịch'],
-  people:['Quan hệ','Bốn vòng tròn: S · A · B · C'],
+  people:['Quan hệ','Năm vòng tròn: S · S2 · A · B · C'],
   occasions:['Dịp & lễ','Giỗ, Tết, kỷ niệm — có tính âm lịch'],
   work:['Công việc','Việc cần làm & ý tưởng'],
   board:['Giao việc','Bảng tiến độ nhân viên'],
@@ -92,6 +92,12 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, extra, t
     else if (f.type === 'date')     inp = `<input id="f_${f.k}" type="date" value="${esc(String(v).slice(0,10))}">`;
     else if (f.type === 'color')    inp = `<input id="f_${f.k}" type="color" value="${esc(v||'#5b8cff')}" style="height:44px;padding:4px">`;
     else if (f.type === 'tel')      inp = `<input id="f_${f.k}" type="tel" inputmode="tel" placeholder="${esc(f.ph||'')}" value="${esc(v)}">`;
+    else if (f.type === 'time')     inp = `<input id="f_${f.k}" type="time" value="${esc(v || '08:00')}">`;
+    else if (f.type === 'days'){
+      const sel = Array.isArray(v) ? v.map(Number) : [];
+      inp = `<div class="wdays" id="f_${f.k}">` + WDAYS.map(([n, lbl]) =>
+        `<button type="button" data-pk="${n}" class="${sel.includes(n)?'on':''}">${lbl}</button>`).join('') + `</div>`;
+    }
     else if (f.type === 'people' || f.type === 'multi'){
       const sel = Array.isArray(v) ? v : [];
       const opts = f.type === 'people' ? people().map(p => [p.id, p.name]) : (f.opts || []);
@@ -136,6 +142,10 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, extra, t
       const el = document.getElementById('f_' + f.k);
       if (f.type === 'people' || f.type === 'multi'){
         out[f.k] = Array.from(el.querySelectorAll('.on')).map(b => b.dataset.pk);
+        continue;
+      }
+      if (f.type === 'days'){
+        out[f.k] = Array.from(el.querySelectorAll('.on')).map(b => +b.dataset.pk);
         continue;
       }
       let v = el.value.trim();
@@ -568,6 +578,7 @@ const staffFields = () => [
   {k:'name', label:'Tên', half:true},
   {k:'role', label:'Vai trò', half:true, ph:'Quản lý gym, Thợ chính…'},
   {k:'phone', label:'Điện thoại', type:'tel', half:true},
+  {k:'birthday', label:'Sinh nhật', type:'date', half:true, hint:'để app nhắc tặng quà'},
   {k:'startDate', label:'Bắt đầu làm', type:'date', half:true},
   {k:'areaIds', label:'Phụ trách mảng', type:'multi',
     opts:areas().map(a => [a.id, a.name]), hint:'chọn được nhiều mảng'},
@@ -627,6 +638,88 @@ function staffLink(id){
     <div class="f"><textarea readonly id="lnk" style="min-height:96px;font-size:12px">${esc(link)}</textarea></div>
     <div class="btns"><button class="btn pri grow" data-act="copyLink">Sao chép</button>
       <button class="btn" data-close>Đóng</button></div></div></div>`;
+}
+
+/* ---------------- nhắc lặp lại qua Telegram ---------------- */
+const remFields = () => [
+  {k:'title', label:'Nhắc gì', ph:'Tập gym, uống thuốc, chốt sổ…'},
+  {k:'time',  label:'Lúc mấy giờ', type:'time', half:true},
+  {k:'topic', label:'Nhánh trong group', half:true, ph:'để trống = nhánh chính',
+   hint:'số ID của topic, xem hướng dẫn trong Cài đặt'},
+  {k:'days',  label:'Những thứ nào trong tuần', type:'days'},
+  {k:'note',  label:'Nội dung thêm', type:'textarea', req:false, voice:true,
+   ph:'mang theo găng tay, tập chân…'},
+  {k:'enabled', label:'Trạng thái', type:'select', half:true,
+   opts:[['yes','Đang bật'], ['','Tạm tắt']]}
+];
+function normalizeRem(v){
+  v.enabled = v.enabled === 'yes' || v.enabled === true;
+  v.days = (v.days || []).map(Number).filter(d => d >= 0 && d <= 6);
+  v.topic = String(v.topic || '').trim();
+  if (!/^\d{1,2}:\d{2}$/.test(v.time || '')) v.time = '08:00';
+  return v;
+}
+function addRem(){
+  openForm({title:'Lời nhắc mới', fields:remFields(),
+    values:{time:'08:00', days:[1,2,3,4,5], enabled:'yes'},
+    top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.6">
+      Máy chủ sẽ gửi tin vào Telegram đúng giờ này, kể cả khi bạn không mở app.</div>`,
+    onSave(v){
+      db.reminders.push(stamp(normalizeRem(v)));
+      save(); render(); toast('Lần tới: ' + reminderNextText(v));
+    }});
+}
+function editRem(id){
+  const r = db.reminders.find(x => x.id === id);
+  openForm({title:'Sửa lời nhắc', fields:remFields(),
+    values:Object.assign({}, r, {enabled: r.enabled ? 'yes' : ''}),
+    top:`<div class="dim" style="margin:-8px 0 12px">Lần tới: ${esc(reminderNextText(r))}</div>`,
+    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delRem" data-id="${id}">Xoá lời nhắc</button>`,
+    onSave(v){ Object.assign(r, normalizeRem(v)); stamp(r); save(); render(); }});
+}
+
+/* ---------------- Telegram ---------------- */
+/* Cấu hình nằm ở máy chủ chứ không phải trong máy này: mã bot là thứ ai
+   cầm được cũng nhắn được vào group của bạn, nên không để nó đi lung tung. */
+let TG = null;
+function tgLoad(){
+  if (!Server.available()) return Promise.resolve(null);
+  return Server.call('tg_get').then(d => { TG = d; return d; }).catch(() => null);
+}
+function tgBox(){
+  const t = TG || {};
+  openForm({title:'Thông báo Telegram', submit:'Lưu cấu hình',
+    top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.65">
+      1. Nhắn <b>@BotFather</b> → <b>/newbot</b> → chép mã bot.<br>
+      2. Thêm bot vào group của bạn, cho quyền gửi tin.<br>
+      3. Nhắn một câu bất kỳ vào group rồi bấm <b>Dò group</b> bên dưới.</div>`,
+    fields:[
+      {k:'token', label:'Mã bot' + (t.hasToken ? ' (đã có — để trống nếu không đổi)' : ''),
+       ph:'123456:AAE…', req:false},
+      {k:'chatId', label:'ID group', half:true, ph:'-1001234567890', req:false},
+      {k:'topic', label:'Nhánh mặc định', half:true, ph:'để trống = nhánh chính'},
+      {k:'digestHour', label:'Giờ gửi bản tóm tắt hằng ngày', type:'number', half:true,
+       ph:'0-23', hint:'để trống hoặc -1 thì không gửi'},
+      {k:'enabled', label:'Trạng thái', type:'select', half:true,
+       opts:[['yes','Đang bật'], ['','Tạm tắt']]}
+    ],
+    values:{token:'', chatId:t.chatId || '', topic:t.topic || '',
+            digestHour: t.digestHour == null ? 7 : t.digestHour,
+            enabled: t.enabled ? 'yes' : ''},
+    extra:`<div class="btns" style="margin-bottom:10px">
+        <button type="button" class="btn sm grow" data-act="tgDiscover">Dò group</button>
+        <button type="button" class="btn sm grow" data-act="tgTest">Gửi thử</button>
+      </div>
+      <div class="dim" id="tgout" style="margin-bottom:10px;line-height:1.6"></div>`,
+    onSave(v){
+      const body = {chatId:String(v.chatId || '').trim(), topic:String(v.topic || '').trim(),
+                    digestHour: v.digestHour === '' ? -1 : +v.digestHour,
+                    enabled: v.enabled === 'yes'};
+      if (v.token) body.token = v.token.trim();
+      Server.call('tg_save', body)
+        .then(d => { TG = d; render(); toast('Đã lưu cấu hình Telegram'); })
+        .catch(err => toast(err.message));
+    }});
 }
 
 /* ---------------- sao lưu ---------------- */
@@ -1070,6 +1163,56 @@ document.addEventListener('click', e => {
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;
 
+    /* nhắc lặp lại */
+    case 'addRem':  addRem(); break;
+    case 'editRem': editRem(id); break;
+    case 'delRem':  closeModal(); confirmBox('Xoá lời nhắc này?', () => {
+        const r = db.reminders.find(x => x.id === id); r.deleted = true; stamp(r); save(); render(); }); break;
+    case 'toggleRem': {
+      const r = db.reminders.find(x => x.id === id);
+      r.enabled = !r.enabled; stamp(r); save(); render();
+      toast(r.enabled ? 'Bật: ' + reminderNextText(r) : 'Đã tắt ' + r.title);
+      break;
+    }
+    case 'remNow': {
+      const r = db.reminders.find(x => x.id === id);
+      Server.call('tg_send', {text:'🔔 ' + r.title + (r.note ? '\n' + r.note : ''), topic:r.topic})
+        .then(() => toast('Đã gửi vào Telegram'))
+        .catch(err => toast(err.message));
+      break;
+    }
+
+    /* Telegram */
+    case 'tgBox':  tgBox(); break;
+    case 'tgTest': {
+      const out = $('#tgout');
+      if (out) out.textContent = 'Đang gửi…';
+      Server.call('tg_send', {text:'✅ Life Hub nối được với group này rồi.',
+                              topic: ($('#f_topic') || {}).value || ''})
+        .then(() => { if (out) out.textContent = 'Đã gửi. Kiểm tra group xem tin đã vào đúng nhánh chưa.'; })
+        .catch(err => { if (out) out.textContent = 'Lỗi: ' + err.message; });
+      break;
+    }
+    case 'tgDiscover': {
+      const out = $('#tgout');
+      if (out) out.textContent = 'Đang dò… hãy chắc là bạn vừa nhắn một câu vào group.';
+      const tok = ($('#f_token') || {}).value || '';
+      Server.call('tg_discover', tok ? {token:tok.trim()} : {})
+        .then(d => {
+          if (!d.chats.length){ out.textContent = 'Chưa thấy group nào. Nhắn một câu vào group rồi bấm lại.'; return; }
+          const c = d.chats[0];
+          if ($('#f_chatId')) $('#f_chatId').value = c.id;
+          if (c.topic && $('#f_topic') && !$('#f_topic').value) $('#f_topic').value = c.topic;
+          out.innerHTML = 'Tìm thấy: <b>' + esc(c.title || c.id) + '</b>' +
+            (c.topic ? ' · nhánh <b>' + esc(String(c.topic)) + '</b>' : ' · nhánh chính') +
+            (d.chats.length > 1 ? `<br>Còn ${d.chats.length - 1} group khác: ` +
+              d.chats.slice(1).map(x => esc(x.title || x.id)).join(', ') : '') +
+            '<br>Đã điền vào ô bên trên. Bấm Lưu cấu hình.';
+        })
+        .catch(err => { if (out) out.textContent = 'Lỗi: ' + err.message; });
+      break;
+    }
+
     /* tài khoản trên máy chủ */
     case 'logout': logoutBox(); break;
     case 'doLogout': {
@@ -1216,6 +1359,7 @@ function boot(){
     if (wantDemo && isEmpty) seedDemo();
     Sync.start();
     Notify.start();
+    tgLoad().then(t => { if (t && S.view === 'settings') render(); });
   });
 }
 boot();

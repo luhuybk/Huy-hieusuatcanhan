@@ -181,6 +181,7 @@ const Gate = (() => {
     try { await Sync.run(true); } catch(e){}
     Sync.start();
     Notify.start();
+    tgLoad();
     render();
     const st = Sync.status();
     toast(st.state === 'error' ? 'Vào được rồi, nhưng đồng bộ lỗi: ' + st.lastError : 'Đã sẵn sàng');

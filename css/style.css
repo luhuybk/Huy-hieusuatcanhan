@@ -6,7 +6,7 @@
   --tx:#e8ebf1; --tx2:#9aa3b4; --tx3:#69717f;
   --acc:#5b8cff; --acc2:#8b5cff;
   --ok:#3ddc97; --warn:#ffb84d; --bad:#ff6b6b;
-  --S:#f4b942; --A:#ff7a7a; --B:#4dabf7; --C:#8d95a5;
+  --S:#f4b942; --S2:#e0763d; --A:#ff7a7a; --B:#4dabf7; --C:#8d95a5;
   --r:14px; --shadow:0 10px 34px rgba(0,0,0,.42);
   --side:248px;
 }
@@ -367,3 +367,19 @@ body.locked .app,body.locked .fab{display:none}
 .gatemsg.on{display:block}
 .gatemsg.bad{color:var(--bad);border-color:var(--bad)}
 .gatefoot{margin-top:18px;line-height:1.6;font-size:11.5px}
+
+/* ---------------- NHẮC LẶP LẠI ---------------- */
+.wdays{display:flex;gap:6px;flex-wrap:wrap}
+.wdays button{
+  flex:1;min-width:40px;padding:9px 0;border-radius:10px;background:var(--bg3);
+  border:1px solid var(--line);font-size:12.5px;font-weight:700;color:var(--tx3);
+}
+.wdays button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.rem{display:flex;align-items:center;gap:11px;padding:11px 12px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px}
+.rem.off{opacity:.5}
+.rem .tm{width:52px;flex:none;text-align:center;font-size:15px;font-weight:750;letter-spacing:-.3px}
+.rem .nm{font-weight:650;font-size:14.5px}
+.mono{background:var(--bg3);border-radius:8px;padding:9px 11px;margin:6px 0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+  word-break:break-all;-webkit-user-select:all;user-select:all;color:var(--tx2)}

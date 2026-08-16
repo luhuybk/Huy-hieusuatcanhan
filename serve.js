@@ -54,8 +54,114 @@ function db(){
     CREATE INDEX IF NOT EXISTS items_upd ON items(updated_at);
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY, created_at TEXT, expires_at TEXT, label TEXT);
-    CREATE TABLE IF NOT EXISTS login_fails (ip TEXT, at INTEGER);`);
+    CREATE TABLE IF NOT EXISTS login_fails (ip TEXT, at INTEGER);
+    CREATE TABLE IF NOT EXISTS conf (k TEXT PRIMARY KEY, v TEXT);
+    CREATE TABLE IF NOT EXISTS sent (k TEXT PRIMARY KEY, at INTEGER);`);
   return store;
+}
+
+/* ---------------- cấu hình Telegram + bộ hẹn giờ ----------------
+   Viết lại đúng logic của api/lib.php để thử được lịch chạy trên máy.  */
+const confGet = (k, d) => { const r = db().prepare('SELECT v FROM conf WHERE k = ?').get(k);
+                            return r === undefined ? d : r.v; };
+const confSet = (k, v) => db().prepare(
+  'INSERT INTO conf (k,v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, String(v));
+
+function itemsOf(kind){
+  return db().prepare('SELECT data FROM items WHERE kind = ? AND deleted = 0').all(kind)
+    .map(r => { try { return JSON.parse(r.data); } catch(e){ return null; } })
+    .filter(d => d && !d.deleted);
+}
+const REM_WINDOW = 3600;
+const pad = n => String(n).padStart(2,'0');
+
+function buildDigest(){
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const md = today.slice(5);
+  const lines = [];
+
+  const due = itemsOf('tasks').filter(t => !t.done && t.due && String(t.due).slice(0,10) <= today);
+  if (due.length){
+    const late = due.filter(t => String(t.due).slice(0,10) < today).length;
+    lines.push(`✓ ${due.length} việc đến hạn${late ? ` (${late} đã trễ)` : ''}`);
+    due.slice(0,6).forEach(t => lines.push('   • ' + (t.title || '')));
+  }
+
+  const bdToday = [], bdSoon = [];
+  for (const [kind, tag] of [['people',''], ['staff',' (nhân viên)']]){
+    for (const p of itemsOf(kind)){
+      const b = String(p.birthday || ''); if (b.length < 10) continue;
+      const pmd = b.slice(5,10);
+      if (pmd === md){ bdToday.push((p.name||'') + tag); continue; }
+      for (let i = 1; i <= 7; i++){
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()+i);
+        if (pmd === `${pad(d.getMonth()+1)}-${pad(d.getDate())}`){
+          bdSoon.push(`${p.name||''}${tag} (${i} ngày nữa)`); break;
+        }
+      }
+    }
+  }
+  if (bdToday.length) lines.push('🎂 Hôm nay sinh nhật: ' + bdToday.join(', '));
+  if (bdSoon.length)  lines.push('🎁 Sắp sinh nhật: ' + bdSoon.join(', '));
+
+  for (const o of itemsOf('occasions')){
+    const isoD = String(o.nextIso || '').slice(0,10); if (isoD.length < 10) continue;
+    const d = Math.round((new Date(isoD+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+    const remind = o.remind == null ? 7 : +o.remind;
+    if (d >= 0 && d <= remind)
+      lines.push(`🎊 ${o.title||''}: ${d === 0 ? 'hôm nay' : 'còn ' + d + ' ngày'}`);
+  }
+
+  let lateCards = 0, owed = 0, owedN = 0;
+  for (const c of itemsOf('cards')){
+    if (c.col !== 'done' && c.due && String(c.due).slice(0,10) < today) lateCards++;
+    if (c.extra && !c.extraPaidDate){ owed += +(c.extraPay || 0); owedN++; }
+  }
+  if (lateCards) lines.push(`⚠️ ${lateCards} việc đã giao đang trễ`);
+  if (owed) lines.push(`💰 Còn nợ công ngoài luồng: ${owed.toLocaleString('vi-VN')}₫ (${owedN} việc)`);
+  return lines;
+}
+
+const alreadySent = k => !!db().prepare('SELECT 1 FROM sent WHERE k = ?').get(k);
+const markSent = k => db().prepare('INSERT OR IGNORE INTO sent (k,at) VALUES (?,?)').run(k, Math.floor(Date.now()/1000));
+
+/* atMs: cho phép giả lập "bây giờ là mấy giờ" khi chạy thử */
+function runSchedule(dry, atMs){
+  const done = [];
+  if (!confGet('tg_enabled')) return {skipped:'Telegram đang tắt'};
+  const now = atMs ? new Date(atMs) : new Date();
+  const nowSec = Math.floor(now.getTime()/1000);
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const wday = now.getDay();
+
+  for (const r of itemsOf('reminders')){
+    if (!r.enabled) continue;
+    if (!(r.days || []).map(Number).includes(wday)) continue;
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(r.time || '')); if (!m) continue;
+    const at = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                                   +m[1], +m[2], 0).getTime() / 1000);
+    if (nowSec < at || nowSec - at > REM_WINDOW) continue;
+    const key = `rem:${r.id}:${today}`;
+    if (alreadySent(key)) continue;
+    if (dry){ done.push({reminder:r.title, dry:true}); continue; }
+    markSent(key);
+    done.push({reminder:r.title, ok:true, sent:`🔔 ${r.title}${r.note ? '\n'+r.note : ''}`,
+               topic:r.topic || confGet('tg_topic','')});
+  }
+
+  const hour = +confGet('tg_digest_hour', '-1');
+  if (hour >= 0 && now.getHours() >= hour){
+    const key = 'digest:' + today;
+    if (!alreadySent(key)){
+      const lines = buildDigest();
+      if (lines.length){
+        if (dry) done.push({digest:lines.length, dry:true});
+        else { markSent(key); done.push({digest:lines.length, ok:true, lines}); }
+      } else { if (!dry) markSent(key); done.push({digest:0, note:'không có gì cần nhắc'}); }
+    }
+  }
+  return done;
 }
 
 /* ---------------- mật khẩu: giống hệt PHP ---------------- */
@@ -175,6 +281,48 @@ function api(req, res, body){
         db().exec('COMMIT');
       } catch(e){ db().exec('ROLLBACK'); return fail('Ghi dữ liệu lỗi: ' + e.message, 500); }
       return send({ok:true, saved, skipped, now:iso()});
+    }
+
+    /* ---- Telegram ---- */
+    case 'tg_get':
+    case 'tg_save': {
+      if (!need()) return;
+      if (inp.action === 'tg_save'){
+        if (inp.token && String(inp.token).trim()) confSet('tg_token', String(inp.token).trim());
+        confSet('tg_chat',  String(inp.chatId || '').trim());
+        confSet('tg_topic', String(inp.topic || '').trim());
+        const h = inp.digestHour == null ? -1 : +inp.digestHour;
+        confSet('tg_digest_hour', (h >= 0 && h <= 23) ? h : -1);
+        confSet('tg_enabled', inp.enabled ? '1' : '');
+      }
+      if (!confGet('cron_key')) confSet('cron_key', crypto.randomBytes(12).toString('hex'));
+      return send({ok:true,
+        hasToken: (confGet('tg_token','') || '') !== '',
+        chatId: confGet('tg_chat',''), topic: confGet('tg_topic',''),
+        digestHour: +confGet('tg_digest_hour','-1'),
+        enabled: !!confGet('tg_enabled',''),
+        cron: '/usr/bin/php ' + path.join(__dirname, 'api/cron.php'),
+        cronUrl: 'http://localhost:' + PORT + '/api/cron.php?key=' + confGet('cron_key','')});
+    }
+    case 'tg_send': {
+      if (!need()) return;
+      if (!confGet('tg_token','')) return fail('Chưa có mã bot Telegram', 502);
+      if (!confGet('tg_chat',''))  return fail('Chưa chọn group Telegram', 502);
+      /* máy chủ thử không gọi ra Telegram thật — chỉ ghi lại để kiểm */
+      console.log('[telegram thử] nhánh=' + (inp.topic || confGet('tg_topic','') || 'chính') + ' · ' + inp.text);
+      return send({ok:true, simulated:true});
+    }
+    case 'tg_discover': {
+      if (!need()) return;
+      return send({ok:true, chats:[{id:'-1001234567890', title:'Group thử nghiệm', topic:'12'}]});
+    }
+    case 'tg_dryrun': {
+      if (!need()) return;
+      return send({ok:true, result:runSchedule(true, inp.at), digest:buildDigest()});
+    }
+    case 'tg_runnow': {          // chỉ có ở máy chủ thử, để kiểm bộ hẹn giờ
+      if (!need()) return;
+      return send({ok:true, result:runSchedule(false, inp.at)});
     }
 
     case 'stats': {

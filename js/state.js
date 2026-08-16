@@ -5,12 +5,13 @@
 
 /* ---------------- hằng số ---------------- */
 const TIERS = {
-  S:{label:'S', name:'Gia đình', desc:'Gia đình & những người thân như gia đình', color:'var(--S)', ping:14},
-  A:{label:'A', name:'Tri kỷ',   desc:'Thân hơn bạn bè, chưa tới mức gia đình',   color:'var(--A)', ping:30},
-  B:{label:'B', name:'Bạn bè',   desc:'Bạn bè, đồng nghiệp thân thiết',           color:'var(--B)', ping:60},
-  C:{label:'C', name:'Xã giao',  desc:'Có qua lại nhưng không quá sâu',           color:'var(--C)', ping:150}
+  S: {label:'S',  name:'Gia đình', desc:'Ba mẹ, anh chị em, người trong nhà',      color:'var(--S)',  ping:14},
+  S2:{label:'S2', name:'Họ hàng',  desc:'Cô dì chú bác, họ hàng gần',              color:'var(--S2)', ping:21},
+  A: {label:'A',  name:'Tri kỷ',   desc:'Thân hơn bạn bè, chưa tới mức gia đình',  color:'var(--A)',  ping:30},
+  B: {label:'B',  name:'Bạn bè',   desc:'Bạn bè, đồng nghiệp thân thiết',          color:'var(--B)',  ping:60},
+  C: {label:'C',  name:'Xã giao',  desc:'Có qua lại nhưng không quá sâu',           color:'var(--C)',  ping:150}
 };
-const TIER_KEYS = ['S','A','B','C'];
+const TIER_KEYS = ['S','S2','A','B','C'];
 
 const COLS = [
   {id:'idea',     label:'Lên ý tưởng'},
@@ -189,7 +190,9 @@ function nextBirthday(iso){
   return Math.round((d-nowD)/86400000);
 }
 function initials(name){
-  const w = String(name||'?').trim().split(/\s+/);
+  /* Bỏ ngoặc và dấu câu trước đã: "Cô Tư (dì ruột)" phải ra CT chứ không phải "(R" */
+  const w = String(name || '?').replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '?';
   return (w.length > 1 ? w[w.length-2][0] + w[w.length-1][0] : w[0].slice(0,2)).toUpperCase();
 }
 function toast(msg){
@@ -200,11 +203,12 @@ function toast(msg){
 /* ---------------- kho dữ liệu ---------------- */
 const KEY = 'lifehub.v2';
 const OLD  = 'lifehub.v1';
-const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox'];
+const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders'];
 
 function blank(){
   return {
     people:[], gifts:[], tasks:[], ideas:[], cards:[], staff:[], areas:[], occasions:[], inbox:[],
+    reminders:[],
     settings:{
       theme:'dark',
       notifyHour:8,
@@ -269,9 +273,19 @@ function ensure(){
   db.inbox.forEach(n => { if(n.processed===undefined) n.processed = false; if(!n.text) n.text = ''; });
   db.staff.forEach(s2 => { if(!Array.isArray(s2.areaIds)) s2.areaIds = [];
                            if(s2.phone===undefined) s2.phone = ''; if(s2.startDate===undefined) s2.startDate = '';
+                           if(s2.birthday===undefined) s2.birthday = '';
                            if(s2.note===undefined) s2.note = ''; });
+  db.reminders.forEach(r => { if(!Array.isArray(r.days)) r.days = [];
+                              r.days = r.days.map(Number).filter(d => d >= 0 && d <= 6);
+                              if(!r.time) r.time = '08:00'; if(r.topic===undefined) r.topic = '';
+                              if(r.enabled===undefined) r.enabled = true;
+                              if(r.note===undefined) r.note = ''; if(r.lastSent===undefined) r.lastSent = ''; });
   db.occasions.forEach(o => { if(!Array.isArray(o.personIds)) o.personIds = [];
-                              if(o.remind===undefined) o.remind = 7; if(!o.cal) o.cal = 'solar'; });
+                              if(o.remind===undefined) o.remind = 7; if(!o.cal) o.cal = 'solar';
+                              /* Lần tới rơi vào ngày dương nào — tính sẵn ở đây để máy chủ
+                                 gửi nhắc qua Telegram mà không phải cài lịch âm bên PHP. */
+                              const n = occasionNext(o);
+                              if (n && o.nextIso !== n.iso){ o.nextIso = n.iso; stamp(o); } });
   db.cards .forEach(c => { if(c.doneAt===undefined) c.doneAt = ''; if(c.extra===undefined) c.extra=false; if(c.extraPay===undefined) c.extraPay=0;
                            if(c.extraPaidDate===undefined) c.extraPaidDate='';
                            if(c.areaId===undefined) c.areaId=''; if(COL_MAP[c.col]) c.col = COL_MAP[c.col];
@@ -392,6 +406,58 @@ function upcomingBirthdays(win){
   return people().map(p => ({p, d:nextBirthday(p.birthday)}))
                  .filter(x => x.d !== null && x.d <= w).sort((a,b) => a.d - b.d);
 }
+/* Sinh nhật của cả người quen lẫn nhân viên — nhân viên cũng cần được nhớ */
+function allBirthdays(win){
+  const w = (win == null ? 45 : win);
+  const out = [];
+  people().forEach(p => { const d = nextBirthday(p.birthday);
+    if (d !== null && d <= w) out.push({kind:'person', id:p.id, name:p.name, birthday:p.birthday,
+                                        sub:'nhóm ' + p.tier, tier:p.tier, d}); });
+  staff().forEach(s2 => { const d = nextBirthday(s2.birthday);
+    if (d !== null && d <= w) out.push({kind:'staff', id:s2.id, name:s2.name, birthday:s2.birthday,
+                                        sub:s2.role || 'nhân sự', d}); });
+  return out.sort((a,b) => a.d - b.d || a.name.localeCompare(b.name,'vi'));
+}
+
+/* ============================================================
+   NHẮC LẶP LẠI THEO THỨ + GIỜ  (dùng cho thông báo Telegram)
+   Ví dụ: tập gym T2·T3·T5·T6·T7 lúc 18:30
+   Ngày dùng quy ước của JavaScript: 0 = Chủ nhật … 6 = Thứ 7
+   ============================================================ */
+const WDAYS = [[1,'T2'],[2,'T3'],[3,'T4'],[4,'T5'],[5,'T6'],[6,'T7'],[0,'CN']];
+const WDAY_NAME = {0:'Chủ nhật',1:'Thứ 2',2:'Thứ 3',3:'Thứ 4',4:'Thứ 5',5:'Thứ 6',6:'Thứ 7'};
+
+function reminders(){ return alive(db.reminders); }
+
+function daysText(days){
+  const d = (days || []).slice().sort((a,b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b));
+  if (!d.length) return 'chưa chọn ngày';
+  if (d.length === 7) return 'hằng ngày';
+  if (d.length === 5 && [1,2,3,4,5].every(x => d.includes(x))) return 'thứ 2 → thứ 6';
+  if (d.length === 2 && d.includes(6) && d.includes(0)) return 'cuối tuần';
+  return d.map(x => (WDAYS.find(w => w[0] === x) || [])[1]).join(' · ');
+}
+/* Lần chạy kế tiếp của một lời nhắc, tính từ bây giờ */
+function reminderNext(r){
+  if (!r.enabled || !(r.days || []).length) return null;
+  const [hh, mm] = String(r.time || '08:00').split(':').map(Number);
+  const now = new Date();
+  for (let i = 0; i < 8; i++){
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, hh || 0, mm || 0, 0, 0);
+    if (r.days.includes(d.getDay()) && d > now) return d;
+  }
+  return null;
+}
+function reminderNextText(r){
+  const d = reminderNext(r);
+  if (!d) return r.enabled ? 'chưa chọn ngày' : 'đang tắt';
+  const gap = Math.round((d - new Date()) / 60000);
+  const hm = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  if (gap < 60) return `còn ${gap} phút`;
+  if (ymd(d) === today()) return `hôm nay ${hm}`;
+  if (ymd(d) === addDays(today(), 1)) return `mai ${hm}`;
+  return `${WDAY_NAME[d.getDay()]} ${fmtDate(ymd(d))} ${hm}`;
+}
 
 /* ============================================================
    DỊP & LỄ
@@ -437,7 +503,7 @@ function dueOccasions(){
    Không có lịch sử thì lấy mức trung bình đã tặng người đó, rồi tới
    mức mặc định theo nhóm. Nếu đang nợ ân tình nhiều hơn thì nâng lên
    cho bằng phần đang nợ.                                            */
-const TIER_GIFT = {S:1000000, A:700000, B:400000, C:200000};
+const TIER_GIFT = {S:1000000, S2:800000, A:700000, B:400000, C:200000};
 function roundGift(n){
   if (n <= 0) return 0;
   const step = n >= 2000000 ? 500000 : n >= 500000 ? 100000 : 50000;
@@ -504,9 +570,13 @@ function calendarMap(from, to, areaId){
     birthdayDatesIn(p, from, to).forEach(d => put(d, {
       kind:'birthday', id:p.id, title:'Sinh nhật ' + p.name, color:'var(--A)'})));
 
+  staff().forEach(s2 =>
+    birthdayDatesIn(s2, from, to).forEach(d => put(d, {
+      kind:'staffBirthday', id:s2.id, title:'Sinh nhật ' + s2.name + ' (nhân viên)', color:'var(--acc)'})));
+
   /* Việc lặp hằng ngày rất dễ chiếm hết chỗ hiển thị của ô, nên xếp
      dịp và sinh nhật lên trước, kỳ lặp tương lai xuống cuối. */
-  const rank = e => e.kind === 'occasion' ? 0 : e.kind === 'birthday' ? 1
+  const rank = e => e.kind === 'occasion' ? 0 : (e.kind === 'birthday' || e.kind === 'staffBirthday') ? 1
                   : e.done ? 5 : e.ghost ? 4 : e.kind === 'card' ? 2 : 3;
   Object.keys(map).forEach(d => map[d].sort((a,b) => rank(a) - rank(b)));
   return map;
@@ -560,7 +630,8 @@ function searchAll(q, limit){
   return limit ? out.slice(0, limit) : out;
 }
 const KIND_LABEL = {person:'Người', task:'Việc', idea:'Ý tưởng', card:'Thẻ giao việc',
-                    occasion:'Dịp', gift:'Trao đổi'};
+                    occasion:'Dịp', gift:'Trao đổi', birthday:'Sinh nhật',
+                    staffBirthday:'Sinh nhật nhân viên', reminder:'Nhắc lặp lại'};
 
 /* ============================================================
    SỔ TIỀN — gom mọi khoản đã ghi trong app về một dòng chảy

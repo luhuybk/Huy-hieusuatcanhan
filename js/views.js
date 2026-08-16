@@ -87,7 +87,7 @@ function vDash(){
   const A = S.area;
   const due   = byArea(dueTasks(), A);
   const lcs   = byArea(lateCards(), A);
-  const bdays = upcomingBirthdays(45);
+  const bdays = allBirthdays(45);
   const stale = staleP();
   const debts = people().map(p => ({p, b:balance(p.id)})).filter(x => x.b.diff > 0)
                   .sort((a,b) => b.b.diff - a.b.diff);
@@ -159,9 +159,12 @@ function vDash(){
   }
   if (bdays.length){
     h += secHd('Sinh nhật sắp tới');
-    h += bdays.slice(0,6).map(x => `<div class="item" data-act="person" data-id="${x.p.id}">
-        ${avatar(x.p)}<div class="grow"><div class="t ell">${esc(x.p.name)}</div>
-        <div class="s">${fmtDate(x.p.birthday)} · nhóm ${x.p.tier}</div></div>
+    h += bdays.slice(0,7).map(x => `<div class="item"
+        data-act="${x.kind === 'staff' ? 'staffPage' : 'person'}" data-id="${x.id}">
+        <div class="av" style="background:${x.kind === 'staff' ? 'var(--acc)' : TIERS[x.tier].color}${
+          x.kind === 'staff' ? ';color:#fff' : ''}">${esc(initials(x.name))}</div>
+        <div class="grow"><div class="t ell">${esc(x.name)}</div>
+        <div class="s">${fmtDate(x.birthday)} · ${esc(x.sub)}${x.kind === 'staff' ? ' · nhân viên' : ''}</div></div>
         <span class="chip ${x.d<=7?'warn':''}">${x.d===0?'hôm nay 🎂':'còn '+x.d+' ngày'}</span></div>`).join('');
   }
   if (debts.length){
@@ -619,7 +622,7 @@ function vInbox(){
 
 /* ---------------- LỊCH THÁNG ---------------- */
 const WD = ['T2','T3','T4','T5','T6','T7','CN'];
-const EV_ICON = {task:'✓', card:'▦', occasion:'🎊', birthday:'🎂'};
+const EV_ICON = {task:'✓', card:'▦', occasion:'🎊', birthday:'🎂', staffBirthday:'🎂'};
 
 function vCalendar(){
   const [Y, M] = S.calMonth.split('-').map(Number);
@@ -679,6 +682,7 @@ function vCalendar(){
       const act = e.kind === 'task' ? `data-act="editTask" data-id="${e.id}"`
                 : e.kind === 'card' ? `data-act="card" data-id="${e.id}"`
                 : e.kind === 'occasion' ? `data-act="editOcc" data-id="${e.id}"`
+                : e.kind === 'staffBirthday' ? `data-act="staffPage" data-id="${e.id}"`
                 : `data-act="person" data-id="${e.id}"`;
       /* việc và thẻ tick được ngay tại đây; kỳ lặp chưa tới thì không,
          tránh làm hỏng chuỗi và ngày hạn của kỳ đang chờ */
@@ -692,7 +696,7 @@ function vCalendar(){
         ${lead}
         <div class="grow" ${act}>
           <div class="t ell" style="${e.done?'text-decoration:line-through;opacity:.55':''}">${esc(e.title)}</div>
-          <div class="s">${KIND_LABEL[e.kind] || 'Sinh nhật'}${note}${
+          <div class="s">${KIND_LABEL[e.kind] || 'Sự kiện'}${note}${
             e.who ? ' · ' + esc(e.who) : ''}${e.cal === 'lunar' ? ' · âm lịch' : ''}</div>
         </div>
         ${e.prio === 'high' && !e.done ? `<span class="chip bad">gấp</span>` : ''}
@@ -908,6 +912,9 @@ function vStaff(){
         <div class="row" style="gap:6px;margin-top:7px;flex-wrap:wrap">
           <span class="chip acc">${esc(s.role || 'chưa ghi vai trò')}</span>
           ${areaNames.map(a => `<span class="chip"><span class="sw" style="background:${esc(a.color)}"></span>${esc(a.name)}</span>`).join('')}
+          ${s.birthday ? (() => { const bd = nextBirthday(s.birthday);
+            return `<span class="chip ${bd !== null && bd <= 14 ? 'warn' : ''}">🎂 ${fmtDate(s.birthday)}${
+              bd === 0 ? ' · hôm nay!' : bd !== null && bd <= 45 ? ` · còn ${bd}n` : ''}</span>`; })() : ''}
           ${s.startDate ? `<span class="chip">vào làm ${fmtDate(s.startDate)}</span>` : ''}
         </div>
       </div>
@@ -1066,6 +1073,61 @@ function vReview(){
   return h;
 }
 
+/* ---------------- THÔNG BÁO TELEGRAM + NHẮC LẶP LẠI ---------------- */
+function remItem(r){
+  const next = reminderNextText(r);
+  return `<div class="rem ${r.enabled ? '' : 'off'}">
+    <div class="cb ${r.enabled?'on':''}" data-act="toggleRem" data-id="${r.id}">✓</div>
+    <div class="tm">${esc(r.time)}</div>
+    <div class="grow" data-act="editRem" data-id="${r.id}">
+      <div class="nm ell">${esc(r.title)}</div>
+      <div class="dim">${esc(daysText(r.days))}${r.topic ? ' · nhánh ' + esc(r.topic) : ''} · ${esc(next)}</div>
+    </div>
+    <button class="iconbtn" data-act="remNow" data-id="${r.id}" title="Gửi thử ngay">➤</button>
+  </div>`;
+}
+
+function tgBlock(){
+  const t = TG || {};
+  const list = reminders().slice().sort((a,b) =>
+    (b.enabled?1:0) - (a.enabled?1:0) || (a.time||'').localeCompare(b.time||''));
+  const live = t.enabled && t.hasToken && t.chatId;
+
+  let h = secHd('Thông báo Telegram');
+  h += `<div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <span class="dot ${live ? 'ok' : ''}"></span>
+      <div class="grow dim">${!t.hasToken ? 'Chưa cài — app chỉ nhắc trong máy'
+        : !t.chatId ? 'Có mã bot nhưng chưa chọn group'
+        : !t.enabled ? 'Đã cài nhưng đang tắt'
+        : 'Đang bật · group ' + esc(String(t.chatId)) + (t.topic ? ' · nhánh ' + esc(String(t.topic)) : '')}</div>
+      <button class="btn sm ${live ? '' : 'pri'}" data-act="tgBox">${t.hasToken ? 'Sửa' : 'Cài đặt'}</button>
+    </div>
+    <div class="dim" style="line-height:1.65">
+      Khác với thông báo trong máy: cái này do <b>máy chủ</b> gửi nên vẫn tới kể cả khi
+      bạn tắt hẳn app và tắt trình duyệt.
+      ${t.digestHour != null && t.digestHour >= 0
+        ? `Bản tóm tắt hằng ngày gửi lúc <b>${String(t.digestHour).padStart(2,'0')}:00</b>.`
+        : 'Bản tóm tắt hằng ngày đang tắt.'}
+    </div>
+    ${t.cron ? `<div class="dim" style="margin-top:12px;line-height:1.6">
+      <b>Bước cuối — hẹn giờ cho máy chủ.</b> Vào hPanel → Cron Jobs, tạo lịch chạy
+      <b>mỗi 5 phút</b> với lệnh:
+      <div class="mono">${esc(t.cron)}</div>
+      Nếu gói hosting chỉ cho gọi bằng đường link thì dùng địa chỉ này thay cho lệnh trên:
+      <div class="mono">${esc(t.cronUrl || '')}</div>
+      Chưa làm bước này thì lời nhắc vẫn hiện trong app nhưng sẽ không có tin nào chạy vào Telegram.
+    </div>` : ''}
+  </div>`;
+
+  h += secHd('Nhắc lặp lại (' + list.length + ')',
+             `<button data-act="addRem">+ Thêm</button>`);
+  h += list.length ? list.map(remItem).join('')
+    : `<div class="empty" style="padding:22px">Chưa có lời nhắc nào.<br>
+       Ví dụ: <b>Tập gym</b> · T2·T3·T5·T6·T7 · 18:30.</div>`;
+  return h;
+}
+
 /* ---------------- CÀI ĐẶT ---------------- */
 function vSettings(){
   const s = db.settings, st = Sync.status();
@@ -1104,6 +1166,8 @@ function vSettings(){
       “Thêm vào Màn hình chính” rồi mở app ít nhất một lần trong ngày.
     </div>
   </div>
+
+  ${Server.available() ? tgBlock() : ''}
 
   ${Server.available() ? `
   ${secHd('Tài khoản & máy chủ')}

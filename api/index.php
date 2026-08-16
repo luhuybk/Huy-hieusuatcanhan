@@ -5,81 +5,15 @@
    Một điểm vào duy nhất: nhận JSON, trả JSON.
    Dữ liệu nằm ở máy chủ nên đây mới là thứ thật sự bảo vệ nó —
    màn hình đăng nhập ở trình duyệt chỉ là phần nhìn thấy được.
-   ============================================================ */
-declare(strict_types=1);
 
-/* Lỗi PHP in ra màn hình sẽ chen vào trước JSON và làm hỏng cả câu trả lời.
-   Ghi vào log của hosting thì được, in ra thì không. */
-@ini_set('display_errors', '0');
+   Phần cấu hình, cơ sở dữ liệu và Telegram nằm trong lib.php,
+   dùng chung với cron.php.
+   ============================================================ */
+require_once __DIR__ . '/lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
-
-const COOKIE      = 'lh_session';
-const SESSION_DAY = 60;      // phiên sống bao lâu
-const FAIL_MAX    = 8;       // sai bao nhiêu lần thì khoá
-const FAIL_WIN    = 900;     // trong bao nhiêu giây (15 phút)
-const PULL_LIMIT  = 500;     // số bản ghi tối đa mỗi lượt kéo về
-
-/* Cùng định dạng thời gian với JavaScript (…T…Z, có phần nghìn giây) để
-   hai bên so sánh chuỗi ngày với nhau lúc nào cũng ra đúng kết quả. */
-function isoNow(int $t = 0): string { return gmdate('Y-m-d\TH:i:s.000\Z', $t ?: time()); }
-
-/* Không đặt kiểu trả về "never": kiểu đó cần PHP 8.1, mà vài gói hosting
-   vẫn đang chạy 8.0 — sai chỗ này là trắng trang, không báo gì. */
-function out(array $d, int $code = 200) {
-  http_response_code($code);
-  echo json_encode($d, JSON_UNESCAPED_UNICODE);
-  exit;
-}
-function fail(string $msg, int $code = 400) { out(['ok' => false, 'error' => $msg], $code); }
-
-/* ---------------- cấu hình ---------------- */
-if (!is_file(__DIR__ . '/config.php'))
-  fail('Chưa có api/config.php — hãy chép config.example.php thành config.php rồi dán mã mật khẩu vào.', 503);
-require __DIR__ . '/config.php';
-
-if (!defined('LH_PASSWORD') || LH_PASSWORD === '' || str_contains(LH_PASSWORD, 'DAN_MA_VAO_DAY'))
-  fail('Chưa đặt mật khẩu trong api/config.php. Chạy "node tools/hash-password.js" để tạo mã rồi dán vào.', 503);
-
-$DB_FILE = defined('LH_DB_FILE') ? LH_DB_FILE : __DIR__ . '/data/lifehub.sqlite';
-
-/* ---------------- kết nối ---------------- */
-function db(): PDO {
-  static $pdo = null;
-  if ($pdo) return $pdo;
-  global $DB_FILE;
-
-  if (!in_array('sqlite', PDO::getAvailableDrivers(), true))
-    fail('Hosting này không bật pdo_sqlite. Xem hướng dẫn chuyển sang MySQL trong README.', 503);
-
-  $dir = dirname($DB_FILE);
-  if (!is_dir($dir)) @mkdir($dir, 0700, true);
-  /* chặn tải file cơ sở dữ liệu qua trình duyệt, phòng khi nó nằm trong public_html */
-  if (is_dir($dir) && !is_file($dir . '/.htaccess'))
-    @file_put_contents($dir . '/.htaccess', "Require all denied\nOrder allow,deny\nDeny from all\n");
-
-  try {
-    $pdo = new PDO('sqlite:' . $DB_FILE, null, null, [
-      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-  } catch (Throwable $e) {
-    fail('Không mở được cơ sở dữ liệu. Kiểm tra quyền ghi của thư mục api/data.', 500);
-  }
-  $pdo->exec('PRAGMA journal_mode = WAL');
-  $pdo->exec('PRAGMA busy_timeout = 5000');
-  $pdo->exec('CREATE TABLE IF NOT EXISTS items (
-      kind TEXT NOT NULL, item_id TEXT NOT NULL, data TEXT NOT NULL,
-      updated_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (kind, item_id))');
-  $pdo->exec('CREATE INDEX IF NOT EXISTS items_upd ON items(updated_at)');
-  $pdo->exec('CREATE TABLE IF NOT EXISTS sessions (
-      token_hash TEXT PRIMARY KEY, created_at TEXT, expires_at TEXT, label TEXT)');
-  $pdo->exec('CREATE TABLE IF NOT EXISTS login_fails (ip TEXT, at INTEGER)');
-  return $pdo;
-}
 
 /* ---------------- mật khẩu: PBKDF2-SHA256 ----------------
    Cùng thuật toán với tools/hash-password.js, nên mã tạo ở máy bạn
@@ -140,6 +74,20 @@ function failCount(): int {
   $st = db()->prepare('SELECT COUNT(*) c FROM login_fails WHERE ip = ?');
   $st->execute([clientIp()]);
   return (int)$st->fetch()['c'];
+}
+
+/* Trạng thái Telegram gửi về cho giao diện. Mã bot không bao giờ có ở đây. */
+function tgState(): array {
+  $base = (isHttps() ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'tenmien.com')
+        . str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php'));
+  return ['ok' => true,
+    'hasToken'   => confGet('tg_token', '') !== '',
+    'chatId'     => confGet('tg_chat', ''),
+    'topic'      => confGet('tg_topic', ''),
+    'digestHour' => (int)confGet('tg_digest_hour', '-1'),
+    'enabled'    => (bool)confGet('tg_enabled', ''),
+    'cron'       => '/usr/bin/php ' . __DIR__ . '/cron.php',
+    'cronUrl'    => $base . '/cron.php?key=' . cronKey()];
 }
 
 /* ---------------- đọc yêu cầu ---------------- */
@@ -256,6 +204,65 @@ switch ($action) {
       fail('Ghi dữ liệu lỗi', 500);
     }
     out(['ok' => true, 'saved' => $saved, 'skipped' => $skipped, 'now' => isoNow()]);
+  }
+
+  /* ---------------- Telegram ---------------- */
+
+  /* Cố ý KHÔNG trả mã bot về trình duyệt — chỉ cho biết đã có hay chưa. */
+  case 'tg_get': {
+    requireAuth();
+    out(tgState());
+  }
+
+  case 'tg_save': {
+    requireAuth();
+    if (isset($in['token']) && trim((string)$in['token']) !== '')
+      confSet('tg_token', trim((string)$in['token']));
+    confSet('tg_chat',  trim((string)($in['chatId'] ?? '')));
+    confSet('tg_topic', trim((string)($in['topic'] ?? '')));
+    $h = isset($in['digestHour']) ? (int)$in['digestHour'] : -1;
+    confSet('tg_digest_hour', ($h >= 0 && $h <= 23) ? $h : -1);
+    confSet('tg_enabled', !empty($in['enabled']) ? '1' : '');
+    out(tgState());
+  }
+
+  case 'tg_send': {
+    requireAuth();
+    $text = trim((string)($in['text'] ?? ''));
+    if ($text === '') fail('Không có nội dung để gửi');
+    $res = tgSend(tgEsc($text), $in['topic'] ?? null);
+    if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
+    out(['ok' => true]);
+  }
+
+  /* Dò xem bot đang ở group nào: đọc các tin nhắn gần đây bot nhìn thấy.
+     Vì vậy phải nhắn một câu vào group TRƯỚC khi bấm dò.               */
+  case 'tg_discover': {
+    requireAuth();
+    $token = trim((string)($in['token'] ?? '')) ?: (string)confGet('tg_token', '');
+    if ($token === '') fail('Chưa có mã bot — nhập mã rồi bấm dò lại');
+    $res = httpPostJson("https://api.telegram.org/bot$token/getUpdates", ['limit' => 100]);
+    if (empty($res['ok'])) fail($res['error'] ?? 'Không gọi được Telegram', 502);
+
+    $chats = [];
+    foreach ((array)($res['result'] ?? []) as $u) {
+      $msg = $u['message'] ?? $u['channel_post'] ?? null;
+      if (!$msg || empty($msg['chat']['id'])) continue;
+      $id = (string)$msg['chat']['id'];
+      if (isset($chats[$id])) continue;
+      $chats[$id] = [
+        'id'    => $id,
+        'title' => $msg['chat']['title'] ?? $msg['chat']['username'] ?? $msg['chat']['first_name'] ?? $id,
+        'topic' => $msg['message_thread_id'] ?? '',
+      ];
+    }
+    out(['ok' => true, 'chats' => array_values($chats)]);
+  }
+
+  /* chạy thử bộ hẹn giờ mà không gửi gì — để xem lịch có đúng không */
+  case 'tg_dryrun': {
+    requireAuth();
+    out(['ok' => true, 'result' => runSchedule(true), 'digest' => buildDigest()]);
   }
 
   /* vài con số để hiện trong Cài đặt */
