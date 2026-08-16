@@ -324,6 +324,7 @@ function taskItem(t){
   const meta = [
     t.prio === 'high' && !t.done ? `<span class="chip bad">gấp</span>` : '',
     t.repeat ? `<span class="chip">↻ ${esc(REPEATS[t.repeat]||'')}</span>` : '',
+    t.remindAt && !t.done ? `<span class="chip">🔔 ${esc(t.remindAt)}</span>` : '',
     t.streak > 1 ? `<span class="chip"><span class="streak">🔥 ${t.streak}</span></span>` : '',
     t.note ? `<span class="chip">${esc(t.note.slice(0,28))}</span>` : ''
   ].filter(Boolean).join('');
@@ -1109,7 +1110,14 @@ function tgBlock(){
       ${t.digestHour != null && t.digestHour >= 0
         ? `Bản tóm tắt hằng ngày gửi lúc <b>${String(t.digestHour).padStart(2,'0')}:00</b>.`
         : 'Bản tóm tắt hằng ngày đang tắt.'}
+      ${t.workHour != null && t.workHour >= 0
+        ? ` Bảng công việc gửi lúc <b>${String(t.workHour).padStart(2,'0')}:00</b>${
+            t.workTopic ? ' vào nhánh ' + esc(String(t.workTopic)) : ''}.`
+        : ' Bảng công việc đang tắt.'}
     </div>
+    ${live ? `<div class="btns" style="margin-top:12px">
+      <button class="btn sm grow" data-act="workNow">Gửi bảng công việc ngay</button>
+    </div>` : ''}
     ${t.cron ? `<div class="dim" style="margin-top:12px;line-height:1.6">
       <b>Bước cuối — hẹn giờ cho máy chủ.</b> Vào hPanel → Cron Jobs, tạo lịch chạy
       <b>mỗi 5 phút</b> với lệnh:

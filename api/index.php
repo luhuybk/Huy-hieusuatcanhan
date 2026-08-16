@@ -85,6 +85,8 @@ function tgState(): array {
     'chatId'     => confGet('tg_chat', ''),
     'topic'      => confGet('tg_topic', ''),
     'digestHour' => (int)confGet('tg_digest_hour', '-1'),
+    'workHour'   => (int)confGet('tg_work_hour', '-1'),
+    'workTopic'  => confGet('tg_work_topic', ''),
     'enabled'    => (bool)confGet('tg_enabled', ''),
     'cron'       => '/usr/bin/php ' . __DIR__ . '/cron.php',
     'cronUrl'    => $base . '/cron.php?key=' . cronKey()];
@@ -222,6 +224,9 @@ switch ($action) {
     confSet('tg_topic', trim((string)($in['topic'] ?? '')));
     $h = isset($in['digestHour']) ? (int)$in['digestHour'] : -1;
     confSet('tg_digest_hour', ($h >= 0 && $h <= 23) ? $h : -1);
+    $w = isset($in['workHour']) ? (int)$in['workHour'] : -1;
+    confSet('tg_work_hour', ($w >= 0 && $w <= 23) ? $w : -1);
+    confSet('tg_work_topic', trim((string)($in['workTopic'] ?? '')));
     confSet('tg_enabled', !empty($in['enabled']) ? '1' : '');
     out(tgState());
   }
@@ -262,7 +267,17 @@ switch ($action) {
   /* chạy thử bộ hẹn giờ mà không gửi gì — để xem lịch có đúng không */
   case 'tg_dryrun': {
     requireAuth();
-    out(['ok' => true, 'result' => runSchedule(true), 'digest' => buildDigest()]);
+    out(['ok' => true, 'result' => runSchedule(true), 'digest' => buildDigest(), 'work' => buildWork()]);
+  }
+
+  /* Gửi bảng công việc ngay bây giờ, không chờ tới giờ đã hẹn. */
+  case 'tg_work_now': {
+    requireAuth();
+    $lines = buildWork();
+    if (!$lines) out(['ok' => true, 'empty' => true]);
+    $res = tgSend('🗂 <b>Công việc · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), workTopic());
+    if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
+    out(['ok' => true, 'lines' => count($lines)]);
   }
 
   /* vài con số để hiện trong Cài đặt */

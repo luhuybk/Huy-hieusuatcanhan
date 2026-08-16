@@ -285,6 +285,8 @@ const taskFields = () => [
   {k:'due',   label:'Hạn', type:'date', half:true},
   {k:'repeat',label:'Lặp lại', type:'select', half:true, opts:Object.entries(REPEATS)},
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
+  {k:'remindAt', label:'Nhắn Telegram lúc', type:'time', half:true,
+   hint:'đúng ngày hạn, để trống thì không nhắn'},
   {k:'note',  label:'Ghi chú', type:'textarea'}
 ];
 function addTask(due){
@@ -349,6 +351,8 @@ const cardFields = () => [
   {k:'col',   label:'Cột', type:'select', half:true, opts:COLS.map(c=>[c.id,c.label])},
   {k:'areaId',label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
   {k:'due',   label:'Hạn chót', type:'date', half:true},
+  {k:'remindAt', label:'Nhắn Telegram lúc', type:'time', half:true,
+   hint:'đúng ngày hạn chót, để trống thì không nhắn'},
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
   {k:'progress', label:'Tiến độ (%)', type:'number', half:true, ph:'0-100'},
   {k:'extra', label:'Loại việc', type:'select', half:true,
@@ -700,11 +704,17 @@ function tgBox(){
       {k:'topic', label:'Nhánh mặc định', half:true, ph:'để trống = nhánh chính'},
       {k:'digestHour', label:'Giờ gửi bản tóm tắt hằng ngày', type:'number', half:true,
        ph:'0-23', hint:'để trống hoặc -1 thì không gửi'},
+      {k:'workHour', label:'Giờ gửi bảng công việc', type:'number', half:true,
+       ph:'0-23', hint:'việc đến hạn, việc trễ, việc đã giao'},
+      {k:'workTopic', label:'Nhánh cho công việc', half:true,
+       ph:'để trống = dùng nhánh mặc định'},
       {k:'enabled', label:'Trạng thái', type:'select', half:true,
        opts:[['yes','Đang bật'], ['','Tạm tắt']]}
     ],
     values:{token:'', chatId:t.chatId || '', topic:t.topic || '',
             digestHour: t.digestHour == null ? 7 : t.digestHour,
+            workHour: t.workHour == null ? -1 : t.workHour,
+            workTopic: t.workTopic || '',
             enabled: t.enabled ? 'yes' : ''},
     extra:`<div class="btns" style="margin-bottom:10px">
         <button type="button" class="btn sm grow" data-act="tgDiscover">Dò group</button>
@@ -714,6 +724,8 @@ function tgBox(){
     onSave(v){
       const body = {chatId:String(v.chatId || '').trim(), topic:String(v.topic || '').trim(),
                     digestHour: v.digestHour === '' ? -1 : +v.digestHour,
+                    workHour:   v.workHour   === '' ? -1 : +v.workHour,
+                    workTopic:  String(v.workTopic || '').trim(),
                     enabled: v.enabled === 'yes'};
       if (v.token) body.token = v.token.trim();
       Server.call('tg_save', body)
@@ -1189,6 +1201,13 @@ document.addEventListener('click', e => {
 
     /* Telegram */
     case 'tgBox':  tgBox(); break;
+    case 'workNow':
+      toast('Đang gửi…');
+      Server.call('tg_work_now')
+        .then(d => toast(d.empty ? 'Không có việc nào đang treo — chưa gửi gì cả'
+                                 : 'Đã đẩy bảng công việc vào Telegram'))
+        .catch(err => toast(err.message));
+      break;
     case 'tgTest': {
       const out = $('#tgout');
       if (out) out.textContent = 'Đang gửi…';

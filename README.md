@@ -275,6 +275,7 @@ Cài đặt → Thông báo Telegram → **Cài đặt**:
 - Dán mã bot
 - Bấm **Dò group** — app tự điền ID group và số nhánh
 - Chọn giờ gửi bản tóm tắt hằng ngày (để trống thì không gửi)
+- Chọn giờ gửi **bảng công việc**, và nhánh riêng cho nó nếu muốn tách khỏi nhánh mặc định
 - Bấm **Gửi thử** để chắc tin vào đúng nhánh
 - **Lưu cấu hình**
 
@@ -317,6 +318,44 @@ Cài đặt → **Nhắc lặp lại** → **+ Thêm**. Mỗi lời nhắc gồm
 Nút ➤ bên phải mỗi dòng gửi thử ngay lập tức. Ô vuông bên trái bật/tắt nhanh mà không cần mở ra sửa.
 
 **Về giờ giấc:** máy chủ tính theo giờ Việt Nam. Cron chạy 5 phút một lần nên lời nhắc đặt 18:30 sẽ tới trong khoảng 18:30–18:35. Nếu máy chủ trục trặc và trễ **quá một tiếng** thì app bỏ luôn lần đó chứ không gửi muộn — nhắc "tập gym 18:30" vào lúc 22h chỉ gây khó chịu. Mỗi lời nhắc chỉ gửi một lần mỗi ngày, cron chạy lại bao nhiêu lần cũng không gửi trùng.
+
+### Thông báo cho mục Công việc
+
+Hai thứ khác nhau, dùng chung hay riêng đều được.
+
+**Bảng công việc hằng ngày.** Cài đặt → Thông báo Telegram → ô *Giờ gửi bảng công việc*. Mỗi ngày một tin, xếp theo mức gấp:
+
+```
+🗂 Công việc · 16/08/2026
+
+🔴 Trễ hạn (1)
+   • Nộp báo cáo quý ❗ — trễ 3 ngày
+
+📌 Hôm nay (1)
+   • Gọi nhà cung cấp (14:45)
+
+🗓 Vài ngày tới
+   • Chuẩn bị họp — còn 2 ngày
+
+👥 Việc đã giao
+   • Thiết kế banner — Lan (trễ 3 ngày)
+   • Chạy ads Shopee — Minh (hạn hôm nay)
+```
+
+Ô *Nhánh cho công việc* cho phép đẩy tin này vào một nhánh khác với nhánh mặc định — việc làm ăn một nhánh, chuyện nhà một nhánh. Không có việc nào đang treo thì không gửi tin trống. Nút **Gửi bảng công việc ngay** ở màn Cài đặt gửi thử bất cứ lúc nào mà không phải chờ tới giờ.
+
+Bật bảng này thì bản tóm tắt hằng ngày **tự bỏ** khối việc đến hạn và dòng việc giao trễ, để bạn không đọc cùng một danh sách hai lần trong một buổi sáng. Tắt đi thì nó nhận lại như cũ.
+
+**Nhắc riêng từng đầu việc.** Mở một việc (hoặc một thẻ giao việc) → ô **Nhắn Telegram lúc**. Đúng ngày hạn, vào giờ đó, máy chủ đẩy riêng một tin cho việc ấy:
+
+```
+✓ Gọi nhà cung cấp
+Hạn hôm nay · 14:45
+```
+
+Thẻ giao việc thì kèm luôn tên người nhận. Việc đã đánh dấu xong, hoặc hạn không phải hôm nay, thì không nhắn. Trong danh sách, việc nào có hẹn giờ sẽ mang nhãn 🔔 kèm giờ.
+
+Cùng quy tắc giờ giấc như lời nhắc lặp lại: cron 5 phút một nhịp nên tin tới trong khoảng 5 phút sau giờ hẹn, trễ quá một tiếng thì bỏ lần đó, và mỗi việc chỉ nhắn một lần mỗi ngày. Việc lặp lại thì hạn tự dời sang kỳ sau khi bạn đánh dấu xong, nên giờ nhắc theo luôn mà không cần đặt lại.
 
 ### Bản tóm tắt hằng ngày
 

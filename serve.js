@@ -74,7 +74,9 @@ function buildDigest(){
   const md = today.slice(5);
   const lines = [];
 
-  const due = itemsOf('tasks').filter(t => !t.done && t.due && String(t.due).slice(0,10) <= today);
+  const workOn = +confGet('tg_work_hour','-1') >= 0;
+  const due = workOn ? []
+    : itemsOf('tasks').filter(t => !t.done && t.due && String(t.due).slice(0,10) <= today);
   if (due.length){
     const late = due.filter(t => String(t.due).slice(0,10) < today).length;
     lines.push(`✓ ${due.length} việc đến hạn${late ? ` (${late} đã trễ)` : ''}`);
@@ -111,8 +113,59 @@ function buildDigest(){
     if (c.col !== 'done' && c.due && String(c.due).slice(0,10) < today) lateCards++;
     if (c.extra && !c.extraPaidDate){ owed += +(c.extraPay || 0); owedN++; }
   }
-  if (lateCards) lines.push(`⚠️ ${lateCards} việc đã giao đang trễ`);
+  if (lateCards && !workOn) lines.push(`⚠️ ${lateCards} việc đã giao đang trễ`);
   if (owed) lines.push(`💰 Còn nợ công ngoài luồng: ${owed.toLocaleString('vi-VN')}₫ (${owedN} việc)`);
+  return lines;
+}
+
+/* bảng công việc — bản song sinh của buildWork() bên PHP */
+function buildWork(atMs){
+  const now = atMs ? new Date(atMs) : new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const dayOf = iso => Math.round((new Date(iso+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+  const cut = (s, n) => { s = String(s || '').trim(); n = n || 60;
+                          return s.length > n ? s.slice(0, n-1) + '…' : s; };
+  const lines = [];
+
+  const late = [], now_ = [], soon = [];
+  for (const t of itemsOf('tasks')){
+    if (t.done) continue;
+    const due = String(t.due || '').slice(0,10); if (due.length < 10) continue;
+    const d = dayOf(due);
+    if (d < 0) late.push(t); else if (d === 0) now_.push(t); else if (d <= 3) soon.push([t, d]);
+  }
+  const mark = t => '   • ' + cut(t.title) + (t.prio === 'high' ? ' ❗' : '')
+                  + (t.remindAt ? ` (${t.remindAt})` : '');
+  if (late.length){
+    late.sort((a,b) => String(a.due).localeCompare(String(b.due)));
+    lines.push(`🔴 Trễ hạn (${late.length})`);
+    late.slice(0,8).forEach(t => lines.push(mark(t) + ` — trễ ${-dayOf(String(t.due).slice(0,10))} ngày`));
+    if (late.length > 8) lines.push(`   … và ${late.length - 8} việc nữa`);
+  }
+  if (now_.length){
+    lines.push((lines.length ? '\n' : '') + `📌 Hôm nay (${now_.length})`);
+    now_.slice(0,10).forEach(t => lines.push(mark(t)));
+    if (now_.length > 10) lines.push(`   … và ${now_.length - 10} việc nữa`);
+  }
+  if (soon.length){
+    soon.sort((a,b) => a[1] - b[1]);
+    lines.push((lines.length ? '\n' : '') + '🗓 Vài ngày tới');
+    soon.slice(0,5).forEach(s => lines.push(`   • ${cut(s[0].title)} — còn ${s[1]} ngày`));
+  }
+
+  const cLate = [], cToday = [];
+  for (const c of itemsOf('cards')){
+    if (c.col === 'done') continue;
+    const due = String(c.due || '').slice(0,10); if (due.length < 10) continue;
+    const d = dayOf(due);
+    if (d < 0) cLate.push(c); else if (d === 0) cToday.push(c);
+  }
+  const who = c => '   • ' + cut(c.title) + (String(c.assignee || '').trim() ? ' — ' + c.assignee : ' — chưa giao');
+  if (cLate.length || cToday.length){
+    lines.push((lines.length ? '\n' : '') + '👥 Việc đã giao');
+    cLate.slice(0,6).forEach(c => lines.push(who(c) + ` (trễ ${-dayOf(String(c.due).slice(0,10))} ngày)`));
+    cToday.slice(0,6).forEach(c => lines.push(who(c) + ' (hạn hôm nay)'));
+  }
   return lines;
 }
 
@@ -141,6 +194,36 @@ function runSchedule(dry, atMs){
     markSent(key);
     done.push({reminder:r.title, ok:true, sent:`🔔 ${r.title}${r.note ? '\n'+r.note : ''}`,
                topic:r.topic || confGet('tg_topic','')});
+  }
+
+  /* nhắc riêng từng đầu việc, đúng ngày hạn */
+  for (const [kind, icon, what] of [['tasks','✓','việc của mình'], ['cards','👥','việc đã giao']]){
+    for (const t of itemsOf(kind)){
+      const m = /^(\d{1,2}):(\d{2})$/.exec(String(t.remindAt || '')); if (!m) continue;
+      if (kind === 'tasks' ? t.done : t.col === 'done') continue;
+      if (String(t.due || '').slice(0,10) !== today) continue;
+      const at = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                                     +m[1], +m[2], 0).getTime() / 1000);
+      if (nowSec < at || nowSec - at > REM_WINDOW) continue;
+      const key = `item:${kind}:${t.id}:${today}`;
+      if (alreadySent(key)) continue;
+      if (dry){ done.push({[what]:t.title, dry:true}); continue; }
+      markSent(key);
+      done.push({[what]:t.title, ok:true, topic:confGet('tg_work_topic','') || confGet('tg_topic','')});
+    }
+  }
+
+  /* bảng công việc hằng ngày */
+  const wh = +confGet('tg_work_hour', '-1');
+  if (wh >= 0 && now.getHours() >= wh){
+    const key = 'work:' + today;
+    if (!alreadySent(key)){
+      const lines = buildWork(now.getTime());
+      if (lines.length){
+        if (dry) done.push({work:lines.length, dry:true});
+        else { markSent(key); done.push({work:lines.length, ok:true, lines}); }
+      } else { if (!dry) markSent(key); done.push({work:0, note:'không có việc nào cần nhắc'}); }
+    }
   }
 
   const hour = +confGet('tg_digest_hour', '-1');
@@ -286,6 +369,9 @@ function api(req, res, body){
         confSet('tg_topic', String(inp.topic || '').trim());
         const h = inp.digestHour == null ? -1 : +inp.digestHour;
         confSet('tg_digest_hour', (h >= 0 && h <= 23) ? h : -1);
+        const w = inp.workHour == null ? -1 : +inp.workHour;
+        confSet('tg_work_hour', (w >= 0 && w <= 23) ? w : -1);
+        confSet('tg_work_topic', String(inp.workTopic || '').trim());
         confSet('tg_enabled', inp.enabled ? '1' : '');
       }
       if (!confGet('cron_key')) confSet('cron_key', crypto.randomBytes(12).toString('hex'));
@@ -293,6 +379,8 @@ function api(req, res, body){
         hasToken: (confGet('tg_token','') || '') !== '',
         chatId: confGet('tg_chat',''), topic: confGet('tg_topic',''),
         digestHour: +confGet('tg_digest_hour','-1'),
+        workHour: +confGet('tg_work_hour','-1'),
+        workTopic: confGet('tg_work_topic',''),
         enabled: !!confGet('tg_enabled',''),
         cron: '/usr/bin/php ' + path.join(__dirname, 'api/cron.php'),
         cronUrl: 'http://localhost:' + PORT + '/api/cron.php?key=' + confGet('cron_key','')});
@@ -311,7 +399,15 @@ function api(req, res, body){
     }
     case 'tg_dryrun': {
       if (!need()) return;
-      return send({ok:true, result:runSchedule(true, inp.at), digest:buildDigest()});
+      return send({ok:true, result:runSchedule(true, inp.at), digest:buildDigest(), work:buildWork(inp.at)});
+    }
+    case 'tg_work_now': {
+      if (!need()) return;
+      const lines = buildWork(inp.at);
+      if (!lines.length) return send({ok:true, empty:true});
+      console.log('[telegram thử · công việc] nhánh='
+        + (confGet('tg_work_topic','') || confGet('tg_topic','') || 'chính') + '\n' + lines.join('\n'));
+      return send({ok:true, lines:lines.length});
     }
     case 'tg_runnow': {          // chỉ có ở máy chủ thử, để kiểm bộ hẹn giờ
       if (!need()) return;

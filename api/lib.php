@@ -172,8 +172,10 @@ function buildDigest(): array {
   $md    = date('m-d');
   $lines = [];
 
-  /* việc đến hạn */
+  /* Việc đến hạn. Nếu bảng công việc riêng đang bật thì bỏ khối này đi,
+     không ai muốn đọc cùng một danh sách hai lần trong một buổi sáng. */
   $due = [];
+  if ((int)confGet('tg_work_hour', '-1') < 0)
   foreach (itemsOf('tasks') as $t) {
     if (!empty($t['done']) || empty($t['due'])) continue;
     if (substr((string)$t['due'], 0, 10) <= $today) $due[] = $t;
@@ -218,8 +220,92 @@ function buildDigest(): array {
     if ($col !== 'done' && !empty($c['due']) && substr((string)$c['due'], 0, 10) < $today) $lateCards++;
     if (!empty($c['extra']) && empty($c['extraPaidDate'])) { $owed += (int)($c['extraPay'] ?? 0); $owedN++; }
   }
-  if ($lateCards) $lines[] = "⚠️ $lateCards việc đã giao đang trễ";
+  if ($lateCards && (int)confGet('tg_work_hour', '-1') < 0)
+    $lines[] = "⚠️ $lateCards việc đã giao đang trễ";
   if ($owed) $lines[] = '💰 Còn nợ công ngoài luồng: <b>' . number_format($owed, 0, ',', '.') . '₫</b>' . " ($owedN việc)";
+
+  return $lines;
+}
+
+/* ---------------- bảng công việc ----------------
+   Tách riêng khỏi bản tóm tắt để đẩy được vào đúng nhánh công việc của group,
+   và vào giờ khác — bạn muốn xem việc lúc bắt đầu ngày làm, không phải lúc
+   vừa ngủ dậy. Trả về mảng rỗng khi không có gì, để khỏi gửi tin trống. */
+function workTopic() {
+  $t = (string)confGet('tg_work_topic', '');
+  return $t !== '' ? $t : null;      // null = dùng nhánh mặc định
+}
+
+function cutTitle($s, int $n = 60): string {
+  $s = trim((string)$s);
+  return mb_strlen($s, 'UTF-8') > $n ? mb_substr($s, 0, $n - 1, 'UTF-8') . '…' : $s;
+}
+
+function buildWork(): array {
+  $today = date('Y-m-d');
+  $lines = [];
+
+  /* --- việc của mình --- */
+  $late = []; $now = []; $soon = [];
+  foreach (itemsOf('tasks') as $t) {
+    if (!empty($t['done'])) continue;
+    $due = substr((string)($t['due'] ?? ''), 0, 10);
+    if (strlen($due) < 10) continue;
+    if ($due < $today)      $late[] = $t;
+    elseif ($due === $today) $now[] = $t;
+    else {
+      $d = (int)floor((strtotime($due) - strtotime($today)) / 86400);
+      if ($d <= 3) $soon[] = [$t, $d];
+    }
+  }
+  $mark = function ($t) {
+    $p = ($t['prio'] ?? '') === 'high' ? ' ❗' : '';
+    $at = (string)($t['remindAt'] ?? '');
+    return '   • ' . tgEsc(cutTitle($t['title'] ?? '')) . $p . ($at !== '' ? ' <i>(' . tgEsc($at) . ')</i>' : '');
+  };
+
+  if ($late) {
+    usort($late, function ($a, $b) { return strcmp((string)$a['due'], (string)$b['due']); });
+    $lines[] = '🔴 <b>Trễ hạn (' . count($late) . ')</b>';
+    foreach (array_slice($late, 0, 8) as $t) {
+      $d = (int)floor((strtotime($today) - strtotime(substr((string)$t['due'], 0, 10))) / 86400);
+      $lines[] = $mark($t) . ' <i>— trễ ' . $d . ' ngày</i>';
+    }
+    if (count($late) > 8) $lines[] = '   … và ' . (count($late) - 8) . ' việc nữa';
+  }
+  if ($now) {
+    $lines[] = ($lines ? "\n" : '') . '📌 <b>Hôm nay (' . count($now) . ')</b>';
+    foreach (array_slice($now, 0, 10) as $t) $lines[] = $mark($t);
+    if (count($now) > 10) $lines[] = '   … và ' . (count($now) - 10) . ' việc nữa';
+  }
+  if ($soon) {
+    usort($soon, function ($a, $b) { return $a[1] - $b[1]; });
+    $lines[] = ($lines ? "\n" : '') . '🗓 <b>Vài ngày tới</b>';
+    foreach (array_slice($soon, 0, 5) as $s)
+      $lines[] = '   • ' . tgEsc(cutTitle($s[0]['title'] ?? '')) . ' <i>— còn ' . $s[1] . ' ngày</i>';
+  }
+
+  /* --- việc đã giao cho người khác --- */
+  $cLate = []; $cToday = [];
+  foreach (itemsOf('cards') as $c) {
+    if ((string)($c['col'] ?? '') === 'done') continue;
+    $due = substr((string)($c['due'] ?? ''), 0, 10);
+    if (strlen($due) < 10) continue;
+    if ($due < $today)       $cLate[] = $c;
+    elseif ($due === $today) $cToday[] = $c;
+  }
+  $who = function ($c) {
+    $a = trim((string)($c['assignee'] ?? ''));
+    return '   • ' . tgEsc(cutTitle($c['title'] ?? '')) . ($a !== '' ? ' — <b>' . tgEsc($a) . '</b>' : ' — <i>chưa giao</i>');
+  };
+  if ($cLate || $cToday) {
+    $lines[] = ($lines ? "\n" : '') . '👥 <b>Việc đã giao</b>';
+    foreach (array_slice($cLate, 0, 6) as $c) {
+      $d = (int)floor((strtotime($today) - strtotime(substr((string)$c['due'], 0, 10))) / 86400);
+      $lines[] = $who($c) . ' <i>(trễ ' . $d . ' ngày)</i>';
+    }
+    foreach (array_slice($cToday, 0, 6) as $c) $lines[] = $who($c) . ' <i>(hạn hôm nay)</i>';
+  }
 
   return $lines;
 }
@@ -270,6 +356,56 @@ function runSchedule(bool $dry = false): array {
     if (!empty($res['ok'])) markSent($key);
     $done[] = ['reminder' => $r['title'] ?? '', 'ok' => !empty($res['ok']),
                'error' => $res['error'] ?? null];
+  }
+
+  /* --- nhắc riêng từng đầu việc, đúng ngày hạn --- */
+  foreach ([['tasks', '✓', 'việc của mình'], ['cards', '👥', 'việc đã giao']] as $spec) {
+    list($kind, $icon, $what) = $spec;
+    foreach (itemsOf($kind) as $t) {
+      $at = (string)($t['remindAt'] ?? '');
+      if (!preg_match('/^(\d{1,2}):(\d{2})$/', $at, $m)) continue;
+      if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
+      if (substr((string)($t['due'] ?? ''), 0, 10) !== $today) continue;
+
+      $when = mktime((int)$m[1], (int)$m[2], 0, (int)date('n'), (int)date('j'), (int)date('Y'));
+      if ($now < $when || $now - $when > REM_WINDOW) continue;
+
+      $key = 'item:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $today;
+      if (alreadySent($key)) continue;
+
+      $extra = $kind === 'cards' && trim((string)($t['assignee'] ?? '')) !== ''
+             ? "\nGiao cho <b>" . tgEsc((string)$t['assignee']) . '</b>' : '';
+      $note = trim((string)($t['note'] ?? $t['desc'] ?? ''));
+      $text = $icon . ' <b>' . tgEsc((string)($t['title'] ?? 'Việc cần làm')) . '</b>'
+            . "\n<i>Hạn hôm nay · " . $at . '</i>' . $extra
+            . ($note !== '' ? "\n\n" . tgEsc(cutTitle($note, 300)) : '');
+
+      if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
+      $res = tgSend($text, workTopic());
+      if (!empty($res['ok'])) markSent($key);
+      $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+    }
+  }
+
+  /* --- bảng công việc hằng ngày --- */
+  $wh = confGet('tg_work_hour', '-1');
+  if ($wh !== null && (int)$wh >= 0 && (int)date('G', $now) >= (int)$wh) {
+    $key = 'work:' . $today;
+    if (!alreadySent($key)) {
+      $lines = buildWork();
+      if ($lines) {
+        $text = '🗂 <b>Công việc · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines);
+        if ($dry) { $done[] = ['work' => count($lines), 'dry' => true]; }
+        else {
+          $res = tgSend($text, workTopic());
+          if (!empty($res['ok'])) markSent($key);
+          $done[] = ['work' => count($lines), 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+        }
+      } else {
+        if (!$dry) markSent($key);      // hôm nay không còn việc nào treo
+        $done[] = ['work' => 0, 'note' => 'không có việc nào cần nhắc'];
+      }
+    }
   }
 
   /* --- bản tóm tắt hằng ngày --- */
