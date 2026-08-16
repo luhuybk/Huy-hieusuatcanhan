@@ -1165,7 +1165,8 @@ document.addEventListener('click', e => {
 
     /* bản mới của app */
     case 'doRefresh': doRefresh(); break;
-    case 'hideUpd': { const b = document.querySelector('.updbar'); if (b) b.remove(); break; }
+    case 'hideUpd': { const b = el.closest('.updbar'); if (b) b.remove(); break; }
+    case 'whyNoServer': whyNoServer(); break;
 
     /* nhắc lặp lại */
     case 'addRem':  addRem(); break;
@@ -1346,6 +1347,34 @@ function updateBar(){
 }
 window.updateBar = updateBar;
 
+/* Cảnh báo app đang chạy mà không có máy chủ đăng nhập. Cố tình khó bỏ qua:
+   nếu bạn tưởng dữ liệu đang được bảo vệ mà thật ra không, đó là chuyện lớn. */
+function noServerBar(reason){
+  const el = document.createElement('div');
+  el.className = 'updbar warn';
+  el.innerHTML = `<span title="${esc(reason)}">⚠︎ Đang chạy KHÔNG có đăng nhập — dữ liệu chỉ nằm trên máy này.</span>
+    <button class="btn sm" data-act="whyNoServer">Vì sao?</button>
+    <button class="iconbtn" data-act="hideUpd" title="Để sau">✕</button>`;
+  document.body.appendChild(el);
+  el._reason = reason;
+}
+function whyNoServer(){
+  const bar = document.querySelector('.updbar.warn');
+  $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+    <h2>Chưa nối được máy chủ</h2>
+    <div class="dim" style="margin:-8px 0 14px;line-height:1.65">${esc((bar && bar._reason) || '')}</div>
+    <div class="dim" style="line-height:1.7">
+      Vì vậy app đang chạy như một sổ tay chỉ lưu trong trình duyệt này:
+      không hỏi mật khẩu, và dữ liệu <b>không</b> đồng bộ sang điện thoại.<br><br>
+      Cách kiểm tra nhanh: mở <b>${esc(location.origin + location.pathname.replace(/[^/]*$/, ''))}api/index.php</b>
+      trên một tab mới.<br>
+      · Thấy <b>{"ok":false,"error":"Chỉ nhận POST"}</b> → PHP chạy tốt, lỗi nằm chỗ khác.<br>
+      · Thấy trang lỗi 404 → thư mục <b>api/</b> chưa lên máy chủ.<br>
+      · Thấy mã PHP hiện ra → hosting chưa bật PHP cho tên miền này.
+    </div>
+    <button class="btn full" style="margin-top:14px" data-close>Đóng</button></div></div>`;
+}
+
 function doRefresh(){
   /* bảo service worker bỏ bộ nhớ đệm rồi mới tải lại, nếu không
      lần tải kế tiếp vẫn có thể lấy đúng bản cũ đang lưu */
@@ -1390,6 +1419,9 @@ function boot(){
      Không có (mở bằng file, hay bản gộp một tệp) thì chạy như cũ. */
   Server.probe().then(m => {
     if (m === 'anon'){ Gate.show(); return; }
+    /* Đang ở một địa chỉ web thật mà không nối được máy chủ nghĩa là app
+       đang chạy KHÔNG có đăng nhập. Không được im lặng chuyện đó. */
+    if (m === 'none' && Server.problem()) noServerBar(Server.problem());
     render();
     if (wantDemo && isEmpty) seedDemo();
     Sync.start();

@@ -290,6 +290,24 @@ Gói hosting nào chỉ cho gọi bằng đường link thì dùng địa chỉ 
 
 Chưa làm bước 4 thì lời nhắc vẫn hiện đầy đủ trong app nhưng **sẽ không có tin nào chạy vào Telegram**.
 
+### App không hỏi mật khẩu — kiểm thế nào
+
+Nếu mở trang mà vào thẳng, không thấy màn hình đăng nhập, thì máy chủ chưa nối được. App sẽ tự nói ra bằng một trong hai cách:
+
+- **Thanh đỏ ở cuối màn hình** *"Đang chạy KHÔNG có đăng nhập"* → bấm **Vì sao?** để xem lý do cụ thể.
+- **Màn hình đăng nhập kèm dòng báo lỗi** → lý do nằm ngay dưới ô mật khẩu.
+
+Kiểm nhanh bằng tay: mở `https://tenmien-cua-ban.com/api/index.php` trên một tab mới.
+
+| Thấy gì | Nghĩa là | Làm gì |
+|---|---|---|
+| `{"ok":false,"error":"Chỉ nhận POST"}` | PHP chạy tốt, API ổn | lỗi nằm chỗ khác — xem thanh báo trong app |
+| Trang lỗi **404** | thư mục `api/` chưa lên máy chủ | kiểm tra deploy Git đã kéo đủ chưa |
+| Hiện ra **mã PHP** | hosting chưa chạy PHP | hPanel → PHP Configuration, bật PHP cho tên miền |
+| `{"ok":false,"error":"Chưa có api/config.php…"}` | thiếu file cấu hình | làm bước 3 ở trên |
+
+Nếu app vẫn kẹt ở bản cũ dù đã push code mới: xoá dữ liệu duyệt web của riêng trang đó — thao tác này gỡ luôn service worker cũ.
+
 ### Nhắc lặp lại theo thứ và giờ
 
 Cài đặt → **Nhắc lặp lại** → **+ Thêm**. Mỗi lời nhắc gồm: nội dung, giờ, những thứ trong tuần, nhánh riêng (nếu muốn tin này vào nhánh khác), và ghi chú thêm.

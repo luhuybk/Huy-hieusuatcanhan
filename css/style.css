@@ -395,3 +395,5 @@ body.locked .app,body.locked .fab{display:none}
 }
 .updbar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .updbar .iconbtn{width:30px;height:30px;font-size:13px}
+.updbar.warn{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--bg2))}
+.updbar.warn span{color:var(--bad)}

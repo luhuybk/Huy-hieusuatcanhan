@@ -13,6 +13,7 @@ const Server = (() => {
   const SEEN  = 'lifehub.hasserver';     // máy này từng thấy máy chủ chưa
   let mode = 'unknown';                  // unknown | none | anon | authed
   let checking = null;
+  let problem = '';                      // vì sao không nối được máy chủ, để nói cho người dùng
 
   const url = () => 'api/index.php';
   const available = () => mode === 'anon' || mode === 'authed';
@@ -32,11 +33,22 @@ const Server = (() => {
       /* lỗi mạng: không có res, không có status — phân biệt được với lỗi máy chủ */
       throw new Error('Không nối được tới máy chủ. Kiểm tra mạng rồi thử lại.');
     }
-    let data = null;
-    try { data = await res.json(); } catch(e){}
+    let data = null, raw = '';
+    try { raw = await res.text(); data = JSON.parse(raw); } catch(e){}
+
+    /* Trả về 200 mà không phải JSON = hosting đang đưa thẳng mã PHP ra
+       thay vì chạy nó. Phải nhận ra ca này, nếu không app tưởng máy chủ
+       hỏng vặt rồi bỏ qua luôn phần đăng nhập. */
+    const looksLikePhp = !data && /<\?php|LH_PASSWORD/.test(raw.slice(0, 400));
+
     if (!res.ok || !data || data.ok === false){
-      const err = new Error((data && data.error) || ('Máy chủ trả lỗi ' + res.status));
+      const err = new Error(
+        looksLikePhp ? 'Máy chủ không chạy PHP — nó đang gửi thẳng nội dung file api/index.php ra ngoài.'
+        : (data && data.error) || (!data ? 'Máy chủ trả về thứ không phải JSON (HTTP ' + res.status + ')'
+                                         : 'Máy chủ trả lỗi ' + res.status));
       err.status = res.status;
+      err.notJson = !data;
+      err.php = looksLikePhp;
       if (res.status === 401 && action !== 'login'){ mode = 'anon'; clearGrace(); }
       throw err;
     }
@@ -60,17 +72,29 @@ const Server = (() => {
     checking = call('me')
       .then(d => {
         try { localStorage.setItem(SEEN, '1'); } catch(e){}
+        problem = '';
         mode = d.auth ? 'authed' : 'anon';
         if (d.auth && d.expires) setGrace(d.expires);
         return mode;
       })
       .catch(err => {
-        if (err.status === 404){                 // chưa cài thư mục api/ → chỉ lưu trên máy
+        if (err.status === 404){
+          /* Không có api/ trên máy chủ. App vẫn chạy được (chỉ lưu trên máy),
+             nhưng KHÔNG có đăng nhập — phải nói ra, không được im lặng. */
           try { localStorage.removeItem(SEEN); } catch(e){}
           mode = 'none';
+          problem = 'Không tìm thấy api/index.php trên máy chủ (lỗi 404). '
+                  + 'Thư mục api/ chưa được đưa lên, hoặc app đang nằm ở đường dẫn khác.';
         }
         else if (err.status === 401) mode = 'anon';
-        else if (err.status) mode = 'anon';      // máy chủ có đó nhưng đang trục trặc
+        else if (err.php){
+          mode = 'anon';
+          problem = err.message + ' Bật PHP cho tên miền này trong hPanel rồi tải lại.';
+        }
+        else if (err.status){
+          mode = 'anon';                          // máy chủ có đó nhưng đang trục trặc
+          problem = err.message;
+        }
         else {
           /* Không nối được mạng. Máy này từng có máy chủ thì vẫn phải hỏi
              mật khẩu khi hạn dùng tạm đã hết — nếu không thì chỉ cần rút
@@ -104,7 +128,8 @@ const Server = (() => {
   const push  = rows  => call('push', {rows});
   const stats = ()    => call('stats');
 
-  return {probe, login, logout, logoutAll, pull, push, stats, available, authed, state, call};
+  return {probe, login, logout, logoutAll, pull, push, stats, available, authed, state, call,
+          problem: () => problem};
 })();
 window.Server = Server;
 
@@ -116,6 +141,7 @@ const Gate = (() => {
   let busy = false;
 
   function show(note){
+    if (!note && Server.problem()) note = Server.problem();
     document.body.classList.add('locked');
     let el = document.getElementById('gate');
     if (!el){
