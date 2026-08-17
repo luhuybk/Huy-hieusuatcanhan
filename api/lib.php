@@ -182,6 +182,17 @@ function tgItemButtons(string $kind, string $id): ?array {
   ];
 }
 
+/* Nút "Xong hôm nay" dưới lời nhắc lặp lại. Không dùng chung tgItemButtons()
+   được: nhắc lặp lại không có ngày hạn để dời, tick xong là xong kỳ này. */
+function tgRemButtons(string $id): ?array {
+  if (!confGet('tg_webhook_on')) return null;
+  return [[['text' => '✅ Xong hôm nay', 'callback_data' => 'remdone:' . $id]]];
+}
+
+/* Id cho bản ghi do máy chủ tạo ra (mẩu ghi nhanh nhắn từ Telegram).
+   Không cần trùng kiểu với uid() bên JavaScript, chỉ cần không đụng nhau. */
+function newId(): string { return dechex(time()) . bin2hex(random_bytes(4)); }
+
 /* khoá bí mật để Telegram tự xác thực khi gọi webhook.php — sinh một lần */
 function webhookSecret(): string {
   $k = confGet('tg_webhook_secret');
@@ -436,6 +447,70 @@ function buildWeekly(): array {
   return $lines;
 }
 
+/* ---------------- tổng kết tuần theo từng nhân sự ----------------
+   Mỗi người một tin riêng, cố ý: để bạn chuyển tiếp thẳng cho họ mà không
+   phải cắt dán, và không lộ số liệu của người này sang người kia.
+   Trả về [['name' => ..., 'lines' => [...]], ...], bỏ qua ai không có gì. */
+function buildStaffWeekly(): array {
+  $today = date('Y-m-d');
+  $from  = date('Y-m-d', strtotime('-7 day'));
+  $blank = ['new' => 0, 'done' => 0, 'open' => 0, 'late' => [], 'owed' => 0, 'owedN' => 0];
+  $by = [];
+
+  foreach (itemsOf('cards') as $c) {
+    $who = trim((string)($c['assignee'] ?? ''));
+    if ($who === '') continue;
+    if (!isset($by[$who])) $by[$who] = $blank;
+
+    if (substr((string)($c['createdAt'] ?? ''), 0, 10) >= $from) $by[$who]['new']++;
+
+    $isDone = (string)($c['col'] ?? '') === 'done';
+    if ($isDone) {
+      if (substr((string)($c['doneAt'] ?? ''), 0, 10) >= $from) $by[$who]['done']++;
+    } else {
+      $by[$who]['open']++;
+      $due = substr((string)($c['due'] ?? ''), 0, 10);
+      if (strlen($due) === 10 && $due < $today)
+        $by[$who]['late'][] = [$c, (int)floor((strtotime($today) - strtotime($due)) / 86400)];
+    }
+    /* tiền công ngoài luồng tính cả việc đã xong — nợ vẫn là nợ */
+    if (!empty($c['extra']) && empty($c['extraPaidDate'])) {
+      $by[$who]['owed'] += (int)($c['extraPay'] ?? 0);
+      $by[$who]['owedN']++;
+    }
+  }
+
+  ksort($by, SORT_NATURAL | SORT_FLAG_CASE);
+  $out = [];
+  foreach ($by as $name => $r) {
+    if ($r['new'] === 0 && $r['done'] === 0 && $r['open'] === 0 && $r['owed'] === 0) continue;
+    $lines = [];
+    $lines[] = '📥 <b>' . $r['new'] . '</b> việc mới giao trong tuần';
+    $lines[] = '✓ <b>' . $r['done'] . '</b> việc đã xong';
+    $lines[] = '📋 <b>' . $r['open'] . '</b> việc còn đang mở';
+
+    if ($r['late']) {
+      usort($r['late'], function ($a, $b) { return $b[1] - $a[1]; });
+      $lines[] = '';
+      $lines[] = '─────────────';
+      $lines[] = '';
+      $lines[] = '🔴 <b>Đang trễ (' . count($r['late']) . ')</b>';
+      foreach (array_slice($r['late'], 0, 6) as $l)
+        $lines[] = '   • ' . tgEsc(cutTitle($l[0]['title'] ?? '')) . ' <i>— trễ ' . $l[1] . ' ngày</i>';
+      if (count($r['late']) > 6) $lines[] = '   … và ' . (count($r['late']) - 6) . ' việc nữa';
+    }
+    if ($r['owed']) {
+      $lines[] = '';
+      $lines[] = '─────────────';
+      $lines[] = '';
+      $lines[] = '💰 Tiền công ngoài luồng chưa trả: <b>'
+               . number_format($r['owed'], 0, ',', '.') . '₫</b> (' . $r['owedN'] . ' việc)';
+    }
+    $out[] = ['name' => (string)$name, 'lines' => $lines];
+  }
+  return $out;
+}
+
 /* ---------------- bộ chạy lịch ----------------
    Gọi mỗi 5 phút bởi cron. Trả về danh sách việc đã làm để dễ dò lỗi. */
 function alreadySent(string $key): bool {
@@ -486,8 +561,10 @@ function tgWhy(): array {
         $row['why'] = 'Giờ hẹn không hợp lệ';
       elseif ($due === '')
         $row['why'] = 'Chưa đặt hạn — chỉ nhắc đúng ngày hạn';
-      elseif ($due !== $today)
-        $row['why'] = 'Hạn ' . $due . ', không phải hôm nay';
+      elseif ($due !== $today
+              && !((int)($t['remindBefore'] ?? 0) > 0
+                   && $due === date('Y-m-d', strtotime('+' . (int)$t['remindBefore'] . ' day'))))
+        $row['why'] = 'Hạn ' . $due . ', hôm nay không phải ngày nhắc';
       else {
         $when = mktime((int)$m[1], (int)$m[2], 0, (int)date('n'), (int)date('j'), (int)date('Y'));
         $key  = 'item:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $today . ':' . $at;
@@ -542,6 +619,9 @@ function runSchedule(bool $dry = false): array {
 
     $key = 'rem:' . ($r['id'] ?? '?') . ':' . $today;
     if (alreadySent($key)) continue;
+    /* Đã tick xong hôm nay rồi thì đừng nhắc nữa — tập gym xong lúc 6h
+       sáng mà 18h30 vẫn bị nhắc thì lần sau người ta tắt luôn cái app. */
+    if (in_array($today, array_map('strval', (array)($r['doneLog'] ?? [])), true)) continue;
 
     $text = '🔔 <b>' . tgEsc((string)($r['title'] ?? 'Nhắc nhở')) . '</b>'
           . "\n<i>" . $time . '</i>'
@@ -549,20 +629,30 @@ function runSchedule(bool $dry = false): array {
 
     if ($dry) { $done[] = ['reminder' => $r['title'] ?? '', 'dry' => true]; continue; }
     $own = trim((string)($r['topic'] ?? ''));
-    $res = tgSend($text, $own !== '' ? $own : topicFor('rem'));
+    $res = tgSend($text, $own !== '' ? $own : topicFor('rem'), tgRemButtons((string)($r['id'] ?? '')));
     if (!empty($res['ok'])) markSent($key);
     $done[] = ['reminder' => $r['title'] ?? '', 'ok' => !empty($res['ok']),
                'error' => $res['error'] ?? null];
   }
 
-  /* --- nhắc riêng từng đầu việc, đúng ngày hạn --- */
+  /* --- nhắc riêng từng đầu việc: đúng ngày hạn, và trước hạn nếu có đặt --- */
   foreach ([['tasks', '✓', 'việc của mình'], ['cards', '👥', 'việc đã giao']] as $spec) {
     list($kind, $icon, $what) = $spec;
     foreach (itemsOf($kind) as $t) {
       $at = (string)($t['remindAt'] ?? '');
       if (!preg_match('/^(\d{1,2}):(\d{2})$/', $at, $m)) continue;
       if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
-      if (substr((string)($t['due'] ?? ''), 0, 10) !== $today) continue;
+
+      /* Hai ngày được nhắc: đúng ngày hạn, và ngày "còn N hôm nữa" nếu có
+         đặt nhắc trước. Chỉ một tin báo trước chứ không nhắc suốt N ngày —
+         việc lớn cần một cú hích sớm, không cần bị càu nhàu mỗi sáng. */
+      $due = substr((string)($t['due'] ?? ''), 0, 10);
+      if (strlen($due) < 10) continue;
+      $before = (int)($t['remindBefore'] ?? 0);
+      if ($due === $today)                                                      $lead = 0;
+      elseif ($before > 0 && $due === date('Y-m-d', strtotime("+$before day"))) $lead = $before;
+      else continue;
+
       /* Đã bấm dời trong hôm nay thì thôi, khỏi nhắc theo giờ hẹn nữa —
          người ta vừa nói "để lát nữa", nhắc lại đúng giờ cũ là vô nghĩa. */
       $sn = substr(trim((string)($t['snoozeUntil'] ?? '')), 0, 10);
@@ -581,8 +671,10 @@ function runSchedule(bool $dry = false): array {
       $extra = $kind === 'cards' && trim((string)($t['assignee'] ?? '')) !== ''
              ? "\nGiao cho <b>" . tgEsc((string)$t['assignee']) . '</b>' : '';
       $note = trim((string)($t['note'] ?? $t['desc'] ?? ''));
-      $text = $icon . ' <b>' . tgEsc((string)($t['title'] ?? 'Việc cần làm')) . '</b>'
-            . "\n<i>Hạn hôm nay · " . $at . '</i>' . $extra
+      $head = $lead === 0 ? 'Hạn hôm nay · ' . $at
+            : 'Còn ' . $lead . ' ngày — hạn ' . date('d/m', strtotime($due)) . ' · ' . $at;
+      $text = ($lead === 0 ? $icon : '⏳') . ' <b>' . tgEsc((string)($t['title'] ?? 'Việc cần làm')) . '</b>'
+            . "\n<i>" . $head . '</i>' . $extra
             . ($note !== '' ? "\n\n" . tgEsc(cutTitle($note, 300)) : '');
 
       if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
@@ -660,6 +752,22 @@ function runSchedule(bool $dry = false): array {
         $res = tgSend($text, topicFor('report'));
         if (!empty($res['ok'])) markSent($key);
         $done[] = ['weekly' => count($lines), 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+      }
+    }
+
+    /* Tổng kết theo từng nhân sự — đi cùng giờ với tóm tắt tuần, nhưng
+       khoá riêng cho từng người: một người gửi hỏng thì những người khác
+       vẫn đi, lần cron sau chỉ gửi lại đúng người còn thiếu. */
+    if (confGet('tg_staff_weekly')) {
+      foreach (buildStaffWeekly() as $s) {
+        $key = 'staffw:' . md5($s['name']) . ':' . $today;
+        if (alreadySent($key)) continue;
+        $text = '🧑‍🔧 <b>' . tgEsc($s['name']) . ' · tuần ' . date('d/m/Y') . "</b>\n\n"
+              . implode("\n", $s['lines']);
+        if ($dry) { $done[] = ['staff' => $s['name'], 'dry' => true]; continue; }
+        $res = tgSend($text, topicFor('cards'));
+        if (!empty($res['ok'])) markSent($key);
+        $done[] = ['staff' => $s['name'], 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
       }
     }
   }

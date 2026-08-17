@@ -92,6 +92,7 @@ function tgState(): array {
     'reportTopic'=> confGet('tg_report_topic', ''),
     'workTopic'  => confGet('tg_work_topic', ''),     // cấu hình cũ, giữ để lùi về khi bốn ô trên còn trống
     'weeklyHour' => (int)confGet('tg_weekly_hour', '-1'),
+    'staffWeekly'=> (bool)confGet('tg_staff_weekly', ''),
     'escalate'   => (bool)confGet('tg_escalate', ''),
     'webhookOn'  => (bool)confGet('tg_webhook_on', ''),
     'enabled'    => (bool)confGet('tg_enabled', ''),
@@ -238,6 +239,7 @@ switch ($action) {
       confSet($conf, trim((string)($in[$k] ?? '')));
     $wk = isset($in['weeklyHour']) ? (int)$in['weeklyHour'] : -1;
     confSet('tg_weekly_hour', ($wk >= 0 && $wk <= 23) ? $wk : -1);
+    confSet('tg_staff_weekly', !empty($in['staffWeekly']) ? '1' : '');
     confSet('tg_escalate', !empty($in['escalate']) ? '1' : '');
     confSet('tg_enabled', !empty($in['enabled']) ? '1' : '');
     out(tgState());
@@ -301,6 +303,19 @@ switch ($action) {
     out(['ok' => true, 'lines' => count($lines)]);
   }
 
+  /* Gửi tổng kết theo nhân sự ngay, không chờ tới Chủ nhật. */
+  case 'tg_staff_now': {
+    requireAuth();
+    $people = buildStaffWeekly();
+    if (!$people) out(['ok' => true, 'empty' => true]);
+    foreach ($people as $s) {
+      $res = tgSend('🧑‍🔧 <b>' . tgEsc($s['name']) . ' · tuần ' . date('d/m/Y') . "</b>\n\n"
+                    . implode("\n", $s['lines']), topicFor('cards'));
+      if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
+    }
+    out(['ok' => true, 'people' => count($people)]);
+  }
+
   /* Vì sao lời nhắc chưa tới Telegram — chỉ đọc, không gửi gì. */
   case 'tg_why': {
     requireAuth();
@@ -328,7 +343,9 @@ switch ($action) {
     if (!isHttps()) fail('Cần https để Telegram gọi ngược lại — bật SSL cho tên miền trước.');
     $hookUrl = $base . '/webhook.php';
     $res = httpPostJson("https://api.telegram.org/bot$token/setWebhook", [
-      'url' => $hookUrl, 'secret_token' => $secret, 'allowed_updates' => ['callback_query'],
+      /* message: để nhắn "/ghi …" thẳng vào group là có mẩu ghi nhanh */
+      'url' => $hookUrl, 'secret_token' => $secret,
+      'allowed_updates' => ['callback_query', 'message'],
     ]);
     if (empty($res['ok'])) fail($res['error'] ?? 'Không bật được nút Xong', 502);
     confSet('tg_webhook_on', '1');

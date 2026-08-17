@@ -249,6 +249,52 @@ function buildWeekly(atMs){
 const alreadySent = k => !!db().prepare('SELECT 1 FROM sent WHERE k = ?').get(k);
 const markSent = k => db().prepare('INSERT OR IGNORE INTO sent (k,at) VALUES (?,?)').run(k, Math.floor(Date.now()/1000));
 
+/* tổng kết tuần theo nhân sự — bản song sinh của buildStaffWeekly() bên PHP */
+function buildStaffWeekly(atMs){
+  const now = atMs ? new Date(atMs) : new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const f = new Date(now.getTime() - 7 * 86400000);
+  const from = `${f.getFullYear()}-${pad(f.getMonth()+1)}-${pad(f.getDate())}`;
+  const cut = s => { s = String(s || '').trim(); return s.length > 60 ? s.slice(0,59) + '…' : s; };
+  const by = {};
+
+  for (const c of itemsOf('cards')){
+    const who = String(c.assignee || '').trim(); if (!who) continue;
+    if (!by[who]) by[who] = {new:0, done:0, open:0, late:[], owed:0, owedN:0};
+    if (String(c.createdAt || '').slice(0,10) >= from) by[who].new++;
+    const isDone = c.col === 'done';
+    if (isDone){ if (String(c.doneAt || '').slice(0,10) >= from) by[who].done++; }
+    else {
+      by[who].open++;
+      const due = String(c.due || '').slice(0,10);
+      if (due.length === 10 && due < today)
+        by[who].late.push([c, Math.round((new Date(today+'T00:00:00') - new Date(due+'T00:00:00'))/86400000)]);
+    }
+    if (c.extra && !c.extraPaidDate){ by[who].owed += +(c.extraPay || 0); by[who].owedN++; }
+  }
+
+  const out = [];
+  for (const name of Object.keys(by).sort((a,b) => a.localeCompare(b, 'vi'))){
+    const r = by[name];
+    if (!r.new && !r.done && !r.open && !r.owed) continue;
+    const lines = [`📥 ${r.new} việc mới giao trong tuần`,
+                   `✓ ${r.done} việc đã xong`,
+                   `📋 ${r.open} việc còn đang mở`];
+    if (r.late.length){
+      r.late.sort((a,b) => b[1] - a[1]);
+      lines.push('', '─────────────', '', `🔴 Đang trễ (${r.late.length})`);
+      r.late.slice(0,6).forEach(l => lines.push(`   • ${cut(l[0].title)} — trễ ${l[1]} ngày`));
+      if (r.late.length > 6) lines.push(`   … và ${r.late.length - 6} việc nữa`);
+    }
+    if (r.owed){
+      lines.push('', '─────────────', '',
+        `💰 Tiền công ngoài luồng chưa trả: ${r.owed.toLocaleString('vi-VN')}₫ (${r.owedN} việc)`);
+    }
+    out.push({name, lines});
+  }
+  return out;
+}
+
 /* vì sao lời nhắc chưa chạy — bản song sinh của tgWhy() bên PHP */
 function tgWhy(atMs){
   const now = atMs ? new Date(atMs) : new Date();
@@ -278,7 +324,11 @@ function tgWhy(atMs){
       }
       else if (!m)          row.why = 'Giờ hẹn không hợp lệ';
       else if (!due)        row.why = 'Chưa đặt hạn — chỉ nhắc đúng ngày hạn';
-      else if (due !== today) row.why = `Hạn ${due}, không phải hôm nay`;
+      else if (due !== today && !(+(t.remindBefore || 0) > 0 && (() => {
+                 const d = new Date(today + 'T00:00:00'); d.setDate(d.getDate() + +t.remindBefore);
+                 return due === `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+               })()))
+        row.why = `Hạn ${due}, hôm nay không phải ngày nhắc`;
       else {
         const when = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), +m[1], +m[2], 0).getTime()/1000);
         const key = `item:${kind}:${t.id}:${today}:${at}`;
@@ -321,18 +371,29 @@ function runSchedule(dry, atMs){
     if (nowSec < at || nowSec - at > REM_WINDOW) continue;
     const key = `rem:${r.id}:${today}`;
     if (alreadySent(key)) continue;
+    /* đã tick xong hôm nay rồi thì đừng nhắc nữa */
+    if ((r.doneLog || []).map(String).includes(today)) continue;
     if (dry){ done.push({reminder:r.title, dry:true}); continue; }
     markSent(key);
     done.push({reminder:r.title, ok:true, sent:`🔔 ${r.title}${r.note ? '\n'+r.note : ''}`,
                topic:String(r.topic || '').trim() || topicFor('rem')});
   }
 
-  /* nhắc riêng từng đầu việc, đúng ngày hạn */
+  /* nhắc riêng từng đầu việc: đúng ngày hạn, và trước hạn nếu có đặt */
+  const plusDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n);
+                                 return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
   for (const [kind, icon, what] of [['tasks','✓','việc của mình'], ['cards','👥','việc đã giao']]){
     for (const t of itemsOf(kind)){
       const m = /^(\d{1,2}):(\d{2})$/.exec(String(t.remindAt || '')); if (!m) continue;
       if (kind === 'tasks' ? t.done : t.col === 'done') continue;
-      if (String(t.due || '').slice(0,10) !== today) continue;
+
+      const due = String(t.due || '').slice(0,10); if (due.length < 10) continue;
+      const before = +(t.remindBefore || 0);
+      let lead;
+      if (due === today)                                        lead = 0;
+      else if (before > 0 && due === plusDays(today, before))    lead = before;
+      else continue;
+
       /* đã bấm dời trong hôm nay thì bỏ giờ hẹn thường */
       const sn = String(t.snoozeUntil || '').trim().slice(0,10);
       if (sn && sn >= today) continue;
@@ -343,7 +404,7 @@ function runSchedule(dry, atMs){
       if (alreadySent(key)) continue;
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
-      done.push({[what]:t.title, ok:true, topic:topicFor(kind)});
+      done.push({[what]:t.title, ok:true, lead, topic:topicFor(kind)});
     }
   }
 
@@ -386,6 +447,16 @@ function runSchedule(dry, atMs){
       const lines = buildWeekly(now.getTime());
       if (dry) done.push({weekly:lines.length, dry:true});
       else { markSent(key); done.push({weekly:lines.length, ok:true, lines, topic:topicFor('report')}); }
+    }
+    /* tổng kết theo từng nhân sự — mỗi người một tin, khoá riêng từng người */
+    if (confGet('tg_staff_weekly')){
+      for (const s of buildStaffWeekly(now.getTime())){
+        const k = `staffw:${crypto.createHash('md5').update(s.name).digest('hex')}:${today}`;
+        if (alreadySent(k)) continue;
+        if (dry){ done.push({staff:s.name, dry:true}); continue; }
+        markSent(k);
+        done.push({staff:s.name, ok:true, lines:s.lines, topic:topicFor('cards')});
+      }
     }
   }
 
@@ -460,13 +531,60 @@ function webhook(req, res, body){
   if (!secret || secret !== given){ res.writeHead(403); return res.end('{}'); }
 
   let upd; try { upd = JSON.parse(body || '{}'); } catch(e){ return send({}); }
+  const confChat = confGet('tg_chat', '');
+  if (!confChat) return send({});
+
+  /* ghi nhanh: "/ghi …" hoặc "+ …" nhắn thẳng vào group */
+  if (upd.message){
+    if (String(upd.message.chat && upd.message.chat.id) !== String(confChat)) return send({});
+    const said = String(upd.message.text || '').trim();
+    let note = '';
+    const mm = /^\/(ghi|them)(?:@\S+)?\s+(.+)$/us.exec(said);
+    if (mm) note = mm[2].trim();
+    else if (said.startsWith('+')) note = said.slice(1).trim();
+    if (!note) return send({});
+
+    const nowIso = iso();
+    const item = {id: Date.now().toString(16) + crypto.randomBytes(4).toString('hex'),
+                  text: note, processed: false, processedAs: '',
+                  createdAt: nowIso, updatedAt: nowIso, deleted: false};
+    db().prepare('INSERT INTO items (kind,item_id,data,updated_at,deleted) VALUES (?,?,?,?,0)')
+        .run('inbox', item.id, JSON.stringify(item), nowIso);
+    console.log('[telegram thử · ghi nhanh] ' + note);
+    return send({});
+  }
+
   const cb = upd.callback_query;
   if (!cb) return send({});
 
   const data = String(cb.data || '');
   const chatId = String((cb.message && cb.message.chat && cb.message.chat.id) || '');
-  const confChat = confGet('tg_chat', '');
-  if (!confChat || chatId !== String(confChat)) return send({});
+  if (chatId !== String(confChat)) return send({});
+
+  /* nút "Xong hôm nay" của lời nhắc lặp lại */
+  const rm = /^remdone:(.+)$/.exec(data);
+  if (rm){
+    const row = db().prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?').get('reminders', rm[1]);
+    let ok = false, already = false;
+    if (row){
+      const rem = JSON.parse(row.data);
+      if (rem && !rem.deleted){
+        const log = (rem.doneLog || []).map(String);
+        if (log.includes(today_())) already = true;
+        else {
+          log.push(today_());
+          rem.doneLog = log.slice(-80);
+          rem.updatedAt = iso();
+          db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
+              .run(JSON.stringify(rem), rem.updatedAt, 'reminders', rm[1]);
+        }
+        ok = true;
+      }
+    }
+    console.log('[telegram thử · webhook] ' + data + ' → ' +
+      (!ok ? 'không tìm thấy' : already ? 'hôm nay đã tick rồi' : 'ghi nhận xong hôm nay'));
+    return send({});
+  }
 
   let act = '', kind = '', id = '', mins = 0, m;
   if ((m = /^done:(tasks|cards):(.+)$/.exec(data))){ act = 'done'; kind = m[1]; id = m[2]; }
@@ -606,6 +724,7 @@ function api(req, res, body){
           confSet(conf, String(inp[k] || '').trim());
         const wk = inp.weeklyHour == null ? -1 : +inp.weeklyHour;
         confSet('tg_weekly_hour', (wk >= 0 && wk <= 23) ? wk : -1);
+        confSet('tg_staff_weekly', inp.staffWeekly ? '1' : '');
         confSet('tg_escalate', inp.escalate ? '1' : '');
         confSet('tg_enabled', inp.enabled ? '1' : '');
       }
@@ -621,6 +740,7 @@ function api(req, res, body){
         reportTopic: confGet('tg_report_topic',''),
         workTopic: confGet('tg_work_topic',''),
         weeklyHour: +confGet('tg_weekly_hour','-1'),
+        staffWeekly: !!confGet('tg_staff_weekly',''),
         escalate: !!confGet('tg_escalate',''),
         webhookOn: !!confGet('tg_webhook_on',''),
         enabled: !!confGet('tg_enabled',''),
@@ -659,6 +779,14 @@ function api(req, res, body){
     case 'tg_why': {
       if (!need()) return;
       return send(Object.assign({ok:true}, tgWhy(inp.at)));
+    }
+    case 'tg_staff_now': {
+      if (!need()) return;
+      const people = buildStaffWeekly(inp.at);
+      if (!people.length) return send({ok:true, empty:true});
+      for (const s of people)
+        console.log(`[telegram thử · nhân sự] nhánh=${topicFor('cards')}\n${s.name}\n${s.lines.join('\n')}`);
+      return send({ok:true, people:people.length});
     }
     case 'tg_weekly_now': {
       if (!need()) return;

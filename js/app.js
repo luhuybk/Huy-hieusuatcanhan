@@ -287,12 +287,20 @@ const taskFields = () => [
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
   {k:'remindAt', label:'Nhắn Telegram lúc', type:'time', half:true,
    hint:'đúng ngày hạn, để trống thì không nhắn'},
+  {k:'remindBefore', label:'Báo trước (ngày)', type:'number', half:true, ph:'0',
+   hint:'thêm một tin sớm cho việc lớn; 0 = chỉ nhắc đúng ngày hạn'},
   {k:'note',  label:'Ghi chú', type:'textarea'}
 ];
+/* ô số nhập tay nên có thể ra số âm hoặc số vô lý — chặn ngay tại đây */
+function normalizeTask(v){
+  v.remindBefore = Math.max(0, Math.min(60, +v.remindBefore || 0));
+  return v;
+}
 function addTask(due){
   openForm({title:'Việc cần làm', fields:taskFields(),
     values:{prio:'mid', areaId:S.area==='all'?'':S.area, due: due || ''},
     onSave(v){
+      normalizeTask(v);
       db.tasks.push(stamp(Object.assign({done:false, streak:0, bestStreak:0, doneLog:[], createdAt:today()}, v)));
       save();
       if (S.view !== 'calendar'){ S.view = 'work'; S.worktab = 'tasks'; }
@@ -304,7 +312,7 @@ function editTask(id){
   openForm({title:'Sửa việc', fields:taskFields(), values:t,
     extra:`${t.bestStreak>1?`<div class="dim" style="margin-bottom:10px">Chuỗi hiện tại ${t.streak||0} · kỷ lục ${t.bestStreak}</div>`:''}
       <button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delTask" data-id="${id}">Xoá việc này</button>`,
-    onSave(v){ Object.assign(t, v); stamp(t); save(); render(); }});
+    onSave(v){ Object.assign(t, normalizeTask(v)); stamp(t); save(); render(); }});
 }
 function toggleTask(id){
   const t = db.tasks.find(x => x.id === id);
@@ -404,6 +412,8 @@ const cardFields = () => [
   {k:'due',   label:'Hạn chót', type:'date', half:true},
   {k:'remindAt', label:'Nhắn Telegram lúc', type:'time', half:true,
    hint:'đúng ngày hạn chót, để trống thì không nhắn'},
+  {k:'remindBefore', label:'Báo trước (ngày)', type:'number', half:true, ph:'0',
+   hint:'thêm một tin sớm cho việc lớn; 0 = chỉ nhắc đúng hạn'},
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
   {k:'progress', label:'Tiến độ (%)', type:'number', half:true, ph:'0-100'},
   {k:'extra', label:'Loại việc', type:'select', half:true,
@@ -422,6 +432,7 @@ function normalizeCard(v, prev){
   else v.doneAt = '';
   if (!v.extra){ v.extraPay = 0; v.extraPaidDate = ''; }
   v.progress = Math.max(0, Math.min(100, +v.progress || 0));
+  v.remindBefore = Math.max(0, Math.min(60, +v.remindBefore || 0));
   return v;
 }
 function addCard(col){
@@ -707,6 +718,20 @@ const remFields = () => [
   {k:'enabled', label:'Trạng thái', type:'select', half:true,
    opts:[['yes','Đang bật'], ['','Tạm tắt']]}
 ];
+/* Tick xong hôm nay — cùng dữ liệu với nút "✅ Xong hôm nay" trên Telegram. */
+function toggleRemDone(id){
+  const r = db.reminders.find(x => x.id === id); if (!r) return;
+  const t = today();
+  const log = (r.doneLog || []).map(String);
+  const i = log.indexOf(t);
+  if (i >= 0) log.splice(i, 1); else log.push(t);
+  r.doneLog = log.slice(-80);
+  stamp(r); save(); render();
+  const n = remStreak(r);
+  toast(i >= 0 ? 'Đã bỏ đánh dấu hôm nay'
+               : (n > 1 ? `Xong hôm nay · chuỗi ${n} 🔥` : 'Xong hôm nay'));
+}
+
 function normalizeRem(v){
   v.enabled = v.enabled === 'yes' || v.enabled === true;
   v.days = (v.days || []).map(Number).filter(d => d >= 0 && d <= 6);
@@ -769,6 +794,9 @@ function tgBox(){
        ph:'để trống = nhánh mặc định', hint:'tóm tắt ngày, bảng công việc, tóm tắt tuần'},
       {k:'weeklyHour', label:'Giờ gửi tóm tắt tuần (Chủ nhật)', type:'number', half:true,
        ph:'0-23', hint:'để trống thì không gửi'},
+      {k:'staffWeekly', label:'Tổng kết tuần theo nhân sự', type:'select', half:true,
+       opts:[['yes','Bật — mỗi người một tin'], ['','Tắt']],
+       hint:'gửi cùng giờ với tóm tắt tuần, vào nhánh Giao việc'},
       {k:'escalate', label:'Báo trễ leo thang', type:'select', half:true,
        opts:[['yes','Bật — báo riêng ở mốc 3/7/14/30 ngày trễ'], ['','Tắt']]},
       {k:'enabled', label:'Trạng thái', type:'select', half:true,
@@ -783,6 +811,7 @@ function tgBox(){
             remTopic: t.remTopic || '',
             reportTopic: t.reportTopic || t.workTopic || '',
             weeklyHour: t.weeklyHour == null ? -1 : t.weeklyHour,
+            staffWeekly: t.staffWeekly ? 'yes' : '',
             escalate: t.escalate ? 'yes' : '',
             enabled: t.enabled ? 'yes' : ''},
     extra:`<div class="btns" style="margin-bottom:10px">
@@ -799,6 +828,7 @@ function tgBox(){
                     remTopic:   String(v.remTopic || '').trim(),
                     reportTopic:String(v.reportTopic || '').trim(),
                     weeklyHour: v.weeklyHour === '' ? -1 : +v.weeklyHour,
+                    staffWeekly: v.staffWeekly === 'yes',
                     escalate:   v.escalate === 'yes',
                     enabled: v.enabled === 'yes'};
       if (v.token) body.token = v.token.trim();
@@ -1317,6 +1347,8 @@ document.addEventListener('click', e => {
       break;
     }
 
+    case 'remDone': toggleRemDone(id); break;
+
     /* dời nhắc */
     case 'snooze': snoozeBox(el.dataset.k, id); break;
     case 'snzSet': snoozeApply(el.dataset.k, id, +el.dataset.m); break;
@@ -1335,6 +1367,13 @@ document.addEventListener('click', e => {
       toast('Đang gửi…');
       Server.call('tg_weekly_now')
         .then(() => toast('Đã đẩy tóm tắt tuần vào Telegram'))
+        .catch(err => toast(err.message));
+      break;
+    case 'staffNow':
+      toast('Đang gửi…');
+      Server.call('tg_staff_now')
+        .then(d => toast(d.empty ? 'Chưa có ai đang giữ thẻ việc nào — không gửi gì cả'
+                                 : `Đã gửi tổng kết cho ${d.people} người`))
         .catch(err => toast(err.message));
       break;
     case 'webhookOn':

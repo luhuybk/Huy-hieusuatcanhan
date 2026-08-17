@@ -272,7 +272,9 @@ function ensure(){
                            /* giờ máy chủ đẩy tin nhắc riêng cho việc này; rỗng = không đẩy */
                            if(t.remindAt===undefined) t.remindAt='';
                            /* mốc đã bấm dời nhắc, "YYYY-MM-DD HH:MM" giờ VN; rỗng = không dời */
-                           if(t.snoozeUntil===undefined) t.snoozeUntil=''; });
+                           if(t.snoozeUntil===undefined) t.snoozeUntil='';
+                           /* nhắc thêm một tin trước hạn bao nhiêu ngày; 0 = không báo trước */
+                           if(t.remindBefore===undefined) t.remindBefore=0; });
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId=''; });
   db.inbox.forEach(n => { if(n.processed===undefined) n.processed = false; if(!n.text) n.text = ''; });
   db.staff.forEach(s2 => { if(!Array.isArray(s2.areaIds)) s2.areaIds = [];
@@ -283,7 +285,9 @@ function ensure(){
                               r.days = r.days.map(Number).filter(d => d >= 0 && d <= 6);
                               if(!r.time) r.time = '08:00'; if(r.topic===undefined) r.topic = '';
                               if(r.enabled===undefined) r.enabled = true;
-                              if(r.note===undefined) r.note = ''; if(r.lastSent===undefined) r.lastSent = ''; });
+                              if(r.note===undefined) r.note = ''; if(r.lastSent===undefined) r.lastSent = '';
+                              /* những ngày đã tick xong — nguồn duy nhất để tính chuỗi 🔥 */
+                              if(!Array.isArray(r.doneLog)) r.doneLog = []; });
   db.occasions.forEach(o => { if(!Array.isArray(o.personIds)) o.personIds = [];
                               if(o.remind===undefined) o.remind = 7; if(!o.cal) o.cal = 'solar';
                               /* Lần tới rơi vào ngày dương nào — tính sẵn ở đây để máy chủ
@@ -296,7 +300,8 @@ function ensure(){
                            if(!COLS.some(x=>x.id===c.col)) c.col='assigned';
                            if(!Array.isArray(c.checklist)) c.checklist=[];
                            if(c.remindAt===undefined) c.remindAt='';
-                           if(c.snoozeUntil===undefined) c.snoozeUntil=''; });
+                           if(c.snoozeUntil===undefined) c.snoozeUntil='';
+                           if(c.remindBefore===undefined) c.remindBefore=0; });
   if (!db.settings.workspace) db.settings.workspace = '';
 }
 /* Safari ở chế độ riêng tư, hoặc kho đầy, sẽ ném lỗi ở đây. Không bắt thì
@@ -463,6 +468,29 @@ function reminderNextText(r){
   if (ymd(d) === today()) return `hôm nay ${hm}`;
   if (ymd(d) === addDays(today(), 1)) return `mai ${hm}`;
   return `${WDAY_NAME[d.getDay()]} ${fmtDate(ymd(d))} ${hm}`;
+}
+
+/* Tick "xong hôm nay" cho lời nhắc lặp lại. Máy chủ (webhook Telegram) chỉ
+   ghi thêm ngày vào doneLog; luật tính chuỗi để nguyên một chỗ ở đây, để
+   hai bên không bao giờ tính ra hai con số khác nhau. */
+const remDoneToday = r => (r.doneLog || []).map(String).includes(today());
+function remStreak(r){
+  const days = (r.days || []).map(Number);
+  if (!days.length) return 0;
+  const log = new Set((r.doneLog || []).map(String));
+  const t0 = today();
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  let n = 0;
+  for (let i = 0; i < 366; i++){                 // lùi tối đa một năm rồi thôi
+    const iso = ymd(d);
+    if (days.includes(d.getDay())){
+      if (log.has(iso)) n++;
+      /* Hôm nay chưa tick thì chưa coi là đứt chuỗi — ngày còn chưa hết. */
+      else if (iso !== t0) break;
+    }
+    d.setDate(d.getDate() - 1);
+  }
+  return n;
 }
 
 /* ============================================================

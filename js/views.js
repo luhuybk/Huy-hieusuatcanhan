@@ -1083,13 +1083,18 @@ function vReview(){
 /* ---------------- THÔNG BÁO TELEGRAM + NHẮC LẶP LẠI ---------------- */
 function remItem(r){
   const next = reminderNextText(r);
+  const xong = remDoneToday(r);
+  const chuoi = remStreak(r);
   return `<div class="rem ${r.enabled ? '' : 'off'}">
     <div class="cb ${r.enabled?'on':''}" data-act="toggleRem" data-id="${r.id}">✓</div>
     <div class="tm">${esc(r.time)}</div>
     <div class="grow" data-act="editRem" data-id="${r.id}">
       <div class="nm ell">${esc(r.title)}</div>
-      <div class="dim">${esc(daysText(r.days))}${r.topic ? ' · nhánh ' + esc(r.topic) : ''} · ${esc(next)}</div>
+      <div class="dim">${esc(daysText(r.days))}${r.topic ? ' · nhánh ' + esc(r.topic) : ''} · ${esc(next)}${
+        chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}</div>
     </div>
+    <button class="iconbtn" data-act="remDone" data-id="${r.id}" title="${xong?'Bỏ đánh dấu hôm nay':'Xong hôm nay'}"
+      style="${xong?'color:var(--ok)':''}">✓</button>
     <button class="iconbtn" data-act="remNow" data-id="${r.id}" title="Gửi thử ngay">➤</button>
   </div>`;
 }
@@ -1123,6 +1128,7 @@ function tgBlock(){
         ? ` Tóm tắt tuần gửi Chủ nhật lúc <b>${String(t.weeklyHour).padStart(2,'0')}:00</b>.`
         : ' Tóm tắt tuần đang tắt.'}
       ${t.escalate ? ' Báo trễ leo thang đang <b>bật</b> — trễ 3/7/14/30 ngày sẽ có tin riêng.' : ''}
+      ${t.staffWeekly ? ' Tổng kết theo nhân sự đang <b>bật</b> — mỗi người một tin, gửi cùng giờ tóm tắt tuần.' : ''}
     </div>
     ${live ? `<div class="dim" style="margin-top:12px;line-height:1.8">
       <b>Nhánh trong group</b> — mỗi loại tin một chỗ, khỏi lẫn:<br>
@@ -1134,14 +1140,21 @@ function tgBlock(){
     ${live ? `<div class="btns" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm grow" data-act="workNow">Gửi bảng công việc ngay</button>
       <button class="btn sm grow" data-act="weeklyNow">Gửi tóm tắt tuần ngay</button>
+      <button class="btn sm grow" data-act="staffNow">Gửi tổng kết nhân sự ngay</button>
       <button class="btn sm grow" data-act="tgWhy">Vì sao chưa gửi?</button>
     </div>` : ''}
     ${live ? `<div class="dim" style="margin-top:12px;line-height:1.65">
       <b>Nút bấm dưới tin nhắc:</b> "✅ Xong" đánh dấu việc xong, còn
       "⏰ 4 giờ / 12 giờ / 1 ngày / 3 ngày" dời lời nhắc lại — cả hai đều
       hiện ngay trên web sau lượt đồng bộ, không cần mở app để bấm.
+      Lời nhắc lặp lại có nút "✅ Xong hôm nay" để giữ chuỗi 🔥.
       ${t.webhookOn ? 'Đang <b>bật</b>.' : 'Đang tắt — cần tên miền chạy https.'}
       </div>
+      ${t.webhookOn ? `<div class="dim" style="margin-top:10px;line-height:1.65">
+        <b>Ghi nhanh từ Telegram:</b> nhắn <span class="mono" style="display:inline">/ghi mua thêm dầu gội</span>
+        vào group là có ngay một mẩu trong Hộp ghi nhanh. Muốn gõ gọn hơn bằng
+        dấu <b>+</b> thì vào BotFather → <b>/setprivacy</b> → <b>Disable</b> cho bot này.
+      </div>` : ''}
       <div class="btns" style="margin-top:8px">
         ${t.webhookOn
           ? `<button class="btn sm grow dngr" data-act="webhookOff">Tắt nút bấm</button>`

@@ -329,6 +329,10 @@ Cài đặt → **Nhắc lặp lại** → **+ Thêm**. Mỗi lời nhắc gồm
 
 Nút ➤ bên phải mỗi dòng gửi thử ngay lập tức. Ô vuông bên trái bật/tắt nhanh mà không cần mở ra sửa.
 
+**Nút "✅ Xong hôm nay".** Sau khi bật nút bấm (xem phần dưới), mỗi tin nhắc lặp lại kèm một nút — bấm là ghi nhận xong kỳ hôm nay ngay trong Telegram. Trong app, mỗi dòng nhắc cũng có nút ✓ tương ứng, và một chuỗi 🔥 đếm số kỳ liên tiếp đã làm.
+
+Đã tick xong hôm nay thì **hôm đó không nhắc nữa** — tập gym xong lúc 6h sáng mà 18h30 vẫn bị nhắc thì lần sau người ta tắt luôn cái app. Chuỗi 🔥 chỉ đứt khi bỏ lỡ một kỳ **đã qua**; hôm nay chưa tick thì chưa tính là đứt, ngày còn chưa hết.
+
 **Về giờ giấc:** máy chủ tính theo giờ Việt Nam. Cron chạy 5 phút một lần nên lời nhắc đặt 18:30 sẽ tới trong khoảng 18:30–18:35. Nếu máy chủ trục trặc và trễ **quá một tiếng** thì app bỏ luôn lần đó chứ không gửi muộn — nhắc "tập gym 18:30" vào lúc 22h chỉ gây khó chịu. Mỗi lời nhắc chỉ gửi một lần mỗi ngày, cron chạy lại bao nhiêu lần cũng không gửi trùng.
 
 ### Thông báo cho mục Công việc
@@ -357,6 +361,15 @@ Hai thứ khác nhau, dùng chung hay riêng đều được.
 Tin này thuộc nhóm **báo cáo**, nên nó đi vào ô nhánh *Báo cáo*. Không có việc nào đang treo thì không gửi tin trống. Nút **Gửi bảng công việc ngay** ở màn Cài đặt gửi thử bất cứ lúc nào mà không phải chờ tới giờ.
 
 Bật bảng này thì bản tóm tắt hằng ngày **tự bỏ** khối việc đến hạn và dòng việc giao trễ, để bạn không đọc cùng một danh sách hai lần trong một buổi sáng. Tắt đi thì nó nhận lại như cũ.
+
+**Báo trước hạn.** Cạnh ô giờ có ô **Báo trước (ngày)**. Để `0` thì chỉ nhắc đúng ngày hạn như thường. Điền `3` thì có thêm **một** tin sớm ba hôm trước — một cú hích, không phải càu nhàu mỗi sáng suốt ba ngày:
+
+```
+⏳ Nộp hồ sơ thuế
+Còn 3 ngày — hạn 20/08 · 09:00
+```
+
+Đúng ngày hạn vẫn có tin thứ hai như bình thường. Dùng cho việc lớn cần chuẩn bị: hồ sơ, đơn hàng, hợp đồng.
 
 **Nhắc riêng từng đầu việc.** Mở một việc (hoặc một thẻ giao việc) → ô **Nhắn Telegram lúc**. Đúng ngày hạn, vào giờ đó, máy chủ đẩy riêng một tin cho việc ấy:
 
@@ -395,7 +408,44 @@ Hạn hôm nay · 14:45
 [ ⏰4 giờ | 12 giờ | 1 ngày | 3 ngày ]
 ```
 
+Lời nhắc lặp lại thì có nút **✅ Xong hôm nay** thay cho bộ nút trên.
+
 Cần tên miền chạy **https** (Telegram không gọi ngược về địa chỉ http). Khi bấm nút: máy chủ ghi thẳng vào cơ sở dữ liệu, trả lời bằng một thông báo nhỏ ("Đã đánh dấu xong ✓" / "Đã dời tới 18:03 17/08"), và sửa lại tin nhắn gốc để bạn biết đã bấm rồi. Chỉ nút bấm từ đúng group đã cấu hình mới có tác dụng, người khác có link webhook cũng không đụng được vào dữ liệu của bạn.
+
+### Ghi nhanh thẳng từ Telegram
+
+Sau khi bật nút bấm, nhắn vào group:
+
+```
+/ghi mua thêm dầu gội
+```
+
+là có ngay một mẩu trong **Hộp ghi nhanh**, khỏi mở app. Bot trả lời xác nhận ngay trong nhánh bạn vừa nhắn. Mở app lúc nào cũng thấy, phân loại sau thành việc / người / ý tưởng như mọi mẩu khác.
+
+Muốn gõ gọn hơn bằng dấu **+** (`+ gọi anh Tuấn`) thì phải tắt privacy mode: nhắn **@BotFather** → **/setprivacy** → chọn bot → **Disable**. Lý do: mặc định Telegram chỉ cho bot nhìn thấy tin bắt đầu bằng dấu `/`, nên `/ghi` lúc nào cũng chạy còn `+` thì không. Tin nhắn thường trong group không bị đụng tới — chỉ hai cú pháp này mới tạo mẩu.
+
+### Tổng kết tuần theo từng nhân sự
+
+Cài đặt → Thông báo Telegram → bật *Tổng kết tuần theo nhân sự*. Gửi cùng giờ với tóm tắt tuần, vào **nhánh Giao việc**, mỗi người **một tin riêng** để bạn chuyển tiếp thẳng cho họ mà không phải cắt dán, và không lộ số liệu người này sang người kia:
+
+```
+🧑‍🔧 Linh · tuần 17/08/2026
+
+📥 1 việc mới giao trong tuần
+✓ 1 việc đã xong
+📋 1 việc còn đang mở
+
+─────────────
+
+🔴 Đang trễ (1)
+   • Sửa kệ hàng — trễ 10 ngày
+
+─────────────
+
+💰 Tiền công ngoài luồng chưa trả: 500.000₫ (1 việc)
+```
+
+Ai không giữ thẻ việc nào thì không có tin. Nút **Gửi tổng kết nhân sự ngay** ở màn Cài đặt gửi thử bất cứ lúc nào.
 
 ### Dời lời nhắc lại
 
