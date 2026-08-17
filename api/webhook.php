@@ -35,10 +35,31 @@ if ($token === '' || $confChat === '') { echo '{}'; exit; }
 $msgIn = is_array($upd['message'] ?? null) ? $upd['message'] : null;
 if ($msgIn !== null) {
   if ((string)($msgIn['chat']['id'] ?? '') !== $confChat) { echo '{}'; exit; }
-  $said = trim((string)($msgIn['text'] ?? ''));
-  $note = '';
-  if (preg_match('#^/(ghi|them)(?:@\S+)?\s+(.+)$#us', $said, $mm)) $note = trim($mm[2]);
-  elseif ($said !== '' && $said[0] === '+')                        $note = trim(substr($said, 1));
+  $said   = trim((string)($msgIn['text'] ?? ''));
+  $thread = $msgIn['message_thread_id'] ?? null;
+  $note   = '';
+
+  if (preg_match('#^/(ghi|them|note|n)(?:@\S+)?(?:\s+(.*))?$#us', $said, $mm)) {
+    $note = trim((string)($mm[2] ?? ''));
+    /* Gõ mỗi "/ghi" rồi bỏ trống thì chỉ dẫn luôn, đừng im lặng — im lặng
+       làm người ta tưởng cả tính năng hỏng chứ không phải gõ thiếu. */
+    if ($note === '') {
+      tgSend("Gõ nội dung ngay sau lệnh nhé:\n<code>/ghi mua thêm dầu gội</code>", $thread);
+      echo '{}'; exit;
+    }
+  }
+  elseif (preg_match('#^/(help|start|tro_giup)(?:@\S+)?#us', $said)) {
+    tgSend(tgHelpText(), $thread);
+    echo '{}'; exit;
+  }
+  /* Lệnh lạ — kể cả lệnh gõ có dấu tiếng Việt như "/tìm việc", thứ mà
+     Telegram không coi là lệnh hợp lệ. Trả lời để biết bot vẫn nghe. */
+  elseif ($said !== '' && $said[0] === '/') {
+    tgSend("Không có lệnh này. " . tgHelpText(), $thread);
+    echo '{}'; exit;
+  }
+  elseif ($said !== '' && $said[0] === '+') $note = trim(substr($said, 1));
+
   if ($note === '') { echo '{}'; exit; }
 
   $nowIso = isoNow();
@@ -49,8 +70,7 @@ if ($msgIn !== null) {
       ->execute(['inbox', $item['id'], json_encode($item, JSON_UNESCAPED_UNICODE), $nowIso]);
 
   /* trả lời ngay trong nhánh vừa nhắn, để bạn biết nó đã vào */
-  tgSend('📥 Đã ghi vào Hộp ghi nhanh:' . "\n<i>" . tgEsc(cutTitle($note, 200)) . '</i>',
-         $msgIn['message_thread_id'] ?? null);
+  tgSend('📥 Đã ghi vào Hộp ghi nhanh:' . "\n<i>" . tgEsc(cutTitle($note, 200)) . '</i>', $thread);
   echo '{}';
   exit;
 }
@@ -130,14 +150,30 @@ if ($act !== '') {
   $st->execute([$kind, $id]);
   $row = $st->fetch();
 
-  $ok = false;
+  $ok = false; $rolled = ''; $streak = 0;
   if ($row) {
     $item = json_decode((string)$row['data'], true);
     if (is_array($item) && empty($item['deleted'])) {
       $now = isoNow();
       if ($act === 'done') {
-        if ($kind === 'tasks') { $item['done'] = true;  $item['doneAt'] = date('Y-m-d'); }
-        else                   { $item['col']  = 'done'; $item['doneAt'] = date('Y-m-d'); }
+        /* Việc lặp lại KHÔNG được đánh dấu xong vĩnh viễn — xong kỳ này thì
+           hạn nhảy sang kỳ sau và chuỗi 🔥 cộng thêm một, đúng như bấm tick
+           trong app. Trước đây chỗ này set done = true, tức là bấm Xong trên
+           Telegram một cái là mất luôn việc lặp đó khỏi danh sách. */
+        if ($kind === 'tasks' && isRepeat($item['repeat'] ?? '')) {
+          $due    = substr((string)($item['due'] ?? ''), 0, 10);
+          $onTime = $due === '' || $due >= date('Y-m-d');
+          $streak = ($onTime ? (int)($item['streak'] ?? 0) : 0) + 1;
+          $log    = array_map('strval', (array)($item['doneLog'] ?? []));
+          $log[]  = date('Y-m-d');
+          $item['streak']     = $streak;
+          $item['bestStreak'] = max((int)($item['bestStreak'] ?? 0), $streak);
+          $item['doneLog']    = array_slice($log, -80);
+          $item['doneAt']     = date('Y-m-d');
+          $item['due']        = $rolled = nextRepeat($due, (string)$item['repeat']);
+        }
+        elseif ($kind === 'tasks') { $item['done'] = true;  $item['doneAt'] = date('Y-m-d'); }
+        else                       { $item['col']  = 'done'; $item['doneAt'] = date('Y-m-d'); }
         $item['snoozeUntil'] = '';        // xong rồi thì mốc dời cũ hết nghĩa
       } else {
         /* Chỉ dời lời nhắc, KHÔNG dời hạn: hạn trễ vẫn phải hiện là trễ,
@@ -152,16 +188,19 @@ if ($act !== '') {
   }
 
   if ($token !== '') {
-    $said = $act === 'done' ? 'Đã đánh dấu xong ✓'
-                            : 'Đã dời tới ' . date('H:i d/m', $until);
+    $chuoi = $streak > 1 ? ' · chuỗi ' . $streak . ' 🔥' : '';
+    $said = $act !== 'done'  ? 'Đã dời tới ' . date('H:i d/m', $until)
+          : ($rolled !== ''  ? 'Xong kỳ này · lần tới ' . date('d/m', strtotime($rolled)) . $chuoi
+                             : 'Đã đánh dấu xong ✓');
     httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery", [
       'callback_query_id' => $cbId,
       'text' => $ok ? $said : 'Không tìm thấy việc này (có thể đã xoá)',
     ]);
     if ($ok && $msgId) {
       $origText = (string)($msg['text'] ?? '');
-      $note = $act === 'done' ? '✅ <b>Đã xong</b>'
-                              : '⏰ <b>Đã dời tới ' . date('H:i d/m', $until) . '</b>';
+      $note = $act !== 'done' ? '⏰ <b>Đã dời tới ' . date('H:i d/m', $until) . '</b>'
+            : ($rolled !== '' ? '✅ <b>Xong kỳ này</b> — lần tới ' . date('d/m', strtotime($rolled)) . $chuoi
+                              : '✅ <b>Đã xong</b>');
       /* Không gửi kèm reply_markup nữa: bấm xong thì bộ nút cũ hết tác dụng,
          để lại chỉ khiến bấm nhầm lần hai. Lời nhắc sau sẽ có nút mới. */
       httpPostJson("https://api.telegram.org/bot$token/editMessageText", [

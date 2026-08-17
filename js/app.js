@@ -882,6 +882,49 @@ function tgWhyBox(){
   });
 }
 
+/* Telegram đang thấy webhook thế nào. Câu "nhắn /ghi mà không thấy gì" hầu
+   như lúc nào cũng là một trong ba thứ: chưa đăng ký lại sau khi cập nhật
+   code, Telegram gọi về bị lỗi, hoặc gõ sai lệnh. Bảng này loại được hai
+   cái đầu trong một cú bấm. */
+function tgHookBox(){
+  $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+    <h2>Telegram đang thấy gì</h2>
+    <div class="dim" style="margin:-8px 0 14px">Đang hỏi Telegram…</div></div></div>`;
+
+  Server.call('tg_webhook_info').then(d => {
+    const yes = '<span style="color:var(--ok)">có</span>';
+    const no  = '<span style="color:var(--bad)">KHÔNG</span>';
+    const canhBao = !d.onMessage
+      ? `<div class="card" style="margin-top:12px;border-color:var(--bad)">
+           <b>Đây là lý do <code>/ghi</code> không chạy.</b><br>
+           Webhook đăng ký từ trước bản cập nhật nên Telegram chưa gửi tin nhắn về.
+           Bấm <b>Tắt nút bấm</b> rồi <b>Bật nút bấm</b> lại là xong.</div>`
+      : '';
+    $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+      <h2>Telegram đang thấy gì</h2>
+      <div class="dim" style="margin:-8px 0 4px;line-height:1.8">
+        Địa chỉ gọi về: ${d.url ? `<span class="mono" style="display:inline">${esc(d.url)}</span>` : no}<br>
+        Nhận nút bấm: ${d.onButton ? yes : no}<br>
+        Nhận tin nhắn (cho <code>/ghi</code>): ${d.onMessage ? yes : no}<br>
+        Đang chờ xử lý: <b>${d.pending}</b> tin
+        ${d.lastError ? `<br>Lỗi gần nhất: <span style="color:var(--bad)">${esc(d.lastError)}</span>${
+          d.lastErrorAt ? ' (' + esc(d.lastErrorAt) + ')' : ''}` : ''}
+      </div>
+      ${canhBao}
+      <div class="dim" style="margin-top:12px;line-height:1.65">
+        Lệnh đúng là <code>/ghi</code> kèm nội dung, ví dụ
+        <span class="mono" style="display:inline">/ghi mua thêm dầu gội</span>.
+        Gõ dấu <b>/</b> trong group là Telegram hiện sẵn danh sách lệnh.
+      </div>
+      <button class="btn full" style="margin-top:14px" data-close>Đóng</button></div></div>`;
+  }).catch(err => {
+    $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+      <h2>Không hỏi được Telegram</h2>
+      <div class="dim" style="margin:-8px 0 14px">${esc(err.message)}</div>
+      <button class="btn full" data-close>Đóng</button></div></div>`;
+  });
+}
+
 /* ---------------- sao lưu ---------------- */
 function exportJSON(){
   const blob = new Blob([JSON.stringify(db, null, 2)], {type:'application/json'});
@@ -1363,6 +1406,7 @@ document.addEventListener('click', e => {
         .catch(err => toast(err.message));
       break;
     case 'tgWhy': tgWhyBox(); break;
+    case 'tgHook': tgHookBox(); break;
     case 'weeklyNow':
       toast('Đang gửi…');
       Server.call('tg_weekly_now')

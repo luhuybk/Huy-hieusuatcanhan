@@ -348,8 +348,37 @@ switch ($action) {
       'allowed_updates' => ['callback_query', 'message'],
     ]);
     if (empty($res['ok'])) fail($res['error'] ?? 'Không bật được nút Xong', 502);
+    /* Đăng ký danh sách lệnh: gõ dấu / trong group là Telegram hiện menu.
+       Không có bước này thì chẳng ai đoán được lệnh tên là "/ghi". */
+    httpPostJson("https://api.telegram.org/bot$token/setMyCommands", ['commands' => [
+      ['command' => 'ghi',  'description' => 'Ghi nhanh vào Hộp ghi nhanh'],
+      ['command' => 'help', 'description' => 'Xem cách dùng bot'],
+    ]]);
     confSet('tg_webhook_on', '1');
     out(['ok' => true, 'url' => $hookUrl]);
+  }
+
+  /* Telegram đang thấy webhook thế nào — trả lời thẳng câu "bấm /ghi mà
+     không thấy gì". Chỉ đọc, không đổi cấu hình. */
+  case 'tg_webhook_info': {
+    requireAuth();
+    $token = (string)confGet('tg_token', '');
+    if ($token === '') fail('Chưa có mã bot Telegram');
+    $res = httpPostJson("https://api.telegram.org/bot$token/getWebhookInfo", []);
+    if (empty($res['ok'])) fail($res['error'] ?? 'Không hỏi được Telegram', 502);
+    $r = (array)($res['result'] ?? []);
+    $allowed = (array)($r['allowed_updates'] ?? []);
+    out(['ok' => true,
+      'url'       => (string)($r['url'] ?? ''),
+      /* Telegram trả về mảng rỗng nghĩa là "nhận mọi loại trừ vài loại hiếm",
+         nên rỗng cũng tính là có nghe tin nhắn. */
+      'onMessage' => $allowed === [] || in_array('message', $allowed, true),
+      'onButton'  => $allowed === [] || in_array('callback_query', $allowed, true),
+      'allowed'   => $allowed,
+      'pending'   => (int)($r['pending_update_count'] ?? 0),
+      'lastError' => (string)($r['last_error_message'] ?? ''),
+      'lastErrorAt' => !empty($r['last_error_date']) ? date('H:i d/m', (int)$r['last_error_date']) : '',
+    ]);
   }
 
   case 'tg_webhook_disable': {

@@ -413,6 +413,8 @@ Các mức dời xếp **hai nút một hàng** chứ không phải bốn: bốn
 
 Lời nhắc lặp lại thì có nút **✅ Xong hôm nay** thay cho bộ nút trên.
 
+**Việc lặp lại bấm Xong là xong kỳ này, không phải xong hẳn.** Y như tick trong app: hạn nhảy sang kỳ sau, chuỗi 🔥 cộng thêm một, và Telegram trả lời *"Xong kỳ này · lần tới 18/08 · chuỗi 5 🔥"*. Bỏ lỡ nhiều kỳ thì hạn nhảy thẳng tới mốc tương lai gần nhất chứ không dồn lại.
+
 Cần tên miền chạy **https** (Telegram không gọi ngược về địa chỉ http). Khi bấm nút: máy chủ ghi thẳng vào cơ sở dữ liệu, trả lời bằng một thông báo nhỏ ("Đã đánh dấu xong ✓" / "Đã dời tới 18:03 17/08"), và sửa lại tin nhắn gốc để bạn biết đã bấm rồi. Chỉ nút bấm từ đúng group đã cấu hình mới có tác dụng, người khác có link webhook cũng không đụng được vào dữ liệu của bạn.
 
 ### Ghi nhanh thẳng từ Telegram
@@ -425,7 +427,15 @@ Sau khi bật nút bấm, nhắn vào group:
 
 là có ngay một mẩu trong **Hộp ghi nhanh**, khỏi mở app. Bot trả lời xác nhận ngay trong nhánh bạn vừa nhắn. Mở app lúc nào cũng thấy, phân loại sau thành việc / người / ý tưởng như mọi mẩu khác.
 
+Gõ dấu **/** trong group là Telegram hiện sẵn danh sách lệnh. `/help` xem lại cách dùng. Gõ nhầm lệnh khác (kể cả lệnh có dấu tiếng Việt như `/tìm việc`) thì bot trả lời hướng dẫn chứ không im lặng.
+
 Muốn gõ gọn hơn bằng dấu **+** (`+ gọi anh Tuấn`) thì phải tắt privacy mode: nhắn **@BotFather** → **/setprivacy** → chọn bot → **Disable**. Lý do: mặc định Telegram chỉ cho bot nhìn thấy tin bắt đầu bằng dấu `/`, nên `/ghi` lúc nào cũng chạy còn `+` thì không. Tin nhắn thường trong group không bị đụng tới — chỉ hai cú pháp này mới tạo mẩu.
+
+**Nhắn `/ghi` mà không thấy gì?** Bấm nút cùng tên ở Cài đặt → Thông báo Telegram. Nó hỏi thẳng Telegram xem webhook đang đăng ký thế nào:
+
+- **Nhận tin nhắn (cho `/ghi`): KHÔNG** → webhook đăng ký từ trước bản cập nhật này. Bấm **Tắt nút bấm** rồi **Bật nút bấm** lại là xong. Đây là nguyên nhân hay gặp nhất.
+- **Lỗi gần nhất** → Telegram có gọi về nhưng máy chủ trả lời hỏng.
+- Mọi thứ đều "có" mà vẫn không chạy → gõ sai lệnh; lệnh đúng là `/ghi` kèm nội dung.
 
 ### Tổng kết tuần theo từng nhân sự
 

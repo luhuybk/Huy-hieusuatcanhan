@@ -195,6 +195,47 @@ function tgRemButtons(string $id): ?array {
    Không cần trùng kiểu với uid() bên JavaScript, chỉ cần không đụng nhau. */
 function newId(): string { return dechex(time()) . bin2hex(random_bytes(4)); }
 
+/* ---------------- việc lặp lại ----------------
+   Bản song sinh của stepRepeat()/nextRepeat() trong js/state.js. Luật phải
+   giống hệt: bấm "Xong" trên Telegram mà ra hạn khác với bấm trong app thì
+   dữ liệu lệch nhau, và người dùng không đời nào đoán được vì sao. */
+function stepRepeat(string $iso, string $code): string {
+  $unit = $code[0];
+  $n = max(1, (int)substr($code, 1));
+  if ($unit === 'd') return date('Y-m-d', strtotime($iso . ' +' . $n . ' day'));
+  if ($unit === 'w') return date('Y-m-d', strtotime($iso . ' +' . (7 * $n) . ' day'));
+
+  $months = $unit === 'm' ? $n : 12 * $n;
+  $day = (int)substr($iso, 8, 2);
+  $t = strtotime($iso . ' +' . $months . ' month');
+  /* 31/1 cộng một tháng phải ra 28/2, chứ PHP mặc định nhảy sang 3/3 */
+  if ((int)date('j', $t) < $day) $t = strtotime(date('Y-m-01', $t) . ' -1 day');
+  return date('Y-m-d', $t);
+}
+function isRepeat($code): bool { return (bool)preg_match('/^[dwmy]\d+$/', (string)$code); }
+function nextRepeat(string $iso, string $code): string {
+  if (!isRepeat($code)) return '';
+  $today = date('Y-m-d');
+  $base  = $iso !== '' ? $iso : $today;
+  $guard = 0;
+  /* luôn nhảy tới mốc trong tương lai — bỏ lỡ mấy kỳ cũng không bị dồn việc */
+  do { $base = stepRepeat($base, $code); } while ($base < $today && ++$guard < 400);
+  return $base;
+}
+
+/* Hướng dẫn dùng bot, trả lời cho /help và cho lệnh gõ sai. Không có cái
+   này thì người dùng gõ "/tìm thêm việc" rồi ngồi chờ trong im lặng. */
+function tgHelpText(): string {
+  return "🤖 <b>Life Hub bot</b>\n\n"
+       . "<b>/ghi</b> &lt;nội dung&gt; — ghi vào Hộp ghi nhanh\n"
+       . "   ví dụ: <code>/ghi mua thêm dầu gội</code>\n"
+       . "<b>/help</b> — bảng này\n\n"
+       . "Gõ dấu <b>/</b> là Telegram hiện sẵn danh sách lệnh.\n\n"
+       . "Muốn gõ gọn bằng dấu <b>+</b> (<code>+ gọi anh Tuấn</code>) thì nhắn "
+       . "@BotFather → /setprivacy → chọn bot này → <b>Disable</b>.\n\n"
+       . "Còn lại app tự nhắn cho bạn: việc tới hạn, việc trễ, tóm tắt ngày và tuần.";
+}
+
 /* khoá bí mật để Telegram tự xác thực khi gọi webhook.php — sinh một lần */
 function webhookSecret(): string {
   $k = confGet('tg_webhook_secret');

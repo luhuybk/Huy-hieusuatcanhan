@@ -1152,8 +1152,12 @@ function tgBlock(){
       </div>
       ${t.webhookOn ? `<div class="dim" style="margin-top:10px;line-height:1.65">
         <b>Ghi nhanh từ Telegram:</b> nhắn <span class="mono" style="display:inline">/ghi mua thêm dầu gội</span>
-        vào group là có ngay một mẩu trong Hộp ghi nhanh. Muốn gõ gọn hơn bằng
-        dấu <b>+</b> thì vào BotFather → <b>/setprivacy</b> → <b>Disable</b> cho bot này.
+        vào group là có ngay một mẩu trong Hộp ghi nhanh. Gõ dấu <b>/</b> là Telegram
+        hiện sẵn danh sách lệnh. Muốn gõ gọn hơn bằng dấu <b>+</b> thì vào
+        BotFather → <b>/setprivacy</b> → <b>Disable</b> cho bot này.
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="btn sm grow" data-act="tgHook">Nhắn /ghi mà không thấy gì?</button>
       </div>` : ''}
       <div class="btns" style="margin-top:8px">
         ${t.webhookOn

@@ -97,6 +97,29 @@ function tgItemButtons(kind, id){
   return rows;
 }
 
+/* việc lặp lại — bản song sinh của stepRepeat()/nextRepeat() bên PHP,
+   vốn lại là bản song sinh của js/state.js. Ba nơi phải ra cùng một ngày. */
+const isRepeat = c => /^[dwmy]\d+$/.test(String(c || ''));
+function stepRepeat(iso, code){
+  const unit = code[0], n = Math.max(1, +code.slice(1) || 1);
+  const d = new Date(iso + 'T00:00:00');
+  if (unit === 'd'){ d.setDate(d.getDate() + n); }
+  else if (unit === 'w'){ d.setDate(d.getDate() + 7 * n); }
+  else {
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + (unit === 'm' ? n : 12 * n));
+    if (d.getDate() < day) d.setDate(0);      // 31/1 + 1 tháng → 28/2
+  }
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function nextRepeat(iso, code){
+  if (!isRepeat(code)) return '';
+  const t = today_();
+  let base = iso || t, guard = 0;
+  do { base = stepRepeat(base, code); } while (base < t && ++guard < 400);
+  return base;
+}
+
 /* mốc dời nhắc → giây, 0 khi không có; bản song sinh của snoozeAt() bên PHP */
 function snoozeAt(t){
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(String(t.snoozeUntil || '').trim());
@@ -553,10 +576,17 @@ function webhook(req, res, body){
   if (upd.message){
     if (String(upd.message.chat && upd.message.chat.id) !== String(confChat)) return send({});
     const said = String(upd.message.text || '').trim();
-    let note = '';
-    const mm = /^\/(ghi|them)(?:@\S+)?\s+(.+)$/us.exec(said);
-    if (mm) note = mm[2].trim();
-    else if (said.startsWith('+')) note = said.slice(1).trim();
+    let note = '', reply = '';
+    const mm = /^\/(ghi|them|note|n)(?:@\S+)?(?:\s+(.*))?$/us.exec(said);
+    if (mm){
+      note = String(mm[2] || '').trim();
+      if (!note) reply = 'huong-dan-go-thieu';
+    }
+    else if (/^\/(help|start|tro_giup)(?:@\S+)?/us.test(said)) reply = 'bang-huong-dan';
+    else if (said.startsWith('/'))                             reply = 'lenh-la';
+    else if (said.startsWith('+'))                             note = said.slice(1).trim();
+
+    if (reply){ console.log('[telegram thử · trả lời] ' + reply + ' cho: ' + said); return send({reply}); }
     if (!note) return send({});
 
     const nowIso = iso();
@@ -610,13 +640,23 @@ function webhook(req, res, body){
 
   if (act){
     const row = db().prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?').get(kind, id);
-    let ok = false, until = '';
+    let ok = false, until = '', rolled = '';
     if (row){
       const item = JSON.parse(row.data);
       if (item && !item.deleted){
         const now = iso();
         if (act === 'done'){
-          if (kind === 'tasks'){ item.done = true; item.doneAt = today_(); }
+          /* việc lặp lại: xong kỳ này thì hạn nhảy kỳ sau, KHÔNG done vĩnh viễn */
+          if (kind === 'tasks' && isRepeat(item.repeat)){
+            const due = String(item.due || '').slice(0,10);
+            const onTime = !due || due >= today_();
+            item.streak = (onTime ? +(item.streak || 0) : 0) + 1;
+            item.bestStreak = Math.max(+(item.bestStreak || 0), item.streak);
+            item.doneLog = (item.doneLog || []).map(String).concat(today_()).slice(-80);
+            item.doneAt = today_();
+            item.due = rolled = nextRepeat(due, item.repeat);
+          }
+          else if (kind === 'tasks'){ item.done = true; item.doneAt = today_(); }
           else { item.col = 'done'; item.doneAt = today_(); }
           item.snoozeUntil = '';
         } else {
@@ -631,7 +671,8 @@ function webhook(req, res, body){
       }
     }
     console.log('[telegram thử · webhook] ' + data + ' → ' +
-      (!ok ? 'không tìm thấy' : act === 'done' ? 'đánh dấu xong' : 'dời tới ' + until));
+      (!ok ? 'không tìm thấy' : act !== 'done' ? 'dời tới ' + until
+       : rolled ? 'xong kỳ này, lần tới ' + rolled : 'đánh dấu xong'));
   }
   send({});
 }
@@ -823,6 +864,23 @@ function api(req, res, body){
       if (!need()) return;
       confSet('tg_webhook_on', '');
       return send({ok:true});
+    }
+    case 'tg_webhook_info': {
+      if (!need()) return;
+      /* máy chủ thử không hỏi Telegram thật — trả về đúng hình dạng dữ liệu,
+         và cho ép trạng thái xấu bằng inp.broken để xem giao diện cảnh báo */
+      const on = !!confGet('tg_webhook_on','');
+      return send({ok:true,
+        url: on ? 'http://localhost:' + PORT + '/api/webhook.php' : '',
+        onMessage: on && !inp.broken, onButton: on,
+        allowed: on ? (inp.broken ? ['callback_query'] : ['callback_query','message']) : [],
+        pending: 0,
+        lastError: inp.broken ? 'Wrong response from the webhook: 500' : '',
+        lastErrorAt: inp.broken ? '09:35 17/08' : ''});
+    }
+    case 'tg_step': {            // chỉ có ở máy chủ thử: đối chiếu luật lặp với app
+      if (!need()) return;
+      return send({ok:true, iso: stepRepeat(String(inp.iso), String(inp.code))});
     }
     case 'tg_runnow': {          // chỉ có ở máy chủ thử, để kiểm bộ hẹn giờ
       if (!need()) return;
