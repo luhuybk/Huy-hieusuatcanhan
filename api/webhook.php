@@ -37,9 +37,21 @@ $msgId  = $msg['message_id'] ?? null;
 $confChat = (string)confGet('tg_chat', '');
 if ($token === '' || $confChat === '' || $chatId === '' || $chatId !== $confChat) { echo '{}'; exit; }
 
+/* Hai loại nút: đánh dấu xong, và dời lời nhắc lại N phút. Mã bấm nút
+   Telegram cho tối đa 64 byte nên chỉ mang đúng loại, kho, id, số phút. */
+$act = ''; $kind = ''; $id = ''; $mins = 0;
 if (preg_match('#^done:(tasks|cards):(.+)$#', $data, $m)) {
-  $kind = $m[1];
-  $id   = $m[2];
+  $act = 'done'; $kind = $m[1]; $id = $m[2];
+} elseif (preg_match('#^snz:(tasks|cards):(.+):(\d+)$#', $data, $m)) {
+  $act = 'snz'; $kind = $m[1]; $id = $m[2]; $mins = (int)$m[3];
+  /* chỉ nhận đúng bốn mức đã bày ra — không để ai gõ tay số khác vào */
+  if (!array_key_exists($mins, SNOOZE_MINS)) $act = '';
+}
+
+if ($act !== '') {
+  /* tính mốc dời trước khi mở cơ sở dữ liệu, để câu trả lời cho Telegram
+     và giá trị ghi vào bản ghi chắc chắn là cùng một con số */
+  $until = $act === 'snz' ? time() + $mins * 60 : 0;
 
   $st = db()->prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?');
   $st->execute([$kind, $id]);
@@ -50,8 +62,15 @@ if (preg_match('#^done:(tasks|cards):(.+)$#', $data, $m)) {
     $item = json_decode((string)$row['data'], true);
     if (is_array($item) && empty($item['deleted'])) {
       $now = isoNow();
-      if ($kind === 'tasks') { $item['done'] = true;  $item['doneAt'] = date('Y-m-d'); }
-      else                   { $item['col']  = 'done'; $item['doneAt'] = date('Y-m-d'); }
+      if ($act === 'done') {
+        if ($kind === 'tasks') { $item['done'] = true;  $item['doneAt'] = date('Y-m-d'); }
+        else                   { $item['col']  = 'done'; $item['doneAt'] = date('Y-m-d'); }
+        $item['snoozeUntil'] = '';        // xong rồi thì mốc dời cũ hết nghĩa
+      } else {
+        /* Chỉ dời lời nhắc, KHÔNG dời hạn: hạn trễ vẫn phải hiện là trễ,
+           nếu không thì bấm dời vài lần là mất dấu việc đang chậm. */
+        $item['snoozeUntil'] = date('Y-m-d H:i', $until);
+      }
       $item['updatedAt'] = $now;
       db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
           ->execute([json_encode($item, JSON_UNESCAPED_UNICODE), $now, $kind, $id]);
@@ -60,15 +79,21 @@ if (preg_match('#^done:(tasks|cards):(.+)$#', $data, $m)) {
   }
 
   if ($token !== '') {
+    $said = $act === 'done' ? 'Đã đánh dấu xong ✓'
+                            : 'Đã dời tới ' . date('H:i d/m', $until);
     httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery", [
       'callback_query_id' => $cbId,
-      'text' => $ok ? 'Đã đánh dấu xong ✓' : 'Không tìm thấy việc này (có thể đã xoá)',
+      'text' => $ok ? $said : 'Không tìm thấy việc này (có thể đã xoá)',
     ]);
     if ($ok && $msgId) {
       $origText = (string)($msg['text'] ?? '');
+      $note = $act === 'done' ? '✅ <b>Đã xong</b>'
+                              : '⏰ <b>Đã dời tới ' . date('H:i d/m', $until) . '</b>';
+      /* Không gửi kèm reply_markup nữa: bấm xong thì bộ nút cũ hết tác dụng,
+         để lại chỉ khiến bấm nhầm lần hai. Lời nhắc sau sẽ có nút mới. */
       httpPostJson("https://api.telegram.org/bot$token/editMessageText", [
         'chat_id' => $chatId, 'message_id' => $msgId, 'parse_mode' => 'HTML',
-        'text' => $origText . "\n\n✅ <b>Đã xong</b>",
+        'text' => $origText . "\n\n" . $note,
       ]);
     }
   }

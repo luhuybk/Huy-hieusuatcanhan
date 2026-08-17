@@ -68,7 +68,26 @@ function itemsOf(kind){
 const REM_WINDOW = 3600;
 const ESCALATE_DAYS = [3, 7, 14, 30];
 const TIER_PING = {S:14, S2:21, A:30, B:60, C:150};
+const SNOOZE_MINS = {240:'4 giờ', 720:'12 giờ', 1440:'1 ngày', 4320:'3 ngày'};
 const pad = n => String(n).padStart(2,'0');
+
+/* bản song sinh của topicFor() bên PHP */
+const TOPIC_CONF = {tasks:'tg_task_topic', cards:'tg_card_topic',
+                    rem:'tg_rem_topic',    report:'tg_report_topic'};
+function topicFor(what){
+  const v = String(confGet(TOPIC_CONF[what] || '', '') || '').trim();
+  if (v) return v;
+  if (what !== 'rem'){
+    const old = String(confGet('tg_work_topic', '') || '').trim();
+    if (old) return old;
+  }
+  return String(confGet('tg_topic', '') || '') || 'chính';
+}
+/* mốc dời nhắc → giây, 0 khi không có; bản song sinh của snoozeAt() bên PHP */
+function snoozeAt(t){
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(String(t.snoozeUntil || '').trim());
+  return m ? Math.floor(new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime()/1000) : 0;
+}
 
 function buildDigest(){
   const now = new Date();
@@ -240,12 +259,23 @@ function tgWhy(atMs){
   for (const [kind, label] of [['tasks','Việc'], ['cards','Thẻ giao việc']]){
     for (const t of itemsOf(kind)){
       const at = String(t.remindAt || '').trim();
-      if (!at) continue;
+      const sn = String(t.snoozeUntil || '').trim();
+      if (!at && !sn) continue;
       const due = String(t.due || '').slice(0,10);
-      const row = {kind:label, title:t.title || '', at, due, ok:false};
+      const row = {kind:label, title:t.title || '', at, due, snooze:sn, ok:false};
       const m = /^(\d{1,2}):(\d{2})$/.exec(at);
+      const useSnooze = sn && (sn.slice(0,10) >= today || !at);
 
       if (kind === 'tasks' ? t.done : t.col === 'done') row.why = 'Đã đánh dấu xong — không nhắc nữa';
+      else if (useSnooze){
+        const when = snoozeAt(t);
+        const key = `snz:${kind}:${t.id}:${sn}`;
+        if (!when)                           row.why = 'Mốc dời không hợp lệ';
+        else if (alreadySent(key))           row.why = 'Đã gửi lời nhắc dời rồi';
+        else if (nowSec < when)              row.why = `Đã dời — còn ${Math.ceil((when-nowSec)/60)} phút`;
+        else if (nowSec - when > REM_WINDOW) row.why = 'Quá 1 tiếng so với mốc dời — bỏ lần này';
+        else { row.why = 'Sẽ gửi ở lần cron kế tiếp'; row.ok = true; }
+      }
       else if (!m)          row.why = 'Giờ hẹn không hợp lệ';
       else if (!due)        row.why = 'Chưa đặt hạn — chỉ nhắc đúng ngày hạn';
       else if (due !== today) row.why = `Hạn ${due}, không phải hôm nay`;
@@ -294,7 +324,7 @@ function runSchedule(dry, atMs){
     if (dry){ done.push({reminder:r.title, dry:true}); continue; }
     markSent(key);
     done.push({reminder:r.title, ok:true, sent:`🔔 ${r.title}${r.note ? '\n'+r.note : ''}`,
-               topic:r.topic || confGet('tg_topic','')});
+               topic:String(r.topic || '').trim() || topicFor('rem')});
   }
 
   /* nhắc riêng từng đầu việc, đúng ngày hạn */
@@ -303,6 +333,9 @@ function runSchedule(dry, atMs){
       const m = /^(\d{1,2}):(\d{2})$/.exec(String(t.remindAt || '')); if (!m) continue;
       if (kind === 'tasks' ? t.done : t.col === 'done') continue;
       if (String(t.due || '').slice(0,10) !== today) continue;
+      /* đã bấm dời trong hôm nay thì bỏ giờ hẹn thường */
+      const sn = String(t.snoozeUntil || '').trim().slice(0,10);
+      if (sn && sn >= today) continue;
       const at = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(),
                                      +m[1], +m[2], 0).getTime() / 1000);
       if (nowSec < at || nowSec - at > REM_WINDOW) continue;
@@ -310,7 +343,21 @@ function runSchedule(dry, atMs){
       if (alreadySent(key)) continue;
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
-      done.push({[what]:t.title, ok:true, topic:confGet('tg_work_topic','') || confGet('tg_topic','')});
+      done.push({[what]:t.title, ok:true, topic:topicFor(kind)});
+    }
+  }
+
+  /* việc đã bấm dời lại — chạy độc lập với ngày hạn */
+  for (const [kind, what] of [['tasks','dời · việc của mình'], ['cards','dời · việc đã giao']]){
+    for (const t of itemsOf(kind)){
+      if (kind === 'tasks' ? t.done : t.col === 'done') continue;
+      const when = snoozeAt(t);
+      if (!when || nowSec < when || nowSec - when > REM_WINDOW) continue;
+      const key = `snz:${kind}:${t.id}:${String(t.snoozeUntil).trim()}`;
+      if (alreadySent(key)) continue;
+      if (dry){ done.push({[what]:t.title, dry:true}); continue; }
+      markSent(key);
+      done.push({[what]:t.title, ok:true, topic:topicFor(kind)});
     }
   }
 
@@ -326,7 +373,7 @@ function runSchedule(dry, atMs){
         if (alreadySent(key)) continue;
         if (dry){ done.push({escalate:t.title, days:daysLate, dry:true}); continue; }
         markSent(key);
-        done.push({escalate:t.title, days:daysLate, ok:true});
+        done.push({escalate:t.title, days:daysLate, ok:true, topic:topicFor(kind)});
       }
     }
   }
@@ -338,7 +385,7 @@ function runSchedule(dry, atMs){
     if (!alreadySent(key)){
       const lines = buildWeekly(now.getTime());
       if (dry) done.push({weekly:lines.length, dry:true});
-      else { markSent(key); done.push({weekly:lines.length, ok:true, lines}); }
+      else { markSent(key); done.push({weekly:lines.length, ok:true, lines, topic:topicFor('report')}); }
     }
   }
 
@@ -350,7 +397,7 @@ function runSchedule(dry, atMs){
       const lines = buildWork(now.getTime());
       if (lines.length){
         if (dry) done.push({work:lines.length, dry:true});
-        else { markSent(key); done.push({work:lines.length, ok:true, lines}); }
+        else { markSent(key); done.push({work:lines.length, ok:true, lines, topic:topicFor('report')}); }
       } else { if (!dry) markSent(key); done.push({work:0, note:'không có việc nào cần nhắc'}); }
     }
   }
@@ -362,7 +409,7 @@ function runSchedule(dry, atMs){
       const lines = buildDigest();
       if (lines.length){
         if (dry) done.push({digest:lines.length, dry:true});
-        else { markSent(key); done.push({digest:lines.length, ok:true, lines}); }
+        else { markSent(key); done.push({digest:lines.length, ok:true, lines, topic:topicFor('report')}); }
       } else { if (!dry) markSent(key); done.push({digest:0, note:'không có gì cần nhắc'}); }
     }
   }
@@ -421,24 +468,37 @@ function webhook(req, res, body){
   const confChat = confGet('tg_chat', '');
   if (!confChat || chatId !== String(confChat)) return send({});
 
-  const m = /^done:(tasks|cards):(.+)$/.exec(data);
-  if (m){
-    const [, kind, id] = m;
+  let act = '', kind = '', id = '', mins = 0, m;
+  if ((m = /^done:(tasks|cards):(.+)$/.exec(data))){ act = 'done'; kind = m[1]; id = m[2]; }
+  else if ((m = /^snz:(tasks|cards):(.+):(\d+)$/.exec(data))){
+    act = 'snz'; kind = m[1]; id = m[2]; mins = +m[3];
+    if (!SNOOZE_MINS[mins]) act = '';
+  }
+
+  if (act){
     const row = db().prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?').get(kind, id);
-    let ok = false;
+    let ok = false, until = '';
     if (row){
       const item = JSON.parse(row.data);
       if (item && !item.deleted){
         const now = iso();
-        if (kind === 'tasks'){ item.done = true; item.doneAt = today_(); }
-        else { item.col = 'done'; item.doneAt = today_(); }
+        if (act === 'done'){
+          if (kind === 'tasks'){ item.done = true; item.doneAt = today_(); }
+          else { item.col = 'done'; item.doneAt = today_(); }
+          item.snoozeUntil = '';
+        } else {
+          const d = new Date(Date.now() + mins * 60000);
+          until = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          item.snoozeUntil = until;   // chỉ dời nhắc, hạn chót giữ nguyên
+        }
         item.updatedAt = now;
         db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
             .run(JSON.stringify(item), now, kind, id);
         ok = true;
       }
     }
-    console.log('[telegram thử · webhook] ' + data + ' → ' + (ok ? 'đánh dấu xong' : 'không tìm thấy'));
+    console.log('[telegram thử · webhook] ' + data + ' → ' +
+      (!ok ? 'không tìm thấy' : act === 'done' ? 'đánh dấu xong' : 'dời tới ' + until));
   }
   send({});
 }
@@ -540,7 +600,10 @@ function api(req, res, body){
         confSet('tg_digest_hour', (h >= 0 && h <= 23) ? h : -1);
         const w = inp.workHour == null ? -1 : +inp.workHour;
         confSet('tg_work_hour', (w >= 0 && w <= 23) ? w : -1);
-        confSet('tg_work_topic', String(inp.workTopic || '').trim());
+        for (const [k, conf] of Object.entries({
+              taskTopic:'tg_task_topic', cardTopic:'tg_card_topic',
+              remTopic:'tg_rem_topic',   reportTopic:'tg_report_topic'}))
+          confSet(conf, String(inp[k] || '').trim());
         const wk = inp.weeklyHour == null ? -1 : +inp.weeklyHour;
         confSet('tg_weekly_hour', (wk >= 0 && wk <= 23) ? wk : -1);
         confSet('tg_escalate', inp.escalate ? '1' : '');
@@ -552,6 +615,10 @@ function api(req, res, body){
         chatId: confGet('tg_chat',''), topic: confGet('tg_topic',''),
         digestHour: +confGet('tg_digest_hour','-1'),
         workHour: +confGet('tg_work_hour','-1'),
+        taskTopic: confGet('tg_task_topic',''),
+        cardTopic: confGet('tg_card_topic',''),
+        remTopic: confGet('tg_rem_topic',''),
+        reportTopic: confGet('tg_report_topic',''),
         workTopic: confGet('tg_work_topic',''),
         weeklyHour: +confGet('tg_weekly_hour','-1'),
         escalate: !!confGet('tg_escalate',''),
@@ -570,7 +637,11 @@ function api(req, res, body){
     }
     case 'tg_discover': {
       if (!need()) return;
-      return send({ok:true, chats:[{id:'-1001234567890', title:'Group thử nghiệm', topic:'12'}]});
+      return send({ok:true, chats:[
+        {id:'-1001234567890', title:'Group thử nghiệm', topic:'',   name:''},
+        {id:'-1001234567890', title:'Group thử nghiệm', topic:'12', name:'Việc cần làm'},
+        {id:'-1001234567890', title:'Group thử nghiệm', topic:'18', name:'Giao việc'},
+        {id:'-1001234567890', title:'Group thử nghiệm', topic:'24', name:'Báo cáo'}]});
     }
     case 'tg_dryrun': {
       if (!need()) return;
@@ -582,7 +653,7 @@ function api(req, res, body){
       const lines = buildWork(inp.at);
       if (!lines.length) return send({ok:true, empty:true});
       console.log('[telegram thử · công việc] nhánh='
-        + (confGet('tg_work_topic','') || confGet('tg_topic','') || 'chính') + '\n' + lines.join('\n'));
+        + topicFor('report') + '\n' + lines.join('\n'));
       return send({ok:true, lines:lines.length});
     }
     case 'tg_why': {
@@ -593,7 +664,7 @@ function api(req, res, body){
       if (!need()) return;
       const lines = buildWeekly(inp.at);
       console.log('[telegram thử · tuần] nhánh='
-        + (confGet('tg_work_topic','') || confGet('tg_topic','') || 'chính') + '\n' + lines.join('\n'));
+        + topicFor('report') + '\n' + lines.join('\n'));
       return send({ok:true, lines:lines.length});
     }
     case 'tg_webhook_enable': {

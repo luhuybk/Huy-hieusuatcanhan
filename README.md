@@ -275,9 +275,21 @@ Cài đặt → Thông báo Telegram → **Cài đặt**:
 - Dán mã bot
 - Bấm **Dò group** — app tự điền ID group và số nhánh
 - Chọn giờ gửi bản tóm tắt hằng ngày (để trống thì không gửi)
-- Chọn giờ gửi **bảng công việc**, và nhánh riêng cho nó nếu muốn tách khỏi nhánh mặc định
+- Chọn giờ gửi **bảng công việc**
+- Điền **bốn ô nhánh** nếu muốn tách tin ra từng nhánh (xem ngay dưới đây)
 - Bấm **Gửi thử** để chắc tin vào đúng nhánh
 - **Lưu cấu hình**
+
+**Bốn nhánh riêng cho bốn loại tin.** Trộn hết vào một nhánh thì một bản báo cáo dài đẩy trôi mất mấy lời nhắc ngắn. Bốn ô trong Cài đặt chia như sau:
+
+| Ô | Tin nào đi vào đây |
+|---|---|
+| **Việc cần làm** | nhắc riêng từng việc của mình, báo trễ leo thang của việc mình |
+| **Giao việc** | nhắc riêng từng thẻ giao việc, báo trễ leo thang của thẻ |
+| **Nhắc lặp lại** | gym, uống thuốc, chốt sổ… — trừ lời nhắc nào tự đặt nhánh riêng cho nó |
+| **Báo cáo** | tóm tắt hằng ngày, bảng công việc, tóm tắt tuần |
+
+Ô nào để trống thì tin đi vào nhánh mặc định. Muốn biết ID nhánh: nhắn một câu vào **từng nhánh** trong group rồi bấm **Dò group** — app liệt kê hết các nhánh bot nhìn thấy kèm tên, chép số vào ô tương ứng.
 
 **4. Hẹn giờ cho máy chủ — đừng bỏ bước này**
 
@@ -342,7 +354,7 @@ Hai thứ khác nhau, dùng chung hay riêng đều được.
    • Chạy ads Shopee — Minh (hạn hôm nay)
 ```
 
-Ô *Nhánh cho công việc* cho phép đẩy tin này vào một nhánh khác với nhánh mặc định — việc làm ăn một nhánh, chuyện nhà một nhánh. Không có việc nào đang treo thì không gửi tin trống. Nút **Gửi bảng công việc ngay** ở màn Cài đặt gửi thử bất cứ lúc nào mà không phải chờ tới giờ.
+Tin này thuộc nhóm **báo cáo**, nên nó đi vào ô nhánh *Báo cáo*. Không có việc nào đang treo thì không gửi tin trống. Nút **Gửi bảng công việc ngay** ở màn Cài đặt gửi thử bất cứ lúc nào mà không phải chờ tới giờ.
 
 Bật bảng này thì bản tóm tắt hằng ngày **tự bỏ** khối việc đến hạn và dòng việc giao trễ, để bạn không đọc cùng một danh sách hai lần trong một buổi sáng. Tắt đi thì nó nhận lại như cũ.
 
@@ -360,7 +372,7 @@ Cùng quy tắc giờ giấc như lời nhắc lặp lại: cron 5 phút một n
 **Đặt giờ mà không thấy tin — bấm "Vì sao chưa gửi?"** Nút này ở Cài đặt → Thông báo Telegram, hỏi thẳng máy chủ xem nó đang thấy gì:
 
 - **Giờ máy chủ** và **cron chạy lần cuối cách đây bao lâu**. Quá 20 phút là cron đã ngừng — đó là nguyên nhân phổ biến nhất.
-- Từng đầu việc có hẹn giờ, kèm lý do cụ thể: *chưa tới giờ — còn 8 phút*, *hạn 17/08 không phải hôm nay*, *chưa đặt hạn*, *đã đánh dấu xong*, *đã gửi rồi*, *quá 1 tiếng so với giờ hẹn*.
+- Từng đầu việc có hẹn giờ, kèm lý do cụ thể: *chưa tới giờ — còn 8 phút*, *hạn 17/08 không phải hôm nay*, *chưa đặt hạn*, *đã đánh dấu xong*, *đã gửi rồi*, *quá 1 tiếng so với giờ hẹn*, *đã dời — còn 240 phút*.
 - Nếu bảng trống hoàn toàn → máy chủ **chưa nhận được** dữ liệu bạn vừa đặt, bấm **Đồng bộ ngay** ở mục Tài khoản.
 
 Bảng này chỉ đọc, không gửi gì cả, nên bấm bao nhiêu lần cũng được.
@@ -373,16 +385,36 @@ Bảng này chỉ đọc, không gửi gì cả, nên bấm bao nhiêu lần cũ
 
 Mỗi mốc chỉ báo đúng một lần cho mỗi việc — không nhắc lại mỗi ngày, vì việc đó vẫn nằm sẵn trong bảng công việc rồi. Tắt tính năng này thì việc trễ chỉ còn hiện trong bảng công việc như bình thường.
 
-**Nút "✅ Xong" ngay dưới tin nhắn.** Cài đặt → Thông báo Telegram → **Bật nút Xong**. Từ đó, các tin nhắc riêng từng đầu việc (và tin báo trễ leo thang) có thêm một nút bấm — bấm là việc tự đánh dấu hoàn thành, không cần mở app:
+**Nút bấm ngay dưới tin nhắn.** Cài đặt → Thông báo Telegram → **Bật nút bấm**. Từ đó, các tin nhắc riêng từng đầu việc (và tin báo trễ leo thang) có thêm một hàng nút — xử lý ngay trong Telegram, không cần mở app:
 
 ```
 ✓ Gọi nhà cung cấp
 Hạn hôm nay · 14:45
 
-[ ✅ Xong ]
+[            ✅ Xong            ]
+[ ⏰4 giờ | 12 giờ | 1 ngày | 3 ngày ]
 ```
 
-Cần tên miền chạy **https** (Telegram không gọi ngược về địa chỉ http). Khi bấm nút: máy chủ đánh dấu việc xong ngay trong cơ sở dữ liệu, trả lời Telegram bằng một thông báo nhỏ ("Đã đánh dấu xong ✓"), và sửa lại tin nhắn gốc để bạn biết đã bấm rồi — bấm lại không sao, chỉ báo "không tìm thấy" nếu việc đã bị xoá. Chỉ nút bấm từ đúng group đã cấu hình mới có tác dụng, người khác có link webhook cũng không đụng được vào dữ liệu của bạn.
+Cần tên miền chạy **https** (Telegram không gọi ngược về địa chỉ http). Khi bấm nút: máy chủ ghi thẳng vào cơ sở dữ liệu, trả lời bằng một thông báo nhỏ ("Đã đánh dấu xong ✓" / "Đã dời tới 18:03 17/08"), và sửa lại tin nhắn gốc để bạn biết đã bấm rồi. Chỉ nút bấm từ đúng group đã cấu hình mới có tác dụng, người khác có link webhook cũng không đụng được vào dữ liệu của bạn.
+
+### Dời lời nhắc lại
+
+Bốn mức: **4 giờ · 12 giờ · 1 ngày · 3 ngày**. Bấm được ở hai chỗ, cùng một kết quả:
+
+- **Trên Telegram** — hàng nút ⏰ ngay dưới tin nhắc.
+- **Trên web** — nút ⏰ ở cuối mỗi dòng việc, và ở hàng nút dưới mỗi thẻ giao việc.
+
+Dời xong, chip 🔔 giờ hẹn đổi thành chip vàng **⏰ 18:03** (hoặc *⏰ 09:00 mai*) để bạn nhìn danh sách là biết ngay việc nào đang được đẩy lùi. Mở lại hộp dời có thêm nút **Bỏ dời** để trả về giờ hẹn cũ.
+
+**Chỉ dời lời nhắc, không dời hạn chót.** Việc trễ vẫn hiện là trễ, vẫn nằm trong bảng công việc và vẫn bị báo trễ leo thang. Nếu dời được cả hạn thì bấm vài lần là mất dấu việc đang chậm — đúng thứ cần tránh nhất.
+
+Vài điểm nhỏ đáng biết:
+
+- Đã dời trong ngày thì lời nhắc theo giờ hẹn thường **im hẳn** hôm đó, không nhắc chồng.
+- Dời tiếp lần nữa vẫn được nhắc tiếp — mỗi mốc dời là một lời nhắc riêng.
+- Dời được cả việc **không có hạn**: lúc đó nó thành "nhắc tôi sau 4 tiếng".
+- Bấm ✅ Xong thì mốc dời tự xoá.
+- Web và Telegram dùng chung một trường dữ liệu, nên bấm bên nào bên kia cũng thấy sau lượt đồng bộ kế tiếp.
 
 ### Tóm tắt cuối tuần
 

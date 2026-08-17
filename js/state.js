@@ -270,7 +270,9 @@ function ensure(){
   db.tasks .forEach(t => { if(t.repeat===undefined) t.repeat=''; if(t.streak===undefined) t.streak=0;
                            if(t.bestStreak===undefined) t.bestStreak=0; if(t.areaId===undefined) t.areaId='';
                            /* giờ máy chủ đẩy tin nhắc riêng cho việc này; rỗng = không đẩy */
-                           if(t.remindAt===undefined) t.remindAt=''; });
+                           if(t.remindAt===undefined) t.remindAt='';
+                           /* mốc đã bấm dời nhắc, "YYYY-MM-DD HH:MM" giờ VN; rỗng = không dời */
+                           if(t.snoozeUntil===undefined) t.snoozeUntil=''; });
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId=''; });
   db.inbox.forEach(n => { if(n.processed===undefined) n.processed = false; if(!n.text) n.text = ''; });
   db.staff.forEach(s2 => { if(!Array.isArray(s2.areaIds)) s2.areaIds = [];
@@ -293,7 +295,8 @@ function ensure(){
                            if(c.areaId===undefined) c.areaId=''; if(COL_MAP[c.col]) c.col = COL_MAP[c.col];
                            if(!COLS.some(x=>x.id===c.col)) c.col='assigned';
                            if(!Array.isArray(c.checklist)) c.checklist=[];
-                           if(c.remindAt===undefined) c.remindAt=''; });
+                           if(c.remindAt===undefined) c.remindAt='';
+                           if(c.snoozeUntil===undefined) c.snoozeUntil=''; });
   if (!db.settings.workspace) db.settings.workspace = '';
 }
 /* Safari ở chế độ riêng tư, hoặc kho đầy, sẽ ném lỗi ở đây. Không bắt thì

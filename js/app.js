@@ -321,6 +321,57 @@ function toggleTask(id){
   stamp(t); save(); render();
 }
 
+/* ---------------- dời nhắc ----------------
+   Dùng chung cho việc cần làm và thẻ giao việc. Bấm dời ở đây hay bấm nút
+   ⏰ dưới tin Telegram đều ghi vào cùng một trường snoozeUntil, nên hai bên
+   luôn thấy giống nhau sau lượt đồng bộ kế tiếp.
+   Bốn mức này phải khớp SNOOZE_MINS trong api/lib.php. */
+const SNOOZE = [[240,'4 giờ'], [720,'12 giờ'], [1440,'1 ngày'], [4320,'3 ngày']];
+
+/* Giờ địa phương chứ KHÔNG phải ISO/UTC: máy chủ đọc chuỗi này theo giờ VN,
+   đổi sang UTC là lệch bảy tiếng, nhắc sai hẳn buổi. */
+const snoozeStamp = ms => { const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+function snoozeDate(s){
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(String(s || ''));
+  return m ? new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]) : null;
+}
+const snoozeOn = o => { const d = snoozeDate(o && o.snoozeUntil); return !!d && d > new Date(); };
+function snoozeText(s){
+  const d = snoozeDate(s); if (!d) return '';
+  const midnight = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dd = Math.round((midnight(d) - midnight(new Date())) / 86400000);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}` +
+    (dd === 0 ? '' : dd === 1 ? ' mai' : ` ${pad2(d.getDate())}/${pad2(d.getMonth()+1)}`);
+}
+const snoozeItem = (kind, id) => (kind === 'cards' ? db.cards : db.tasks).find(x => x.id === id);
+
+function snoozeBox(kind, id){
+  const it = snoozeItem(kind, id); if (!it) return;
+  const on = snoozeOn(it);
+  $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+    <h2>Dời nhắc</h2>
+    <div class="dim" style="margin:-8px 0 14px;line-height:1.65">
+      <b>${esc(it.title || '')}</b><br>
+      ${on ? `Đang dời tới <b>${esc(snoozeText(it.snoozeUntil))}</b>. Chọn mức khác để dời tiếp.`
+           : 'Chỉ dời <b>lời nhắc</b>, hạn chót giữ nguyên — việc trễ vẫn hiện là trễ.'}
+    </div>
+    <div class="btns" style="flex-wrap:wrap">
+      ${SNOOZE.map(([m, l]) =>
+        `<button class="btn grow" data-act="snzSet" data-k="${esc(kind)}" data-id="${esc(id)}" data-m="${m}">⏰ ${esc(l)}</button>`).join('')}
+    </div>
+    ${on ? `<button class="btn full dngr" style="margin-top:10px"
+              data-act="snzSet" data-k="${esc(kind)}" data-id="${esc(id)}" data-m="0">Bỏ dời</button>` : ''}
+    <button class="btn full" style="margin-top:10px" data-close>Đóng</button>
+  </div></div>`;
+}
+function snoozeApply(kind, id, mins){
+  const it = snoozeItem(kind, id); if (!it) return;
+  it.snoozeUntil = mins > 0 ? snoozeStamp(Date.now() + mins * 60000) : '';
+  stamp(it); save(); closeModal(); render();
+  toast(mins > 0 ? 'Nhắc lại lúc ' + snoozeText(it.snoozeUntil) : 'Đã bỏ dời');
+}
+
 /* ---------------- ý tưởng ---------------- */
 const ideaFields = () => [
   {k:'title',  label:'Ý tưởng'},
@@ -648,7 +699,7 @@ function staffLink(id){
 const remFields = () => [
   {k:'title', label:'Nhắc gì', ph:'Tập gym, uống thuốc, chốt sổ…'},
   {k:'time',  label:'Lúc mấy giờ', type:'time', half:true},
-  {k:'topic', label:'Nhánh trong group', half:true, ph:'để trống = nhánh chính',
+  {k:'topic', label:'Nhánh riêng cho lời nhắc này', half:true, ph:'để trống = nhánh nhắc lặp lại',
    hint:'số ID của topic, xem hướng dẫn trong Cài đặt'},
   {k:'days',  label:'Những thứ nào trong tuần', type:'days'},
   {k:'note',  label:'Nội dung thêm', type:'textarea', req:false, voice:true,
@@ -696,7 +747,9 @@ function tgBox(){
     top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.65">
       1. Nhắn <b>@BotFather</b> → <b>/newbot</b> → chép mã bot.<br>
       2. Thêm bot vào group của bạn, cho quyền gửi tin.<br>
-      3. Nhắn một câu bất kỳ vào group rồi bấm <b>Dò group</b> bên dưới.</div>`,
+      3. Nhắn một câu bất kỳ vào group rồi bấm <b>Dò group</b> bên dưới.<br>
+      4. Muốn tách nhánh: nhắn một câu vào <b>từng nhánh</b> rồi bấm dò —
+      danh sách ID nhánh sẽ hiện ra để bạn chép vào bốn ô nhánh.</div>`,
     fields:[
       {k:'token', label:'Mã bot' + (t.hasToken ? ' (đã có — để trống nếu không đổi)' : ''),
        ph:'123456:AAE…', req:false},
@@ -706,8 +759,14 @@ function tgBox(){
        ph:'0-23', hint:'để trống hoặc -1 thì không gửi'},
       {k:'workHour', label:'Giờ gửi bảng công việc', type:'number', half:true,
        ph:'0-23', hint:'việc đến hạn, việc trễ, việc đã giao'},
-      {k:'workTopic', label:'Nhánh cho công việc', half:true,
-       ph:'để trống = dùng nhánh mặc định'},
+      {k:'taskTopic', label:'Nhánh: việc cần làm', half:true,
+       ph:'để trống = nhánh mặc định'},
+      {k:'cardTopic', label:'Nhánh: giao việc', half:true,
+       ph:'để trống = nhánh mặc định'},
+      {k:'remTopic', label:'Nhánh: nhắc lặp lại', half:true,
+       ph:'để trống = nhánh mặc định', hint:'gym, uống thuốc, chốt sổ…'},
+      {k:'reportTopic', label:'Nhánh: báo cáo', half:true,
+       ph:'để trống = nhánh mặc định', hint:'tóm tắt ngày, bảng công việc, tóm tắt tuần'},
       {k:'weeklyHour', label:'Giờ gửi tóm tắt tuần (Chủ nhật)', type:'number', half:true,
        ph:'0-23', hint:'để trống thì không gửi'},
       {k:'escalate', label:'Báo trễ leo thang', type:'select', half:true,
@@ -718,7 +777,11 @@ function tgBox(){
     values:{token:'', chatId:t.chatId || '', topic:t.topic || '',
             digestHour: t.digestHour == null ? 7 : t.digestHour,
             workHour: t.workHour == null ? -1 : t.workHour,
-            workTopic: t.workTopic || '',
+            /* lùi về nhánh công việc cũ để lần đầu mở ra không thấy ô trống trơn */
+            taskTopic: t.taskTopic || t.workTopic || '',
+            cardTopic: t.cardTopic || t.workTopic || '',
+            remTopic: t.remTopic || '',
+            reportTopic: t.reportTopic || t.workTopic || '',
             weeklyHour: t.weeklyHour == null ? -1 : t.weeklyHour,
             escalate: t.escalate ? 'yes' : '',
             enabled: t.enabled ? 'yes' : ''},
@@ -731,7 +794,10 @@ function tgBox(){
       const body = {chatId:String(v.chatId || '').trim(), topic:String(v.topic || '').trim(),
                     digestHour: v.digestHour === '' ? -1 : +v.digestHour,
                     workHour:   v.workHour   === '' ? -1 : +v.workHour,
-                    workTopic:  String(v.workTopic || '').trim(),
+                    taskTopic:  String(v.taskTopic || '').trim(),
+                    cardTopic:  String(v.cardTopic || '').trim(),
+                    remTopic:   String(v.remTopic || '').trim(),
+                    reportTopic:String(v.reportTopic || '').trim(),
                     weeklyHour: v.weeklyHour === '' ? -1 : +v.weeklyHour,
                     escalate:   v.escalate === 'yes',
                     enabled: v.enabled === 'yes'};
@@ -759,7 +825,9 @@ function tgWhyBox(){
     const rows = (d.items || []).length
       ? d.items.map(i => `<div class="row" style="padding:7px 0;border-top:1px solid var(--line)">
           <div class="grow"><div class="ell" style="font-weight:600;font-size:14px">${esc(i.title)}</div>
-            <div class="dim">${esc(i.kind)} · hẹn ${esc(i.at)}${i.due ? ' · hạn ' + esc(i.due) : ''}</div></div>
+            <div class="dim">${esc(i.kind)}${i.at ? ' · hẹn ' + esc(i.at) : ''}${
+              i.due ? ' · hạn ' + esc(i.due) : ''}${
+              i.snooze ? ' · ⏰ dời tới ' + esc(snoozeText(i.snooze)) : ''}</div></div>
           <span class="chip ${i.ok ? 'ok' : ''}">${esc(i.why)}</span></div>`).join('')
       : `<div class="dim" style="padding:8px 0">Máy chủ <b>không thấy</b> đầu việc nào có hẹn giờ.
          Nếu bạn vừa đặt trên máy này thì dữ liệu chưa đồng bộ lên —
@@ -1249,6 +1317,10 @@ document.addEventListener('click', e => {
       break;
     }
 
+    /* dời nhắc */
+    case 'snooze': snoozeBox(el.dataset.k, id); break;
+    case 'snzSet': snoozeApply(el.dataset.k, id, +el.dataset.m); break;
+
     /* Telegram */
     case 'tgBox':  tgBox(); break;
     case 'workNow':
@@ -1294,12 +1366,15 @@ document.addEventListener('click', e => {
           if (!d.chats.length){ out.textContent = 'Chưa thấy group nào. Nhắn một câu vào group rồi bấm lại.'; return; }
           const c = d.chats[0];
           if ($('#f_chatId')) $('#f_chatId').value = c.id;
-          if (c.topic && $('#f_topic') && !$('#f_topic').value) $('#f_topic').value = c.topic;
-          out.innerHTML = 'Tìm thấy: <b>' + esc(c.title || c.id) + '</b>' +
-            (c.topic ? ' · nhánh <b>' + esc(String(c.topic)) + '</b>' : ' · nhánh chính') +
-            (d.chats.length > 1 ? `<br>Còn ${d.chats.length - 1} group khác: ` +
-              d.chats.slice(1).map(x => esc(x.title || x.id)).join(', ') : '') +
-            '<br>Đã điền vào ô bên trên. Bấm Lưu cấu hình.';
+          /* Liệt kê đủ mọi nhánh dò được: giờ có bốn ô nhánh phải điền, chỉ
+             gợi ý mỗi cái đầu tiên thì vẫn phải mò thủ công ba cái còn lại. */
+          out.innerHTML = 'Đã điền ID group <b>' + esc(c.title || c.id) + '</b> vào ô bên trên.' +
+            '<br>Các nhánh bot nhìn thấy — chép số vào ô nhánh tương ứng:<br>' +
+            d.chats.map(x => '· ' + (x.topic
+                ? '<b>' + esc(String(x.topic)) + '</b>' + (x.name ? ' — ' + esc(x.name) : '')
+                : '<b>nhánh chính</b>') +
+              (String(x.id) !== String(c.id) ? ' <i>(group ' + esc(x.title || x.id) + ')</i>' : '')).join('<br>') +
+            '<br>Nhánh nào chưa thấy thì nhắn một câu vào đó rồi bấm dò lại.';
         })
         .catch(err => { if (out) out.textContent = 'Lỗi: ' + err.message; });
       break;

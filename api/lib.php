@@ -17,6 +17,8 @@ const FAIL_WIN    = 900;     // trong bao nhiêu giây (15 phút)
 const PULL_LIMIT  = 500;     // số bản ghi tối đa mỗi lượt kéo về
 const REM_WINDOW  = 3600;    // trễ quá 1 tiếng thì thôi, không gửi nữa
 const ESCALATE_DAYS = [3, 7, 14, 30];   // mốc ngày trễ để báo leo thang, mỗi mốc chỉ báo một lần
+/* các mức dời nhắc, tính bằng phút — phải khớp với SNOOZE trong js/app.js */
+const SNOOZE_MINS = [240 => '4 giờ', 720 => '12 giờ', 1440 => '1 ngày', 4320 => '3 ngày'];
 
 /* Cùng định dạng thời gian với JavaScript (…T…Z, có phần nghìn giây) để
    hai bên so sánh chuỗi ngày với nhau lúc nào cũng ra đúng kết quả. */
@@ -165,11 +167,19 @@ function tgSend(string $text, $topic = null, ?array $keyboard = null): array {
   return httpPostJson("https://api.telegram.org/bot$token/sendMessage", $body);
 }
 
-/* Nút "✅ Xong" dưới tin nhắc — chỉ đính kèm khi đã bật webhook, nếu
-   không bấm vào cũng chẳng có gì lắng nghe, chỉ gây khó hiểu. */
-function tgDoneKeyboard(string $kind, string $id): ?array {
+/* Nút dưới tin nhắc — chỉ đính kèm khi đã bật webhook, nếu không bấm vào
+   cũng chẳng có gì lắng nghe, chỉ gây khó hiểu.
+   Hàng trên "Xong", hàng dưới bốn mức dời lại. Bốn nút một hàng vừa khít
+   bề ngang điện thoại, nhãn phải ngắn nên chỉ ghi số. */
+function tgItemButtons(string $kind, string $id): ?array {
   if (!confGet('tg_webhook_on')) return null;
-  return [[['text' => '✅ Xong', 'callback_data' => 'done:' . $kind . ':' . $id]]];
+  $snooze = [];
+  foreach (SNOOZE_MINS as $mins => $label)
+    $snooze[] = ['text' => '⏰ ' . $label, 'callback_data' => 'snz:' . $kind . ':' . $id . ':' . $mins];
+  return [
+    [['text' => '✅ Xong', 'callback_data' => 'done:' . $kind . ':' . $id]],
+    $snooze,
+  ];
 }
 
 /* khoá bí mật để Telegram tự xác thực khi gọi webhook.php — sinh một lần */
@@ -247,9 +257,32 @@ function buildDigest(): array {
    Tách riêng khỏi bản tóm tắt để đẩy được vào đúng nhánh công việc của group,
    và vào giờ khác — bạn muốn xem việc lúc bắt đầu ngày làm, không phải lúc
    vừa ngủ dậy. Trả về mảng rỗng khi không có gì, để khỏi gửi tin trống. */
-function workTopic() {
-  $t = (string)confGet('tg_work_topic', '');
-  return $t !== '' ? $t : null;      // null = dùng nhánh mặc định
+/* Mỗi loại tin đi vào một nhánh riêng của group: việc của mình, việc đã
+   giao, nhắc lặp lại, và báo cáo. Trộn chung một nhánh thì đọc rất mệt —
+   tin báo cáo dài đẩy trôi mất mấy lời nhắc ngắn.
+   Chưa đặt nhánh nào thì lùi về cấu hình cũ (tg_work_topic) rồi tới nhánh
+   mặc định, để bản cập nhật này không làm tin đang chạy đổi chỗ đột ngột. */
+function topicFor(string $what) {
+  static $map = ['tasks'  => 'tg_task_topic', 'cards'  => 'tg_card_topic',
+                 'rem'    => 'tg_rem_topic',  'report' => 'tg_report_topic'];
+  if (!isset($map[$what])) return null;
+  $v = trim((string)confGet($map[$what], ''));
+  if ($v !== '') return $v;
+  /* nhắc lặp lại xưa nay đi nhánh mặc định, đừng kéo nó sang nhánh công việc */
+  if ($what !== 'rem') {
+    $old = trim((string)confGet('tg_work_topic', ''));
+    if ($old !== '') return $old;
+  }
+  return null;      // null = dùng nhánh mặc định
+}
+
+/* Dời nhắc: mốc mới ghi thẳng vào bản ghi ("YYYY-MM-DD HH:MM", giờ VN) nên
+   web và Telegram luôn nhìn thấy cùng một thứ, không cần bảng riêng.
+   Trả 0 khi không có mốc nào — dễ so sánh hơn null. */
+function snoozeAt(array $t): int {
+  $s = trim((string)($t['snoozeUntil'] ?? ''));
+  if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/', $s, $m)) return 0;
+  return mktime((int)$m[4], (int)$m[5], 0, (int)$m[2], (int)$m[3], (int)$m[1]);
 }
 
 function cutTitle($s, int $n = 60): string {
@@ -428,13 +461,27 @@ function tgWhy(): array {
     list($kind, $label) = $spec;
     foreach (itemsOf($kind) as $t) {
       $at = trim((string)($t['remindAt'] ?? ''));
-      if ($at === '') continue;
+      $sn = trim((string)($t['snoozeUntil'] ?? ''));
+      if ($at === '' && $sn === '') continue;
       $due = substr((string)($t['due'] ?? ''), 0, 10);
       $row = ['kind' => $label, 'title' => (string)($t['title'] ?? ''),
-              'at' => $at, 'due' => $due, 'ok' => false];
+              'at' => $at, 'due' => $due, 'snooze' => $sn, 'ok' => false];
+
+      /* Mốc dời đè lên giờ hẹn thường — trừ khi nó đã trôi qua từ hôm
+         trước, lúc đó giờ hẹn hằng ngày lại có hiệu lực trở lại. */
+      $useSnooze = $sn !== '' && (substr($sn, 0, 10) >= $today || $at === '');
 
       if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done')
         $row['why'] = 'Đã đánh dấu xong — không nhắc nữa';
+      elseif ($useSnooze) {
+        $when = snoozeAt($t);
+        $key  = 'snz:' . $kind . ':' . ($t['id'] ?? '?') . ':' . $sn;
+        if ($when === 0)                     $row['why'] = 'Mốc dời không hợp lệ';
+        elseif (alreadySent($key))           $row['why'] = 'Đã gửi lời nhắc dời rồi';
+        elseif ($now < $when)                $row['why'] = 'Đã dời — còn ' . (int)ceil(($when - $now) / 60) . ' phút';
+        elseif ($now - $when > REM_WINDOW)   $row['why'] = 'Quá 1 tiếng so với mốc dời — bỏ lần này';
+        else { $row['why'] = 'Sẽ gửi ở lần cron kế tiếp'; $row['ok'] = true; }
+      }
       elseif (!preg_match('/^(\d{1,2}):(\d{2})$/', $at, $m))
         $row['why'] = 'Giờ hẹn không hợp lệ';
       elseif ($due === '')
@@ -501,7 +548,8 @@ function runSchedule(bool $dry = false): array {
           . (!empty($r['note']) ? "\n\n" . tgEsc((string)$r['note']) : '');
 
     if ($dry) { $done[] = ['reminder' => $r['title'] ?? '', 'dry' => true]; continue; }
-    $res = tgSend($text, $r['topic'] ?? null);
+    $own = trim((string)($r['topic'] ?? ''));
+    $res = tgSend($text, $own !== '' ? $own : topicFor('rem'));
     if (!empty($res['ok'])) markSent($key);
     $done[] = ['reminder' => $r['title'] ?? '', 'ok' => !empty($res['ok']),
                'error' => $res['error'] ?? null];
@@ -515,6 +563,10 @@ function runSchedule(bool $dry = false): array {
       if (!preg_match('/^(\d{1,2}):(\d{2})$/', $at, $m)) continue;
       if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
       if (substr((string)($t['due'] ?? ''), 0, 10) !== $today) continue;
+      /* Đã bấm dời trong hôm nay thì thôi, khỏi nhắc theo giờ hẹn nữa —
+         người ta vừa nói "để lát nữa", nhắc lại đúng giờ cũ là vô nghĩa. */
+      $sn = substr(trim((string)($t['snoozeUntil'] ?? '')), 0, 10);
+      if ($sn !== '' && $sn >= $today) continue;
 
       $when = mktime((int)$m[1], (int)$m[2], 0, (int)date('n'), (int)date('j'), (int)date('Y'));
       if ($now < $when || $now - $when > REM_WINDOW) continue;
@@ -534,7 +586,35 @@ function runSchedule(bool $dry = false): array {
             . ($note !== '' ? "\n\n" . tgEsc(cutTitle($note, 300)) : '');
 
       if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
-      $res = tgSend($text, workTopic(), tgDoneKeyboard($kind, (string)($t['id'] ?? '')));
+      $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
+      if (!empty($res['ok'])) markSent($key);
+      $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+    }
+  }
+
+  /* --- việc đã bấm dời lại ---
+     Chạy độc lập với ngày hạn: dời rồi thì nhắc đúng mốc mới, kể cả khi
+     mốc đó rơi sang tuần sau hay việc vốn không có hạn nào. Khoá chống
+     trùng mang theo mốc, nên dời tiếp lần nữa vẫn được nhắc tiếp. */
+  foreach ([['tasks', '✓', 'dời · việc của mình'], ['cards', '👥', 'dời · việc đã giao']] as $spec) {
+    list($kind, $icon, $what) = $spec;
+    foreach (itemsOf($kind) as $t) {
+      if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
+      $when = snoozeAt($t);
+      if ($when === 0 || $now < $when || $now - $when > REM_WINDOW) continue;
+
+      $key = 'snz:' . $kind . ':' . ($t['id'] ?? '?') . ':' . trim((string)$t['snoozeUntil']);
+      if (alreadySent($key)) continue;
+
+      $extra = $kind === 'cards' && trim((string)($t['assignee'] ?? '')) !== ''
+             ? "\nGiao cho <b>" . tgEsc((string)$t['assignee']) . '</b>' : '';
+      $due  = substr((string)($t['due'] ?? ''), 0, 10);
+      $text = $icon . ' <b>' . tgEsc((string)($t['title'] ?? 'Việc cần làm')) . '</b>'
+            . "\n<i>Nhắc lại theo lời hẹn dời</i>" . $extra
+            . ($due !== '' ? "\n<i>Hạn " . date('d/m', strtotime($due)) . '</i>' : '');
+
+      if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
+      $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
       if (!empty($res['ok'])) markSent($key);
       $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
     }
@@ -560,7 +640,7 @@ function runSchedule(bool $dry = false): array {
         $text = '🆘 <b>Trễ ' . $daysLate . ' ngày:</b> ' . tgEsc(cutTitle($t['title'] ?? '')) . $who;
 
         if ($dry) { $done[] = ['escalate' => $t['title'] ?? '', 'days' => $daysLate, 'dry' => true]; continue; }
-        $res = tgSend($text, workTopic(), tgDoneKeyboard($kind, (string)($t['id'] ?? '')));
+        $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
         if (!empty($res['ok'])) markSent($key);
         $done[] = ['escalate' => $t['title'] ?? '', 'days' => $daysLate, 'ok' => !empty($res['ok']),
                    'error' => $res['error'] ?? null];
@@ -577,7 +657,7 @@ function runSchedule(bool $dry = false): array {
       $text = '📅 <b>Tuần này · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines);
       if ($dry) { $done[] = ['weekly' => count($lines), 'dry' => true]; }
       else {
-        $res = tgSend($text, workTopic());
+        $res = tgSend($text, topicFor('report'));
         if (!empty($res['ok'])) markSent($key);
         $done[] = ['weekly' => count($lines), 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
       }
@@ -594,7 +674,7 @@ function runSchedule(bool $dry = false): array {
         $text = '🗂 <b>Công việc · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines);
         if ($dry) { $done[] = ['work' => count($lines), 'dry' => true]; }
         else {
-          $res = tgSend($text, workTopic());
+          $res = tgSend($text, topicFor('report'));
           if (!empty($res['ok'])) markSent($key);
           $done[] = ['work' => count($lines), 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
         }
@@ -615,7 +695,7 @@ function runSchedule(bool $dry = false): array {
         $text = '📋 <b>Life Hub · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines);
         if ($dry) { $done[] = ['digest' => count($lines), 'dry' => true]; }
         else {
-          $res = tgSend($text);
+          $res = tgSend($text, topicFor('report'));
           if (!empty($res['ok'])) markSent($key);
           $done[] = ['digest' => count($lines), 'ok' => !empty($res['ok']),
                      'error' => $res['error'] ?? null];

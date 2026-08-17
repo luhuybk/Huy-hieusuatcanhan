@@ -86,7 +86,11 @@ function tgState(): array {
     'topic'      => confGet('tg_topic', ''),
     'digestHour' => (int)confGet('tg_digest_hour', '-1'),
     'workHour'   => (int)confGet('tg_work_hour', '-1'),
-    'workTopic'  => confGet('tg_work_topic', ''),
+    'taskTopic'  => confGet('tg_task_topic', ''),
+    'cardTopic'  => confGet('tg_card_topic', ''),
+    'remTopic'   => confGet('tg_rem_topic', ''),
+    'reportTopic'=> confGet('tg_report_topic', ''),
+    'workTopic'  => confGet('tg_work_topic', ''),     // cấu hình cũ, giữ để lùi về khi bốn ô trên còn trống
     'weeklyHour' => (int)confGet('tg_weekly_hour', '-1'),
     'escalate'   => (bool)confGet('tg_escalate', ''),
     'webhookOn'  => (bool)confGet('tg_webhook_on', ''),
@@ -229,7 +233,9 @@ switch ($action) {
     confSet('tg_digest_hour', ($h >= 0 && $h <= 23) ? $h : -1);
     $w = isset($in['workHour']) ? (int)$in['workHour'] : -1;
     confSet('tg_work_hour', ($w >= 0 && $w <= 23) ? $w : -1);
-    confSet('tg_work_topic', trim((string)($in['workTopic'] ?? '')));
+    foreach (['taskTopic' => 'tg_task_topic', 'cardTopic' => 'tg_card_topic',
+              'remTopic'  => 'tg_rem_topic',  'reportTopic' => 'tg_report_topic'] as $k => $conf)
+      confSet($conf, trim((string)($in[$k] ?? '')));
     $wk = isset($in['weeklyHour']) ? (int)$in['weeklyHour'] : -1;
     confSet('tg_weekly_hour', ($wk >= 0 && $wk <= 23) ? $wk : -1);
     confSet('tg_escalate', !empty($in['escalate']) ? '1' : '');
@@ -255,16 +261,24 @@ switch ($action) {
     $res = httpPostJson("https://api.telegram.org/bot$token/getUpdates", ['limit' => 100]);
     if (empty($res['ok'])) fail($res['error'] ?? 'Không gọi được Telegram', 502);
 
+    /* Gom theo cặp group + nhánh, không phải theo group: giờ mỗi loại tin đi
+       một nhánh riêng nên phải nhìn thấy đủ các nhánh vừa nhắn để chép ID. */
     $chats = [];
     foreach ((array)($res['result'] ?? []) as $u) {
       $msg = $u['message'] ?? $u['channel_post'] ?? null;
       if (!$msg || empty($msg['chat']['id'])) continue;
-      $id = (string)$msg['chat']['id'];
-      if (isset($chats[$id])) continue;
-      $chats[$id] = [
+      $id    = (string)$msg['chat']['id'];
+      $topic = (string)($msg['message_thread_id'] ?? '');
+      $key   = $id . '/' . $topic;
+      /* tên nhánh chỉ có ở tin đầu tiên của nhánh, hoặc ở tin được trả lời */
+      $name  = $msg['reply_to_message']['forum_topic_created']['name']
+            ?? $msg['forum_topic_created']['name'] ?? '';
+      if (isset($chats[$key]) && $name === '') continue;
+      $chats[$key] = [
         'id'    => $id,
         'title' => $msg['chat']['title'] ?? $msg['chat']['username'] ?? $msg['chat']['first_name'] ?? $id,
-        'topic' => $msg['message_thread_id'] ?? '',
+        'topic' => $topic,
+        'name'  => (string)$name,
       ];
     }
     out(['ok' => true, 'chats' => array_values($chats)]);
@@ -282,7 +296,7 @@ switch ($action) {
     requireAuth();
     $lines = buildWork();
     if (!$lines) out(['ok' => true, 'empty' => true]);
-    $res = tgSend('🗂 <b>Công việc · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), workTopic());
+    $res = tgSend('🗂 <b>Công việc · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), topicFor('report'));
     if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
     out(['ok' => true, 'lines' => count($lines)]);
   }
@@ -297,7 +311,7 @@ switch ($action) {
   case 'tg_weekly_now': {
     requireAuth();
     $lines = buildWeekly();
-    $res = tgSend('📅 <b>Tuần này · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), workTopic());
+    $res = tgSend('📅 <b>Tuần này · ' . date('d/m/Y') . "</b>\n\n" . implode("\n", $lines), topicFor('report'));
     if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
     out(['ok' => true, 'lines' => count($lines)]);
   }

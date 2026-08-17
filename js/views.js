@@ -324,7 +324,8 @@ function taskItem(t){
   const meta = [
     t.prio === 'high' && !t.done ? `<span class="chip bad">gấp</span>` : '',
     t.repeat ? `<span class="chip">↻ ${esc(REPEATS[t.repeat]||'')}</span>` : '',
-    t.remindAt && !t.done ? `<span class="chip">🔔 ${esc(t.remindAt)}</span>` : '',
+    t.remindAt && !t.done && !snoozeOn(t) ? `<span class="chip">🔔 ${esc(t.remindAt)}</span>` : '',
+    !t.done && snoozeOn(t) ? `<span class="chip warn">⏰ ${esc(snoozeText(t.snoozeUntil))}</span>` : '',
     t.streak > 1 ? `<span class="chip"><span class="streak">🔥 ${t.streak}</span></span>` : '',
     t.note ? `<span class="chip">${esc(t.note.slice(0,28))}</span>` : ''
   ].filter(Boolean).join('');
@@ -335,6 +336,8 @@ function taskItem(t){
       ${meta ? `<div class="meta">${meta}</div>` : ''}
     </div>
     ${t.due && !t.done ? `<span class="chip ${cls}">${dueText(t.due)}</span>` : ''}
+    ${t.done ? '' : `<button class="iconbtn" data-act="snooze" data-k="tasks" data-id="${t.id}"
+       title="Dời nhắc lại">⏰</button>`}
   </div>`;
 }
 function vWork(){
@@ -416,7 +419,8 @@ function vBoard(){
               <span class="chip">${esc(c.assignee || 'chưa giao')}</span>
               ${c.due ? `<span class="chip ${late?'bad':''}">${dueText(c.due)}</span>` : ''}
               ${c.prio === 'high' ? `<span class="chip bad">gấp</span>` : ''}
-              ${c.remindAt && c.col !== 'done' ? `<span class="chip">🔔 ${esc(c.remindAt)}</span>` : ''}
+              ${c.remindAt && c.col !== 'done' && !snoozeOn(c) ? `<span class="chip">🔔 ${esc(c.remindAt)}</span>` : ''}
+              ${c.col !== 'done' && snoozeOn(c) ? `<span class="chip warn">⏰ ${esc(snoozeText(c.snoozeUntil))}</span>` : ''}
               ${c.extra ? `<span class="chip ${c.extraPaidDate?'ok':'warn'}">⌁ ngoài luồng${
                 c.extraPay ? ' · ' + moneyShort(c.extraPay) : ''}${c.extraPaidDate ? ' ✓' : ''}</span>` : ''}
             </div>
@@ -425,6 +429,7 @@ function vBoard(){
           <div class="mv">
             ${ci > 0 ? `<button data-act="mv" data-id="${c.id}" data-d="-1">‹</button>` : ''}
             ${ci < COLS.length-1 ? `<button data-act="mv" data-id="${c.id}" data-d="1">${esc(COLS[ci+1].label)} ›</button>` : ''}
+            ${c.col !== 'done' ? `<button data-act="snooze" data-k="cards" data-id="${c.id}" title="Dời nhắc lại">⏰</button>` : ''}
           </div>
         </div>`;
       }).join('')}
@@ -1112,27 +1117,35 @@ function tgBlock(){
         ? `Bản tóm tắt hằng ngày gửi lúc <b>${String(t.digestHour).padStart(2,'0')}:00</b>.`
         : 'Bản tóm tắt hằng ngày đang tắt.'}
       ${t.workHour != null && t.workHour >= 0
-        ? ` Bảng công việc gửi lúc <b>${String(t.workHour).padStart(2,'0')}:00</b>${
-            t.workTopic ? ' vào nhánh ' + esc(String(t.workTopic)) : ''}.`
+        ? ` Bảng công việc gửi lúc <b>${String(t.workHour).padStart(2,'0')}:00</b>.`
         : ' Bảng công việc đang tắt.'}
       ${t.weeklyHour != null && t.weeklyHour >= 0
         ? ` Tóm tắt tuần gửi Chủ nhật lúc <b>${String(t.weeklyHour).padStart(2,'0')}:00</b>.`
         : ' Tóm tắt tuần đang tắt.'}
       ${t.escalate ? ' Báo trễ leo thang đang <b>bật</b> — trễ 3/7/14/30 ngày sẽ có tin riêng.' : ''}
     </div>
+    ${live ? `<div class="dim" style="margin-top:12px;line-height:1.8">
+      <b>Nhánh trong group</b> — mỗi loại tin một chỗ, khỏi lẫn:<br>
+      ${[['Việc cần làm', t.taskTopic], ['Giao việc', t.cardTopic],
+         ['Nhắc lặp lại', t.remTopic], ['Báo cáo', t.reportTopic]]
+        .map(([lbl, v]) => `· ${lbl}: ` + (v ? `nhánh <b>${esc(String(v))}</b>`
+          : `<span class="dim">nhánh mặc định</span>`)).join('<br>')}
+    </div>` : ''}
     ${live ? `<div class="btns" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm grow" data-act="workNow">Gửi bảng công việc ngay</button>
       <button class="btn sm grow" data-act="weeklyNow">Gửi tóm tắt tuần ngay</button>
       <button class="btn sm grow" data-act="tgWhy">Vì sao chưa gửi?</button>
     </div>` : ''}
     ${live ? `<div class="dim" style="margin-top:12px;line-height:1.65">
-      <b>Nút "✅ Xong" dưới tin nhắc:</b> bấm là việc tự đánh dấu xong, không cần mở app.
+      <b>Nút bấm dưới tin nhắc:</b> "✅ Xong" đánh dấu việc xong, còn
+      "⏰ 4 giờ / 12 giờ / 1 ngày / 3 ngày" dời lời nhắc lại — cả hai đều
+      hiện ngay trên web sau lượt đồng bộ, không cần mở app để bấm.
       ${t.webhookOn ? 'Đang <b>bật</b>.' : 'Đang tắt — cần tên miền chạy https.'}
       </div>
       <div class="btns" style="margin-top:8px">
         ${t.webhookOn
-          ? `<button class="btn sm grow dngr" data-act="webhookOff">Tắt nút Xong</button>`
-          : `<button class="btn sm grow" data-act="webhookOn">Bật nút Xong</button>`}
+          ? `<button class="btn sm grow dngr" data-act="webhookOff">Tắt nút bấm</button>`
+          : `<button class="btn sm grow" data-act="webhookOn">Bật nút bấm</button>`}
       </div>` : ''}
     ${t.cron ? `<div class="dim" style="margin-top:12px;line-height:1.6">
       <b>Bước cuối — hẹn giờ cho máy chủ.</b> Vào hPanel → Cron Jobs, tạo lịch chạy
