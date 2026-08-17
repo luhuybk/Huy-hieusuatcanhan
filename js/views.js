@@ -1081,6 +1081,24 @@ function vReview(){
 }
 
 /* ---------------- THÔNG BÁO TELEGRAM + NHẮC LẶP LẠI ---------------- */
+/* Bảy ngày gần nhất, cũ → mới. Bấm "Xong" trên Telegram mà không thấy gì
+   đổi trong app thì chẳng ai tin là nó có ghi lại — dải này là bằng chứng. */
+function remDots(r){
+  const days = (r.days || []).map(Number);
+  const log = new Set((r.doneLog || []).map(String));
+  const t0 = today();
+  let out = '';
+  for (let i = 6; i >= 0; i--){
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - i);
+    const iso = ymd(d);
+    if (!days.includes(d.getDay()))  out += `<span style="opacity:.25">·</span>`;
+    else if (log.has(iso))           out += `<span style="color:var(--ok)">●</span>`;
+    else if (iso === t0)             out += `<span style="opacity:.55">◌</span>`;
+    else                             out += `<span style="color:var(--bad);opacity:.7">○</span>`;
+  }
+  return `<span title="7 ngày gần nhất" style="letter-spacing:2px">${out}</span>`;
+}
+
 function remItem(r){
   const next = reminderNextText(r);
   const xong = remDoneToday(r);
@@ -1092,6 +1110,7 @@ function remItem(r){
       <div class="nm ell">${esc(r.title)}</div>
       <div class="dim">${esc(daysText(r.days))}${r.topic ? ' · nhánh ' + esc(r.topic) : ''} · ${esc(next)}${
         chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}</div>
+      <div class="dim" style="margin-top:2px">${remDots(r)}</div>
     </div>
     <button class="iconbtn" data-act="remDone" data-id="${r.id}" title="${xong?'Bỏ đánh dấu hôm nay':'Xong hôm nay'}"
       style="${xong?'color:var(--ok)':''}">✓</button>

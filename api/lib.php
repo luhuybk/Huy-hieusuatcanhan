@@ -223,6 +223,20 @@ function nextRepeat(string $iso, string $code): string {
   return $base;
 }
 
+/* Nội dung tin nhắc lặp lại. Tách hàm để nút "Gửi thử ngay" trong app và
+   bộ hẹn giờ dùng chung một chỗ — trước đây nút thử tự ghép chuỗi riêng
+   nên gửi ra tin trơn, không có nút "Xong hôm nay", làm người dùng tưởng
+   cả tính năng chưa chạy. */
+function remText(array $r): string {
+  return '🔔 <b>' . tgEsc((string)($r['title'] ?? 'Nhắc nhở')) . '</b>'
+       . "\n<i>" . tgEsc((string)($r['time'] ?? '')) . '</i>'
+       . (!empty($r['note']) ? "\n\n" . tgEsc((string)$r['note']) : '');
+}
+function remTopic(array $r) {
+  $own = trim((string)($r['topic'] ?? ''));
+  return $own !== '' ? $own : topicFor('rem');
+}
+
 /* Hướng dẫn dùng bot, trả lời cho /help và cho lệnh gõ sai. Không có cái
    này thì người dùng gõ "/tìm thêm việc" rồi ngồi chờ trong im lặng. */
 function tgHelpText(): string {
@@ -666,13 +680,8 @@ function runSchedule(bool $dry = false): array {
        sáng mà 18h30 vẫn bị nhắc thì lần sau người ta tắt luôn cái app. */
     if (in_array($today, array_map('strval', (array)($r['doneLog'] ?? [])), true)) continue;
 
-    $text = '🔔 <b>' . tgEsc((string)($r['title'] ?? 'Nhắc nhở')) . '</b>'
-          . "\n<i>" . $time . '</i>'
-          . (!empty($r['note']) ? "\n\n" . tgEsc((string)$r['note']) : '');
-
     if ($dry) { $done[] = ['reminder' => $r['title'] ?? '', 'dry' => true]; continue; }
-    $own = trim((string)($r['topic'] ?? ''));
-    $res = tgSend($text, $own !== '' ? $own : topicFor('rem'), tgRemButtons((string)($r['id'] ?? '')));
+    $res = tgSend(remText($r), remTopic($r), tgRemButtons((string)($r['id'] ?? '')));
     if (!empty($res['ok'])) markSent($key);
     $done[] = ['reminder' => $r['title'] ?? '', 'ok' => !empty($res['ok']),
                'error' => $res['error'] ?? null];

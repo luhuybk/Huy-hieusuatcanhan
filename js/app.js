@@ -1383,9 +1383,13 @@ document.addEventListener('click', e => {
       break;
     }
     case 'remNow': {
-      const r = db.reminders.find(x => x.id === id);
-      Server.call('tg_send', {text:'🔔 ' + r.title + (r.note ? '\n' + r.note : ''), topic:r.topic})
-        .then(() => toast('Đã gửi vào Telegram'))
+      /* Đẩy lên trước rồi mới nhờ máy chủ gửi: máy chủ dựng tin từ bản ghi
+         của nó, nên lời nhắc vừa sửa mà chưa đồng bộ sẽ gửi ra nội dung cũ. */
+      toast('Đang gửi…');
+      Promise.resolve(Sync.run(true))
+        .then(() => Server.call('tg_rem_now', {id}))
+        .then(d => toast(d.buttons ? 'Đã gửi — có nút "Xong hôm nay"'
+                                   : 'Đã gửi (bật nút bấm để có nút Xong)'))
         .catch(err => toast(err.message));
       break;
     }

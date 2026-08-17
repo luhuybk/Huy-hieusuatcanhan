@@ -329,7 +329,26 @@ Cài đặt → **Nhắc lặp lại** → **+ Thêm**. Mỗi lời nhắc gồm
 
 Nút ➤ bên phải mỗi dòng gửi thử ngay lập tức. Ô vuông bên trái bật/tắt nhanh mà không cần mở ra sửa.
 
-**Nút "✅ Xong hôm nay".** Sau khi bật nút bấm (xem phần dưới), mỗi tin nhắc lặp lại kèm một nút — bấm là ghi nhận xong kỳ hôm nay ngay trong Telegram. Trong app, mỗi dòng nhắc cũng có nút ✓ tương ứng, và một chuỗi 🔥 đếm số kỳ liên tiếp đã làm.
+**Nút "✅ Xong hôm nay".** Sau khi bật nút bấm (xem phần dưới), mỗi tin nhắc lặp lại kèm một nút — tập xong bấm một cái là hệ thống ghi lại, không cần mở app:
+
+```
+🔔 Tập gym
+18:30
+
+mang găng tay
+
+[ ✅ Xong hôm nay ]
+```
+
+Trong app, mỗi dòng nhắc có nút ✓ tương ứng, một chuỗi 🔥 đếm số kỳ liên tiếp, và **dải bảy ngày gần nhất** để thấy ngay mình đang đều hay đang đứt:
+
+```
+Tập gym
+hằng ngày · hôm nay 18:30 · 🔥 3
+● ● ○ ● ● ● ●     ← ● xong · ○ bỏ lỡ · · không phải ngày tập
+```
+
+Nút ➤ **Gửi thử ngay** cạnh mỗi dòng gửi đúng tin thật, kèm cả nút bấm — dùng để thử mà không phải ngồi chờ tới giờ.
 
 Đã tick xong hôm nay thì **hôm đó không nhắc nữa** — tập gym xong lúc 6h sáng mà 18h30 vẫn bị nhắc thì lần sau người ta tắt luôn cái app. Chuỗi 🔥 chỉ đứt khi bỏ lỡ một kỳ **đã qua**; hôm nay chưa tick thì chưa tính là đứt, ngày còn chưa hết.
 

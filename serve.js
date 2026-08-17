@@ -836,6 +836,17 @@ function api(req, res, body){
       if (!need()) return;
       return send(Object.assign({ok:true}, tgWhy(inp.at)));
     }
+    case 'tg_rem_now': {
+      if (!need()) return;
+      const id = String(inp.id || '');
+      const rem = itemsOf('reminders').find(r => String(r.id) === id);
+      if (!rem) return fail('Máy chủ chưa có lời nhắc này — bấm Đồng bộ ngay ở mục Tài khoản rồi thử lại');
+      const kb = confGet('tg_webhook_on','')
+        ? [[{text:'✅ Xong hôm nay', callback_data:`remdone:${id}`}]] : null;
+      console.log(`[telegram thử · nhắc] nhánh=${String(rem.topic || '').trim() || topicFor('rem')}\n`
+        + `🔔 ${rem.title}\n${rem.time}${rem.note ? '\n\n' + rem.note : ''}`);
+      return send({ok:true, buttons: kb !== null, keyboard: kb, text: rem.title, note: rem.note || ''});
+    }
     case 'tg_staff_now': {
       if (!need()) return;
       const people = buildStaffWeekly(inp.at);

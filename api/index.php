@@ -303,6 +303,22 @@ switch ($action) {
     out(['ok' => true, 'lines' => count($lines)]);
   }
 
+  /* Gửi thử một lời nhắc lặp lại ngay — đi đúng đường của bộ hẹn giờ, nên
+     có cả nút "Xong hôm nay". Đọc bản ghi từ máy chủ chứ không nhận nội
+     dung từ trình duyệt: gửi thử phải giống hệt tin thật, kể cả khi máy
+     này đang giữ một bản chưa đồng bộ lên. */
+  case 'tg_rem_now': {
+    requireAuth();
+    $id = trim((string)($in['id'] ?? ''));
+    $rem = null;
+    foreach (itemsOf('reminders') as $r) if ((string)($r['id'] ?? '') === $id) { $rem = $r; break; }
+    if ($rem === null)
+      fail('Máy chủ chưa có lời nhắc này — bấm Đồng bộ ngay ở mục Tài khoản rồi thử lại');
+    $res = tgSend(remText($rem), remTopic($rem), tgRemButtons($id));
+    if (empty($res['ok'])) fail($res['error'] ?? 'Gửi không thành công', 502);
+    out(['ok' => true, 'buttons' => tgRemButtons($id) !== null]);
+  }
+
   /* Gửi tổng kết theo nhân sự ngay, không chờ tới Chủ nhật. */
   case 'tg_staff_now': {
     requireAuth();
