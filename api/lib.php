@@ -169,17 +169,19 @@ function tgSend(string $text, $topic = null, ?array $keyboard = null): array {
 
 /* Nút dưới tin nhắc — chỉ đính kèm khi đã bật webhook, nếu không bấm vào
    cũng chẳng có gì lắng nghe, chỉ gây khó hiểu.
-   Hàng trên "Xong", hàng dưới bốn mức dời lại. Bốn nút một hàng vừa khít
-   bề ngang điện thoại, nhãn phải ngắn nên chỉ ghi số. */
+   Hàng đầu "Xong", rồi các mức dời lại xếp HAI nút một hàng. Bốn nút một
+   hàng nhìn trên máy tính thì vừa, nhưng trên điện thoại bị bóp đến mức
+   nhãn xuống dòng, chữ chồng lên nhau và rất dễ bấm nhầm mức. */
 function tgItemButtons(string $kind, string $id): ?array {
   if (!confGet('tg_webhook_on')) return null;
-  $snooze = [];
-  foreach (SNOOZE_MINS as $mins => $label)
-    $snooze[] = ['text' => '⏰ ' . $label, 'callback_data' => 'snz:' . $kind . ':' . $id . ':' . $mins];
-  return [
-    [['text' => '✅ Xong', 'callback_data' => 'done:' . $kind . ':' . $id]],
-    $snooze,
-  ];
+  $rows = [[['text' => '✅ Xong', 'callback_data' => 'done:' . $kind . ':' . $id]]];
+  foreach (array_chunk(SNOOZE_MINS, 2, true) as $pair) {
+    $row = [];
+    foreach ($pair as $mins => $label)
+      $row[] = ['text' => '⏰ ' . $label, 'callback_data' => 'snz:' . $kind . ':' . $id . ':' . $mins];
+    $rows[] = $row;
+  }
+  return $rows;
 }
 
 /* Nút "Xong hôm nay" dưới lời nhắc lặp lại. Không dùng chung tgItemButtons()

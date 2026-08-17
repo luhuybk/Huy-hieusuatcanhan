@@ -404,9 +404,12 @@ Mỗi mốc chỉ báo đúng một lần cho mỗi việc — không nhắc l�
 ✓ Gọi nhà cung cấp
 Hạn hôm nay · 14:45
 
-[            ✅ Xong            ]
-[ ⏰4 giờ | 12 giờ | 1 ngày | 3 ngày ]
+[         ✅ Xong         ]
+[ ⏰ 4 giờ  |  ⏰ 12 giờ  ]
+[ ⏰ 1 ngày |  ⏰ 3 ngày  ]
 ```
+
+Các mức dời xếp **hai nút một hàng** chứ không phải bốn: bốn nút một hàng nhìn trên máy tính thì vừa, nhưng trên điện thoại bị bóp đến mức nhãn xuống dòng, chữ chồng lên nhau và rất dễ bấm nhầm mức.
 
 Lời nhắc lặp lại thì có nút **✅ Xong hôm nay** thay cho bộ nút trên.
 

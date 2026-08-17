@@ -83,6 +83,20 @@ function topicFor(what){
   }
   return String(confGet('tg_topic', '') || '') || 'chính';
 }
+/* Bố cục nút dưới tin nhắc — bản song sinh của tgItemButtons() bên PHP.
+   Ở đây không gọi Telegram thật, nhưng vẫn dựng đúng hình dạng bàn phím để
+   kiểm được số hàng và số nút mỗi hàng: bốn nút một hàng thì trên điện
+   thoại nhãn bị bóp xuống dòng, đúng lỗi đã gặp. */
+function tgItemButtons(kind, id){
+  if (!confGet('tg_webhook_on')) return null;
+  const rows = [[{text:'✅ Xong', callback_data:`done:${kind}:${id}`}]];
+  const mins = Object.keys(SNOOZE_MINS);
+  for (let i = 0; i < mins.length; i += 2)
+    rows.push(mins.slice(i, i + 2).map(m =>
+      ({text:`⏰ ${SNOOZE_MINS[m]}`, callback_data:`snz:${kind}:${id}:${m}`})));
+  return rows;
+}
+
 /* mốc dời nhắc → giây, 0 khi không có; bản song sinh của snoozeAt() bên PHP */
 function snoozeAt(t){
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(String(t.snoozeUntil || '').trim());
@@ -404,7 +418,8 @@ function runSchedule(dry, atMs){
       if (alreadySent(key)) continue;
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
-      done.push({[what]:t.title, ok:true, lead, topic:topicFor(kind)});
+      done.push({[what]:t.title, ok:true, lead, topic:topicFor(kind),
+                 buttons:tgItemButtons(kind, t.id)});
     }
   }
 
