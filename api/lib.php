@@ -190,6 +190,15 @@ function tgRemButtons(string $id): ?array {
   if (!confGet('tg_webhook_on')) return null;
   return [[['text' => '✅ Xong hôm nay', 'callback_data' => 'remdone:' . $id]]];
 }
+/* Ý tưởng tới hẹn xem lại: ba lựa chọn, hai dòng cho vừa màn hình điện
+   thoại. Mã bấm dài nhất "idea:snz:<id>:m3" ~ 26 byte, thừa sức trong
+   giới hạn 64 byte của Telegram. */
+function tgIdeaButtons(string $id): ?array {
+  if (!confGet('tg_webhook_on')) return null;
+  return [[['text' => '▶ Triển khai', 'callback_data' => 'idea:go:' . $id],
+           ['text' => '🗄 Gác lại',   'callback_data' => 'idea:drop:' . $id]],
+          [['text' => '⏰ Nhắc lại sau 3 tháng', 'callback_data' => 'idea:snz:' . $id . ':m3']]];
+}
 
 /* Id cho bản ghi do máy chủ tạo ra (mẩu ghi nhanh nhắn từ Telegram).
    Không cần trùng kiểu với uid() bên JavaScript, chỉ cần không đụng nhau. */
@@ -332,12 +341,13 @@ function buildDigest(): array {
    mặc định, để bản cập nhật này không làm tin đang chạy đổi chỗ đột ngột. */
 function topicFor(string $what) {
   static $map = ['tasks'  => 'tg_task_topic', 'cards'  => 'tg_card_topic',
-                 'rem'    => 'tg_rem_topic',  'report' => 'tg_report_topic'];
+                 'rem'    => 'tg_rem_topic',  'report' => 'tg_report_topic',
+                 'ideas'  => 'tg_idea_topic'];
   if (!isset($map[$what])) return null;
   $v = trim((string)confGet($map[$what], ''));
   if ($v !== '') return $v;
-  /* nhắc lặp lại xưa nay đi nhánh mặc định, đừng kéo nó sang nhánh công việc */
-  if ($what !== 'rem') {
+  /* nhắc lặp lại và ý tưởng xưa nay đi nhánh mặc định, đừng kéo sang nhánh công việc */
+  if ($what !== 'rem' && $what !== 'ideas') {
     $old = trim((string)confGet('tg_work_topic', ''));
     if ($old !== '') return $old;
   }
@@ -761,6 +771,38 @@ function runSchedule(bool $dry = false): array {
       $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
       if (!empty($res['ok'])) markSent($key);
       $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+    }
+  }
+
+  /* --- ý tưởng tới hẹn xem lại ---
+     Ý tưởng không có hạn nên nó chìm; đây là cú hích duy nhất bắt mình
+     phải quyết. Bắn một lần cho mỗi ý tưởng ở mỗi mốc hẹn: khoá mang
+     theo ngày hẹn, nên bấm "nhắc lại sau 3 tháng" xong vẫn được hỏi
+     tiếp ở mốc mới. Trễ mấy ngày vẫn gửi (không như lời nhắc theo giờ)
+     — một câu hỏi "làm hay bỏ" thì muộn vài hôm vẫn còn nguyên giá trị. */
+  $ih = confGet('tg_idea_hour', '9');
+  if ($ih !== null && (int)$ih >= 0 && (int)date('G', $now) >= (int)$ih) {
+    foreach (itemsOf('ideas') as $i) {
+      $st = (string)($i['status'] ?? '');
+      if ($st === 'done' || $st === 'drop') continue;
+      $rv = substr((string)($i['reviewAt'] ?? ''), 0, 10);
+      if (strlen($rv) !== 10 || $rv > $today) continue;
+
+      $key = 'idea:' . ($i['id'] ?? '?') . ':' . $rv;
+      if (alreadySent($key)) continue;
+
+      $late = (int)floor((strtotime($today) - strtotime($rv)) / 86400);
+      $text = '💡 <b>' . tgEsc((string)($i['title'] ?? 'Ý tưởng')) . '</b>'
+            . "\n<i>Tới hẹn xem lại" . ($late > 0 ? ' — hẹn từ ' . date('d/m', strtotime($rv)) : '') . '</i>'
+            . (!empty($i['detail']) ? "\n\n" . tgEsc(cutTitle((string)$i['detail'], 300)) : '')
+            . (!empty($i['plan']) ? "\n\n<b>Hướng triển khai</b>\n"
+                                    . tgEsc(cutTitle((string)$i['plan'], 300)) : '')
+            . "\n\nLàm hay bỏ?";
+
+      if ($dry) { $done[] = ['idea' => $i['title'] ?? '', 'dry' => true]; continue; }
+      $res = tgSend($text, topicFor('ideas'), tgIdeaButtons((string)($i['id'] ?? '')));
+      if (!empty($res['ok'])) markSent($key);
+      $done[] = ['idea' => $i['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
     }
   }
 

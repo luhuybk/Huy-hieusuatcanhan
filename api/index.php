@@ -90,6 +90,8 @@ function tgState(): array {
     'cardTopic'  => confGet('tg_card_topic', ''),
     'remTopic'   => confGet('tg_rem_topic', ''),
     'reportTopic'=> confGet('tg_report_topic', ''),
+    'ideaTopic'  => confGet('tg_idea_topic', ''),
+    'ideaHour'   => (int)confGet('tg_idea_hour', '9'),
     'workTopic'  => confGet('tg_work_topic', ''),     // cấu hình cũ, giữ để lùi về khi bốn ô trên còn trống
     'weeklyHour' => (int)confGet('tg_weekly_hour', '-1'),
     'staffWeekly'=> (bool)confGet('tg_staff_weekly', ''),
@@ -235,8 +237,11 @@ switch ($action) {
     $w = isset($in['workHour']) ? (int)$in['workHour'] : -1;
     confSet('tg_work_hour', ($w >= 0 && $w <= 23) ? $w : -1);
     foreach (['taskTopic' => 'tg_task_topic', 'cardTopic' => 'tg_card_topic',
-              'remTopic'  => 'tg_rem_topic',  'reportTopic' => 'tg_report_topic'] as $k => $conf)
+              'remTopic'  => 'tg_rem_topic',  'reportTopic' => 'tg_report_topic',
+              'ideaTopic' => 'tg_idea_topic'] as $k => $conf)
       confSet($conf, trim((string)($in[$k] ?? '')));
+    $ih = isset($in['ideaHour']) ? (int)$in['ideaHour'] : 9;
+    confSet('tg_idea_hour', ($ih >= 0 && $ih <= 23) ? $ih : -1);
     $wk = isset($in['weeklyHour']) ? (int)$in['weeklyHour'] : -1;
     confSet('tg_weekly_hour', ($wk >= 0 && $wk <= 23) ? $wk : -1);
     confSet('tg_staff_weekly', !empty($in['staffWeekly']) ? '1' : '');

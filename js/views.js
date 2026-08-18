@@ -44,7 +44,7 @@ function renderSide(){
        ['people','◍','Quan hệ', nStale],
        ['occasions','🎊','Dịp & lễ', dueOccasions().length],
        ['work','✓','Công việc', tasks().filter(t=>!t.done).length],
-       ['ideas','💡','Ý tưởng', ideas().filter(i=>i.status==='doing').length],
+       ['ideas','💡','Ý tưởng', ideasDue().length || ideas().filter(i=>i.status==='doing').length],
        ['money','₫','Sổ tiền', 0],
        ['board','▦','Giao việc', nLate],
        ['review','◷','Ôn lại tuần', 0]];
@@ -368,16 +368,35 @@ function vWork(){
    được bằng một cú bấm chứ không nằm sau một tab của màn khác. */
 const IDEA_ORDER = ['doing','explore','seed','done','drop'];
 function ideaCard(i){
+  const due = ideaDue(i);
+  const rv  = String(i.reviewAt || '').slice(0,10);
   return `
     <div class="card" style="margin-bottom:10px" data-act="editIdea" data-id="${i.id}">
       <div class="row">
         <div class="grow"><div style="font-weight:650;font-size:15px">${areaDot(i.areaId)} ${esc(i.title)}</div></div>
         <span class="chip ${i.status==='doing'?'acc':i.status==='done'?'ok':''}">${IDEA_ST[i.status]||''}</span>
       </div>
+      ${rv && !due ? `<div class="dim" style="margin-top:6px;font-size:12.5px">⏳ xem lại ${fmtDate(rv)}</div>` : ''}
       ${i.detail ? `<div class="muted" style="margin-top:8px;font-size:13.5px">${nl(i.detail)}</div>` : ''}
       ${i.plan ? `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:13px">
         <div class="dim" style="margin-bottom:4px;font-weight:700">HƯỚNG TRIỂN KHAI</div>${nl(i.plan)}</div>` : ''}
+      ${due ? ideaReviewBtns(i.id, rv) : ''}
     </div>`;
+}
+/* Ba nút y hệt ba nút dưới tin Telegram. Hai dòng chứ không một — ba nút
+   một hàng là bị chèn trên máy 375px, lỗi đã gặp với hàng nút dời nhắc. */
+function ideaReviewBtns(id, rv){
+  const late = rv ? -dayDiff(rv) : 0;
+  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bg4)">
+    <div class="dim" style="margin-bottom:7px;font-size:12.5px">Tới hẹn xem lại${
+      late > 0 ? ' — hẹn từ ' + fmtDate(rv) + ' (' + late + ' ngày trước)' : ''} — làm hay bỏ?</div>
+    <div class="btns" style="margin-bottom:6px">
+      <button class="btn sm grow" data-act="ideaRev" data-r="go"   data-id="${id}">▶ Triển khai</button>
+      <button class="btn sm grow" data-act="ideaRev" data-r="drop" data-id="${id}">🗄 Gác lại</button>
+    </div>
+    <div class="btns">
+      <button class="btn sm grow" data-act="ideaRev" data-r="m3" data-id="${id}">⏰ Nhắc lại sau 3 tháng</button>
+    </div></div>`;
 }
 function vIdeas(){
   const list = byArea(ideas(), S.area);
@@ -394,8 +413,15 @@ function vIdeas(){
 
   const shown = list.filter(pick[S.ideatab] || pick.live);
   if (!shown.length) return h + `<div class="empty"><b>Trống</b>Chưa có ý tưởng nào ở nhóm này.</div>`;
-  h += shown.slice().sort((a,b) => (IDEA_ORDER.indexOf(a.status) - IDEA_ORDER.indexOf(b.status))
-        || (b.createdAt||'').localeCompare(a.createdAt||'')).map(ideaCard).join('');
+  const rank = (a,b) => (IDEA_ORDER.indexOf(a.status) - IDEA_ORDER.indexOf(b.status))
+                     || (b.createdAt||'').localeCompare(a.createdAt||'');
+
+  /* Tới hẹn thì tách lên đầu, đừng để lẫn vào danh sách — cả điểm của
+     tính năng này là bắt mình phải quyết, chứ không phải lướt qua. */
+  const due  = shown.filter(ideaDue).sort((a,b) => (a.reviewAt||'').localeCompare(b.reviewAt||''));
+  const rest = shown.filter(i => !ideaDue(i)).sort(rank);
+  if (due.length) h += secHd('Cần xem lại (' + due.length + ')') + due.map(ideaCard).join('');
+  if (rest.length) h += (due.length ? secHd('Còn lại (' + rest.length + ')') : '') + rest.map(ideaCard).join('');
   return h;
 }
 

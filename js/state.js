@@ -278,7 +278,9 @@ function ensure(){
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
                            /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
                               chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
-                           if(!IDEA_ST[i.status]) i.status='seed'; });
+                           if(!IDEA_ST[i.status]) i.status='seed';
+                           /* ngày hẹn xem lại, 'YYYY-MM-DD'; rỗng = không nhắc */
+                           if(i.reviewAt===undefined) i.reviewAt=''; });
   db.inbox.forEach(n => { if(n.processed===undefined) n.processed = false; if(!n.text) n.text = ''; });
   db.staff.forEach(s2 => { if(!Array.isArray(s2.areaIds)) s2.areaIds = [];
                            if(s2.phone===undefined) s2.phone = ''; if(s2.startDate===undefined) s2.startDate = '';
@@ -329,6 +331,21 @@ function save(){
 function people(){ return alive(db.people); }
 function tasks(){  return alive(db.tasks);  }
 function ideas(){  return alive(db.ideas);  }
+
+/* ---- hẹn xem lại ý tưởng ----
+   Ý tưởng khác việc ở chỗ nó không có hạn, nên nó chìm. Đặt một ngày hẹn
+   để tới hôm đó máy chủ hỏi lại "làm hay bỏ".
+   Bốn mức dùng chung mã với việc lặp lại (m1/m3/m6/y1) để chỉ có một hàm
+   cộng ngày duy nhất — stepRepeat, đã dò khớp giữa JS và PHP. */
+const REVIEW_IN = [['m1','Sau 1 tháng'], ['m3','Sau 3 tháng'],
+                   ['m6','Sau 6 tháng'], ['y1','Sau 1 năm']];
+const reviewDate = code => stepRepeat(today(), code);
+/* tới hẹn = đúng hôm nay hoặc đã qua; ý tưởng đã xong/gác thì thôi */
+function ideaDue(i){
+  const d = String(i.reviewAt || '').slice(0,10);
+  return d.length === 10 && d <= today() && i.status !== 'done' && i.status !== 'drop';
+}
+function ideasDue(){ return ideas().filter(ideaDue); }
 function cards(){  return alive(db.cards);  }
 function gifts(){  return alive(db.gifts);  }
 function staff(){  return alive(db.staff);  }

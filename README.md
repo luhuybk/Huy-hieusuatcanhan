@@ -155,7 +155,37 @@ Nội dung và hướng triển khai tách riêng, có nút đưa thẳng lên b
 | **Đang triển khai** | riêng những ý tưởng đã bắt tay làm |
 | **Kho** | đã xong và tạm gác, cất đi cho danh sách chính gọn |
 
-Con số trên thanh bên đếm số ý tưởng **đang triển khai** — tức là những thứ bạn đã cam kết làm, không phải mọi thứ từng nghĩ ra.
+Con số trên thanh bên đếm số ý tưởng **đang triển khai** — tức là những thứ bạn đã cam kết làm, không phải mọi thứ từng nghĩ ra. Khi có ý tưởng tới hẹn xem lại thì con số đó nhường chỗ cho số ý tưởng đang chờ bạn quyết.
+
+#### Hẹn ngày xem lại
+
+Ý tưởng khác việc ở chỗ nó **không có hạn** — nên nó chìm. Bạn ghi "mở lớp tập nhóm buổi sáng" vào tháng Ba, tháng Chín mở ra vẫn thấy nó nằm đó y nguyên, không ai hỏi han gì.
+
+Trong ô sửa ý tưởng có mục **Nhắc xem lại**: sau 1 tháng / 3 tháng / 6 tháng / 1 năm. Tới ngày đó Telegram nhắn cho bạn kèm nội dung và hướng triển khai đã ghi, rồi hỏi thẳng:
+
+```
+💡 Thẻ thành viên tích điểm chung 2 tiệm
+Tới hẹn xem lại — hẹn từ 09/08
+
+Chị Linh bên cạnh cũng muốn làm chung.
+
+Hướng triển khai
+Cần bàn lại chuyện chia doanh thu.
+
+Làm hay bỏ?
+[ ▶ Triển khai | 🗄 Gác lại ]
+[ ⏰ Nhắc lại sau 3 tháng ]
+```
+
+- **Triển khai** → chuyển sang trạng thái *Đang triển khai*, xoá ngày hẹn.
+- **Gác lại** → chuyển sang *Tạm gác*, vào Kho, xoá ngày hẹn.
+- **Nhắc lại sau 3 tháng** → hẹn tiếp, trạng thái giữ nguyên. Tới mốc mới lại hỏi.
+
+Ba nút đó cũng nằm ngay trên thẻ ý tưởng trong app, ở mục **Cần xem lại** trên đầu danh sách. Bấm bên nào cũng ghi vào cùng một chỗ.
+
+Sửa ý tưởng đang có hẹn thì ô này hiện sẵn *"Giữ ngày 18/11/2026"* — đổi tên hay sửa nội dung sẽ không vô tình đặt lại ngày hẹn.
+
+**Giờ hỏi** mặc định là 9h sáng, đổi trong Cài đặt → Telegram → *Giờ hỏi lại ý tưởng* (đặt `-1` để tắt hẳn). Ý tưởng trễ hẹn mấy hôm vẫn được hỏi chứ không bị bỏ qua như lời nhắc theo giờ — câu hỏi "làm hay bỏ" thì muộn vài hôm vẫn còn nguyên giá trị.
 
 ### Giao việc
 Bốn cột: **Lên ý tưởng → Đã giao việc → Đang làm → Hoàn thành**. Mỗi thẻ có nút chuyển cột ngay trên thẻ. Dưới bảng là tiến độ theo từng người.
@@ -293,13 +323,14 @@ Cài đặt → Thông báo Telegram → **Cài đặt**:
 - Bấm **Gửi thử** để chắc tin vào đúng nhánh
 - **Lưu cấu hình**
 
-**Bốn nhánh riêng cho bốn loại tin.** Trộn hết vào một nhánh thì một bản báo cáo dài đẩy trôi mất mấy lời nhắc ngắn. Bốn ô trong Cài đặt chia như sau:
+**Năm nhánh riêng cho năm loại tin.** Trộn hết vào một nhánh thì một bản báo cáo dài đẩy trôi mất mấy lời nhắc ngắn. Năm ô trong Cài đặt chia như sau:
 
 | Ô | Tin nào đi vào đây |
 |---|---|
 | **Việc cần làm** | nhắc riêng từng việc của mình, báo trễ leo thang của việc mình |
 | **Giao việc** | nhắc riêng từng thẻ giao việc, báo trễ leo thang của thẻ |
 | **Nhắc lặp lại** | gym, uống thuốc, chốt sổ… — trừ lời nhắc nào tự đặt nhánh riêng cho nó |
+| **Ý tưởng** | câu hỏi "làm hay bỏ" khi một ý tưởng tới hẹn xem lại |
 | **Báo cáo** | tóm tắt hằng ngày, bảng công việc, tóm tắt tuần |
 
 Ô nào để trống thì tin đi vào nhánh mặc định. Muốn biết ID nhánh: nhắn một câu vào **từng nhánh** trong group rồi bấm **Dò group** — app liệt kê hết các nhánh bot nhìn thấy kèm tên, chép số vào ô tương ứng.

@@ -130,6 +130,53 @@ if (preg_match('#^remdone:(.+)$#', $data, $m)) {
   exit;
 }
 
+/* Ý tưởng tới hẹn xem lại: triển khai / gác lại / hẹn tiếp. Hai lựa chọn
+   đầu xoá ngày hẹn luôn — đã quyết rồi thì không hỏi lại nữa. */
+if (preg_match('#^idea:(go|drop|snz):([^:]+)(?::([dwmy]\d+))?$#', $data, $m)) {
+  $what = $m[1];
+  $ideaId = $m[2];
+  $code = (string)($m[3] ?? '');
+  /* chỉ nhận đúng các mức đã bày ra, không để ai gõ tay mã khác vào */
+  if ($what === 'snz' && !in_array($code, ['m1', 'm3', 'm6', 'y1'], true)) { echo '{}'; exit; }
+
+  $st = db()->prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?');
+  $st->execute(['ideas', $ideaId]);
+  $row = $st->fetch();
+
+  $ok = false; $said = ''; $note = '';
+  if ($row) {
+    $idea = json_decode((string)$row['data'], true);
+    if (is_array($idea) && empty($idea['deleted'])) {
+      if ($what === 'go')        { $idea['status'] = 'doing'; $idea['reviewAt'] = '';
+                                   $said = 'Bắt tay làm ✓'; $note = '▶ <b>Triển khai</b>'; }
+      elseif ($what === 'drop')  { $idea['status'] = 'drop';  $idea['reviewAt'] = '';
+                                   $said = 'Đã gác lại'; $note = '🗄 <b>Đã gác lại</b>'; }
+      else {
+        $idea['reviewAt'] = stepRepeat(date('Y-m-d'), $code);
+        $when = date('d/m/Y', strtotime($idea['reviewAt']));
+        $said = 'Hẹn xem lại ' . $when; $note = '⏰ <b>Hẹn xem lại ' . $when . '</b>';
+      }
+      $idea['updatedAt'] = isoNow();
+      db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
+          ->execute([json_encode($idea, JSON_UNESCAPED_UNICODE), $idea['updatedAt'], 'ideas', $ideaId]);
+      $ok = true;
+    }
+  }
+
+  httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery", [
+    'callback_query_id' => $cbId,
+    'text' => $ok ? $said : 'Không tìm thấy ý tưởng này (có thể đã xoá)',
+  ]);
+  if ($ok && $msgId) {
+    httpPostJson("https://api.telegram.org/bot$token/editMessageText", [
+      'chat_id' => $chatId, 'message_id' => $msgId, 'parse_mode' => 'HTML',
+      'text' => (string)($msg['text'] ?? '') . "\n\n" . $note,
+    ]);
+  }
+  echo '{}';
+  exit;
+}
+
 /* Hai loại nút: đánh dấu xong, và dời lời nhắc lại N phút. Mã bấm nút
    Telegram cho tối đa 64 byte nên chỉ mang đúng loại, kho, id, số phút. */
 $act = ''; $kind = ''; $id = ''; $mins = 0;

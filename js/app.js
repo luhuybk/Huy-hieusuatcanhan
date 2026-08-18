@@ -388,25 +388,54 @@ function snoozeApply(kind, id, mins){
 }
 
 /* ---------------- ý tưởng ---------------- */
-const ideaFields = () => [
+/* Ô "nhắc xem lại" nhận mã khoảng cách (m3, y1…) chứ không nhận ngày, vì
+   người ta nghĩ theo kiểu "ba tháng nữa tính tiếp" chứ không nhớ nổi ngày
+   cụ thể. Ý tưởng đang có hẹn thì thêm lựa chọn giữ nguyên ngày cũ, không
+   thì mỗi lần sửa tên là ngày hẹn bị đặt lại. */
+function reviewOpts(i){
+  const keep = i && String(i.reviewAt || '').slice(0,10);
+  return (keep ? [['keep', 'Giữ ngày ' + fmtDate(keep)]] : [])
+         .concat([['', 'Không nhắc']], REVIEW_IN);
+}
+const ideaFields = i => [
   {k:'title',  label:'Ý tưởng'},
   {k:'areaId', label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
   {k:'status', label:'Trạng thái', type:'select', half:true, opts:Object.entries(IDEA_ST), def:'seed'},
+  {k:'reviewIn', label:'Nhắc xem lại', type:'select', opts:reviewOpts(i),
+   hint:'tới ngày đó Telegram hỏi lại: làm hay bỏ'},
   {k:'detail', label:'Nội dung', type:'textarea', voice:true, ph:'ý tưởng này là gì, giải quyết vấn đề gì'},
   {k:'plan',   label:'Hướng triển khai', type:'textarea', voice:true, ph:'bước 1…\nbước 2…'}
 ];
+/* đổi lựa chọn trong ô thành ngày thật, rồi bỏ trường tạm đi */
+function applyReview(v, i){
+  const pick = v.reviewIn;
+  delete v.reviewIn;
+  if (pick === 'keep') { if (i) v.reviewAt = i.reviewAt || ''; return v; }
+  v.reviewAt = pick ? reviewDate(pick) : '';
+  return v;
+}
 function addIdea(){
-  openForm({title:'Ý tưởng mới', fields:ideaFields(),
-    values:{status:'seed', areaId:S.area==='all'?'':S.area},
-    onSave(v){ db.ideas.push(stamp(Object.assign({createdAt:today()}, v)));
+  openForm({title:'Ý tưởng mới', fields:ideaFields(null),
+    values:{status:'seed', reviewIn:'', areaId:S.area==='all'?'':S.area},
+    onSave(v){ db.ideas.push(stamp(Object.assign({createdAt:today()}, applyReview(v, null))));
       save(); S.view='ideas'; S.ideatab='live'; render(); }});
 }
 function editIdea(id){
   const i = db.ideas.find(x => x.id === id);
-  openForm({title:'Sửa ý tưởng', fields:ideaFields(), values:i,
+  openForm({title:'Sửa ý tưởng', fields:ideaFields(i),
+    values:Object.assign({}, i, {reviewIn: i.reviewAt ? 'keep' : ''}),
     extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delIdea" data-id="${id}">Xoá ý tưởng</button>
       <button type="button" class="btn full" style="margin-bottom:10px" data-act="ideaToCard" data-id="${id}">→ Đưa lên bảng giao việc</button>`,
-    onSave(v){ Object.assign(i, v); stamp(i); save(); render(); }});
+    onSave(v){ Object.assign(i, applyReview(v, i)); stamp(i); save(); render(); }});
+}
+/* Ba nút trên thẻ ý tưởng tới hẹn — cùng bộ với ba nút dưới tin Telegram,
+   bấm bên nào cũng ghi vào cùng một chỗ. */
+function ideaReview(id, act){
+  const i = db.ideas.find(x => x.id === id); if (!i) return;
+  if (act === 'go')        { i.status = 'doing'; i.reviewAt = ''; toast('Bắt tay làm: ' + i.title); }
+  else if (act === 'drop') { i.status = 'drop';  i.reviewAt = ''; toast('Đã gác lại: ' + i.title); }
+  else                     { i.reviewAt = reviewDate(act); toast('Hẹn xem lại ' + fmtDate(i.reviewAt)); }
+  stamp(i); save(); render();
 }
 
 /* ---------------- thẻ giao việc ---------------- */
@@ -519,10 +548,11 @@ function inboxTo(kind, id){
       }});
   }
   else if (kind === 'idea'){
-    openForm({title:'Chuyển thành ý tưởng', fields:ideaFields(),
-      values:{title:first, detail:body, status:'seed', areaId:S.area === 'all' ? '' : S.area},
+    openForm({title:'Chuyển thành ý tưởng', fields:ideaFields(null),
+      values:{title:first, detail:body, status:'seed', reviewIn:'',
+              areaId:S.area === 'all' ? '' : S.area},
       onSave(v){
-        db.ideas.push(stamp(Object.assign({createdAt:today()}, v)));
+        db.ideas.push(stamp(Object.assign({createdAt:today()}, applyReview(v, null))));
         finish('ý tưởng'); toast('Đã tạo ý tưởng');
       }});
   }
@@ -799,6 +829,10 @@ function tgBox(){
        ph:'để trống = nhánh mặc định', hint:'gym, uống thuốc, chốt sổ…'},
       {k:'reportTopic', label:'Nhánh: báo cáo', half:true,
        ph:'để trống = nhánh mặc định', hint:'tóm tắt ngày, bảng công việc, tóm tắt tuần'},
+      {k:'ideaTopic', label:'Nhánh: ý tưởng', half:true,
+       ph:'để trống = nhánh mặc định', hint:'câu hỏi "làm hay bỏ" khi tới hẹn xem lại'},
+      {k:'ideaHour', label:'Giờ hỏi lại ý tưởng', type:'number', half:true,
+       ph:'0-23', hint:'chỉ hỏi khi ý tưởng có đặt ngày xem lại'},
       {k:'weeklyHour', label:'Giờ gửi tóm tắt tuần (Chủ nhật)', type:'number', half:true,
        ph:'0-23', hint:'để trống thì không gửi'},
       {k:'staffWeekly', label:'Tổng kết tuần theo nhân sự', type:'select', half:true,
@@ -817,6 +851,8 @@ function tgBox(){
             cardTopic: t.cardTopic || t.workTopic || '',
             remTopic: t.remTopic || '',
             reportTopic: t.reportTopic || t.workTopic || '',
+            ideaTopic: t.ideaTopic || '',
+            ideaHour: t.ideaHour == null ? 9 : t.ideaHour,
             weeklyHour: t.weeklyHour == null ? -1 : t.weeklyHour,
             staffWeekly: t.staffWeekly ? 'yes' : '',
             escalate: t.escalate ? 'yes' : '',
@@ -834,6 +870,8 @@ function tgBox(){
                     cardTopic:  String(v.cardTopic || '').trim(),
                     remTopic:   String(v.remTopic || '').trim(),
                     reportTopic:String(v.reportTopic || '').trim(),
+                    ideaTopic:  String(v.ideaTopic || '').trim(),
+                    ideaHour:   v.ideaHour === '' ? -1 : +v.ideaHour,
                     weeklyHour: v.weeklyHour === '' ? -1 : +v.weeklyHour,
                     staffWeekly: v.staffWeekly === 'yes',
                     escalate:   v.escalate === 'yes',
@@ -1217,6 +1255,7 @@ document.addEventListener('click', e => {
 
     /* ý tưởng */
     case 'addIdea':  addIdea(); break;
+    case 'ideaRev':  ideaReview(id, el.dataset.r); break;
     case 'editIdea': editIdea(id); break;
     case 'delIdea':  closeModal(); confirmBox('Xoá ý tưởng này?', () => {
         const i = db.ideas.find(x => x.id === id); i.deleted = true; stamp(i); save(); render(); }); break;

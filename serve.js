@@ -73,15 +73,23 @@ const pad = n => String(n).padStart(2,'0');
 
 /* bản song sinh của topicFor() bên PHP */
 const TOPIC_CONF = {tasks:'tg_task_topic', cards:'tg_card_topic',
-                    rem:'tg_rem_topic',    report:'tg_report_topic'};
+                    rem:'tg_rem_topic',    report:'tg_report_topic',
+                    ideas:'tg_idea_topic'};
 function topicFor(what){
   const v = String(confGet(TOPIC_CONF[what] || '', '') || '').trim();
   if (v) return v;
-  if (what !== 'rem'){
+  if (what !== 'rem' && what !== 'ideas'){
     const old = String(confGet('tg_work_topic', '') || '').trim();
     if (old) return old;
   }
   return String(confGet('tg_topic', '') || '') || 'chính';
+}
+/* bản song sinh của tgIdeaButtons() bên PHP */
+function tgIdeaButtons(id){
+  if (!confGet('tg_webhook_on')) return null;
+  return [[{text:'▶ Triển khai', callback_data:`idea:go:${id}`},
+           {text:'🗄 Gác lại',   callback_data:`idea:drop:${id}`}],
+          [{text:'⏰ Nhắc lại sau 3 tháng', callback_data:`idea:snz:${id}:m3`}]];
 }
 /* Bố cục nút dưới tin nhắc — bản song sinh của tgItemButtons() bên PHP.
    Ở đây không gọi Telegram thật, nhưng vẫn dựng đúng hình dạng bàn phím để
@@ -498,6 +506,23 @@ function runSchedule(dry, atMs){
     }
   }
 
+  /* ý tưởng tới hẹn xem lại — bản song sinh của khối cùng tên bên lib.php */
+  const ih = +confGet('tg_idea_hour', '9');
+  if (ih >= 0 && now.getHours() >= ih){
+    for (const i of itemsOf('ideas')){
+      const st = String(i.status || '');
+      if (st === 'done' || st === 'drop') continue;
+      const rv = String(i.reviewAt || '').slice(0,10);
+      if (rv.length !== 10 || rv > today) continue;
+      const key = `idea:${i.id}:${rv}`;
+      if (alreadySent(key)) continue;
+      if (dry){ done.push({idea:i.title, dry:true}); continue; }
+      markSent(key);
+      done.push({idea:i.title, ok:true, topic:topicFor('ideas'),
+                 buttons:tgIdeaButtons(String(i.id || ''))});
+    }
+  }
+
   /* bảng công việc hằng ngày */
   const wh = +confGet('tg_work_hour', '-1');
   if (wh >= 0 && now.getHours() >= wh){
@@ -628,6 +653,29 @@ function webhook(req, res, body){
     }
     console.log('[telegram thử · webhook] ' + data + ' → ' +
       (!ok ? 'không tìm thấy' : already ? 'hôm nay đã tick rồi' : 'ghi nhận xong hôm nay'));
+    return send({});
+  }
+
+  /* ý tưởng tới hẹn xem lại: triển khai / gác lại / hẹn tiếp */
+  const im = /^idea:(go|drop|snz):([^:]+)(?::([dwmy]\d+))?$/.exec(data);
+  if (im){
+    const what = im[1], ideaId = im[2], code = im[3] || '';
+    if (what === 'snz' && !['m1','m3','m6','y1'].includes(code)) return send({});
+    const row = db().prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?').get('ideas', ideaId);
+    let ok = false, said = '';
+    if (row){
+      const idea = JSON.parse(row.data);
+      if (idea && !idea.deleted){
+        if (what === 'go')       { idea.status = 'doing'; idea.reviewAt = ''; said = 'triển khai'; }
+        else if (what === 'drop'){ idea.status = 'drop';  idea.reviewAt = ''; said = 'gác lại'; }
+        else { idea.reviewAt = stepRepeat(today_(), code); said = 'hẹn lại ' + idea.reviewAt; }
+        idea.updatedAt = iso();
+        db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
+            .run(JSON.stringify(idea), idea.updatedAt, 'ideas', ideaId);
+        ok = true;
+      }
+    }
+    console.log('[telegram thử · webhook] ' + data + ' → ' + (ok ? said : 'không tìm thấy'));
     return send({});
   }
 
@@ -776,8 +824,11 @@ function api(req, res, body){
         confSet('tg_work_hour', (w >= 0 && w <= 23) ? w : -1);
         for (const [k, conf] of Object.entries({
               taskTopic:'tg_task_topic', cardTopic:'tg_card_topic',
-              remTopic:'tg_rem_topic',   reportTopic:'tg_report_topic'}))
+              remTopic:'tg_rem_topic',   reportTopic:'tg_report_topic',
+              ideaTopic:'tg_idea_topic'}))
           confSet(conf, String(inp[k] || '').trim());
+        const ih = inp.ideaHour == null ? 9 : +inp.ideaHour;
+        confSet('tg_idea_hour', (ih >= 0 && ih <= 23) ? ih : -1);
         const wk = inp.weeklyHour == null ? -1 : +inp.weeklyHour;
         confSet('tg_weekly_hour', (wk >= 0 && wk <= 23) ? wk : -1);
         confSet('tg_staff_weekly', inp.staffWeekly ? '1' : '');
@@ -794,6 +845,8 @@ function api(req, res, body){
         cardTopic: confGet('tg_card_topic',''),
         remTopic: confGet('tg_rem_topic',''),
         reportTopic: confGet('tg_report_topic',''),
+        ideaTopic: confGet('tg_idea_topic',''),
+        ideaHour: +confGet('tg_idea_hour','9'),
         workTopic: confGet('tg_work_topic',''),
         weeklyHour: +confGet('tg_weekly_hour','-1'),
         staffWeekly: !!confGet('tg_staff_weekly',''),
