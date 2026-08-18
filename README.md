@@ -142,7 +142,20 @@ Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa 
 ### Công việc
 - **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn.
 - **Việc lặp lại** — hàng ngày, cách ngày, hàng tuần, 2 tuần, hàng tháng, mỗi quý, nửa năm, hàng năm. Tick xong là hạn tự nhảy sang kỳ kế tiếp, kèm **chuỗi 🔥** đếm số kỳ làm đúng hẹn liên tiếp (bỏ lỡ thì chuỗi về 0). Nếu bỏ lỡ nhiều kỳ, app nhảy thẳng tới mốc sắp tới chứ không dồn việc.
-- **Ý tưởng** — nội dung và hướng triển khai tách riêng, có nút đưa thẳng lên bảng giao việc.
+
+### Ý tưởng
+
+Màn riêng ở thanh bên — **💡 Ý tưởng** — chứ không nằm sau một tab của Công việc. Ý tưởng là chỗ nghĩ dài hạn, phải mở được bằng một cú bấm.
+
+Nội dung và hướng triển khai tách riêng, có nút đưa thẳng lên bảng giao việc. Ba nhóm:
+
+| Nhóm | Gồm |
+|---|---|
+| **Đang nuôi** | mọi thứ chưa xong và chưa gác — mở màn là thấy nhóm này |
+| **Đang triển khai** | riêng những ý tưởng đã bắt tay làm |
+| **Kho** | đã xong và tạm gác, cất đi cho danh sách chính gọn |
+
+Con số trên thanh bên đếm số ý tưởng **đang triển khai** — tức là những thứ bạn đã cam kết làm, không phải mọi thứ từng nghĩ ra.
 
 ### Giao việc
 Bốn cột: **Lên ý tưởng → Đã giao việc → Đang làm → Hoàn thành**. Mỗi thẻ có nút chuyển cột ngay trên thẻ. Dưới bảng là tiến độ theo từng người.

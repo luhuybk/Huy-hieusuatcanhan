@@ -275,7 +275,10 @@ function ensure(){
                            if(t.snoozeUntil===undefined) t.snoozeUntil='';
                            /* nhắc thêm một tin trước hạn bao nhiêu ngày; 0 = không báo trước */
                            if(t.remindBefore===undefined) t.remindBefore=0; });
-  db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId=''; });
+  db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
+                           /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
+                              chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
+                           if(!IDEA_ST[i.status]) i.status='seed'; });
   db.inbox.forEach(n => { if(n.processed===undefined) n.processed = false; if(!n.text) n.text = ''; });
   db.staff.forEach(s2 => { if(!Array.isArray(s2.areaIds)) s2.areaIds = [];
                            if(s2.phone===undefined) s2.phone = ''; if(s2.startDate===undefined) s2.startDate = '';

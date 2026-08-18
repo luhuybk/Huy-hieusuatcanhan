@@ -44,6 +44,7 @@ function renderSide(){
        ['people','◍','Quan hệ', nStale],
        ['occasions','🎊','Dịp & lễ', dueOccasions().length],
        ['work','✓','Công việc', tasks().filter(t=>!t.done).length],
+       ['ideas','💡','Ý tưởng', ideas().filter(i=>i.status==='doing').length],
        ['money','₫','Sổ tiền', 0],
        ['board','▦','Giao việc', nLate],
        ['review','◷','Ôn lại tuần', 0]];
@@ -342,35 +343,32 @@ function taskItem(t){
 }
 function vWork(){
   const A = S.area;
-  let h = `<div class="tabs">
-    <button class="tab ${S.worktab==='tasks'?'on':''}" data-act="worktab" data-id="tasks">Việc cần làm <span class="n">${byArea(tasks().filter(t=>!t.done),A).length}</span></button>
-    <button class="tab ${S.worktab==='ideas'?'on':''}" data-act="worktab" data-id="ideas">Ý tưởng <span class="n">${byArea(ideas(),A).length}</span></button>
-  </div>`;
-
-  if (S.worktab === 'tasks'){
-    const all  = byArea(tasks(), A);
-    const open = all.filter(t => !t.done);
-    const done = all.filter(t => t.done).sort((a,b) => (b.doneAt||'').localeCompare(a.doneAt||''));
-    if (!all.length) return h + `<div class="empty"><b>Chưa có việc nào</b>Bấm + để thêm. Việc lặp lại (tập gym, đóng tiền nhà…) chỉ cần tạo một lần.</div>`;
-    const g = {late:[], today:[], soon:[], none:[]};
-    for (const t of open){
-      const d = t.due ? dayDiff(t.due) : null;
-      if (d === null) g.none.push(t); else if (d < 0) g.late.push(t); else if (d === 0) g.today.push(t); else g.soon.push(t);
-    }
-    const byPrio = a => a.sort((x,y) => ['high','mid','low'].indexOf(x.prio||'mid') - ['high','mid','low'].indexOf(y.prio||'mid'));
-    const sec = (t, arr) => arr.length ? secHd(t + ' (' + arr.length + ')') + arr.map(taskItem).join('') : '';
-    h += sec('Quá hạn', g.late.sort((a,b) => a.due.localeCompare(b.due)));
-    h += sec('Hôm nay', byPrio(g.today));
-    h += sec('Sắp tới', g.soon.sort((a,b) => a.due.localeCompare(b.due)));
-    h += sec('Không hạn', byPrio(g.none));
-    if (done.length) h += secHd('Đã xong (' + done.length + ')') + done.slice(0,15).map(taskItem).join('');
-    return h;
+  const all  = byArea(tasks(), A);
+  const open = all.filter(t => !t.done);
+  const done = all.filter(t => t.done).sort((a,b) => (b.doneAt||'').localeCompare(a.doneAt||''));
+  if (!all.length) return `<div class="empty"><b>Chưa có việc nào</b>Bấm + để thêm. Việc lặp lại (tập gym, đóng tiền nhà…) chỉ cần tạo một lần.</div>`;
+  const g = {late:[], today:[], soon:[], none:[]};
+  for (const t of open){
+    const d = t.due ? dayDiff(t.due) : null;
+    if (d === null) g.none.push(t); else if (d < 0) g.late.push(t); else if (d === 0) g.today.push(t); else g.soon.push(t);
   }
+  const byPrio = a => a.sort((x,y) => ['high','mid','low'].indexOf(x.prio||'mid') - ['high','mid','low'].indexOf(y.prio||'mid'));
+  const sec = (t, arr) => arr.length ? secHd(t + ' (' + arr.length + ')') + arr.map(taskItem).join('') : '';
+  let h = '';
+  h += sec('Quá hạn', g.late.sort((a,b) => a.due.localeCompare(b.due)));
+  h += sec('Hôm nay', byPrio(g.today));
+  h += sec('Sắp tới', g.soon.sort((a,b) => a.due.localeCompare(b.due)));
+  h += sec('Không hạn', byPrio(g.none));
+  if (done.length) h += secHd('Đã xong (' + done.length + ')') + done.slice(0,15).map(taskItem).join('');
+  return h;
+}
 
-  const list = byArea(ideas(), A);
-  if (!list.length) return h + `<div class="empty"><b>Chưa có ý tưởng nào</b>Ghi lại ý tưởng cùng hướng triển khai để không quên.</div>`;
-  const order = ['doing','explore','seed','done','drop'];
-  h += list.slice().sort((a,b) => order.indexOf(a.status) - order.indexOf(b.status)).map(i => `
+/* ---------------- Ý TƯỞNG ---------------- */
+/* Tách khỏi Công việc thành màn riêng: ý tưởng là chỗ nghĩ dài hạn, phải mở
+   được bằng một cú bấm chứ không nằm sau một tab của màn khác. */
+const IDEA_ORDER = ['doing','explore','seed','done','drop'];
+function ideaCard(i){
+  return `
     <div class="card" style="margin-bottom:10px" data-act="editIdea" data-id="${i.id}">
       <div class="row">
         <div class="grow"><div style="font-weight:650;font-size:15px">${areaDot(i.areaId)} ${esc(i.title)}</div></div>
@@ -379,7 +377,25 @@ function vWork(){
       ${i.detail ? `<div class="muted" style="margin-top:8px;font-size:13.5px">${nl(i.detail)}</div>` : ''}
       ${i.plan ? `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:13px">
         <div class="dim" style="margin-bottom:4px;font-weight:700">HƯỚNG TRIỂN KHAI</div>${nl(i.plan)}</div>` : ''}
-    </div>`).join('');
+    </div>`;
+}
+function vIdeas(){
+  const list = byArea(ideas(), S.area);
+  if (!list.length) return `<div class="empty"><b>Chưa có ý tưởng nào</b>Ghi lại ý tưởng cùng hướng triển khai để không quên.</div>`;
+
+  /* Chỉ ba nhóm. Trạng thái chi tiết đã có sẵn trên chip mỗi thẻ, thêm tab
+     nữa là hàng tab tràn ngang trên điện thoại — lỗi đã gặp một lần rồi. */
+  const kho  = i => i.status === 'done' || i.status === 'drop';
+  const pick = {live: i => !kho(i), doing: i => i.status === 'doing', kho};
+  const tabs = [['live','Đang nuôi'], ['doing','Đang triển khai'], ['kho','Kho']];
+  let h = `<div class="tabs">` + tabs.map(([id,label]) =>
+    `<button class="tab ${S.ideatab===id?'on':''}" data-act="ideatab" data-id="${id}">${label}
+      <span class="n">${list.filter(pick[id]).length}</span></button>`).join('') + `</div>`;
+
+  const shown = list.filter(pick[S.ideatab] || pick.live);
+  if (!shown.length) return h + `<div class="empty"><b>Trống</b>Chưa có ý tưởng nào ở nhóm này.</div>`;
+  h += shown.slice().sort((a,b) => (IDEA_ORDER.indexOf(a.status) - IDEA_ORDER.indexOf(b.status))
+        || (b.createdAt||'').localeCompare(a.createdAt||'')).map(ideaCard).join('');
   return h;
 }
 

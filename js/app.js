@@ -3,7 +3,7 @@
    ============================================================ */
 "use strict";
 
-const S = { view:'dash', q:'', personId:null, staffId:null, worktab:'tasks', assignee:'all', area:'all', side:false,
+const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -13,7 +13,8 @@ const TITLES = {
   calendar:['Lịch tháng','Việc, dịp và sinh nhật trên một lịch'],
   people:['Quan hệ','Năm vòng tròn: S · S2 · A · B · C'],
   occasions:['Dịp & lễ','Giỗ, Tết, kỷ niệm — có tính âm lịch'],
-  work:['Công việc','Việc cần làm & ý tưởng'],
+  work:['Công việc','Việc cần làm, có cả việc lặp lại'],
+  ideas:['Ý tưởng','Nghĩ gì ghi đó — kèm hướng triển khai'],
   board:['Giao việc','Bảng tiến độ nhân viên'],
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
   settings:['Cài đặt','Dữ liệu, nhắc nhở, đồng bộ']
@@ -35,6 +36,7 @@ function render(){
     else if (v === 'people')   html = vPeople();
     else if (v === 'person')   html = vPerson();
     else if (v === 'work')     html = vWork();
+    else if (v === 'ideas')    html = vIdeas();
     else if (v === 'board')    html = vBoard();
     else if (v === 'review')   html = vReview();
     else if (v === 'occasions')html = vOccasions();
@@ -303,7 +305,7 @@ function addTask(due){
       normalizeTask(v);
       db.tasks.push(stamp(Object.assign({done:false, streak:0, bestStreak:0, doneLog:[], createdAt:today()}, v)));
       save();
-      if (S.view !== 'calendar'){ S.view = 'work'; S.worktab = 'tasks'; }
+      if (S.view !== 'calendar') S.view = 'work';
       render();
     }});
 }
@@ -316,6 +318,11 @@ function editTask(id){
 }
 function toggleTask(id){
   const t = db.tasks.find(x => x.id === id);
+  /* Xong rồi thì mốc dời nhắc phải bỏ luôn. Việc lặp lại không bao giờ mang
+     cờ done, nên mốc cũ còn sót lại là máy chủ vẫn bắn tin "đến giờ dời"
+     cho việc mình vừa tick xong. Nút Xong trên Telegram xưa nay đã xoá
+     trường này rồi — bên app phải làm y hệt. */
+  if (!t.done) t.snoozeUntil = '';
   if (t.done){ t.done = false; t.doneAt = null; }
   else if (t.repeat){
     const onTime = !t.due || dayDiff(t.due) >= 0;
@@ -392,7 +399,7 @@ function addIdea(){
   openForm({title:'Ý tưởng mới', fields:ideaFields(),
     values:{status:'seed', areaId:S.area==='all'?'':S.area},
     onSave(v){ db.ideas.push(stamp(Object.assign({createdAt:today()}, v)));
-      save(); S.view='work'; S.worktab='ideas'; render(); }});
+      save(); S.view='ideas'; S.ideatab='live'; render(); }});
 }
 function editIdea(id){
   const i = db.ideas.find(x => x.id === id);
@@ -1156,7 +1163,7 @@ document.addEventListener('click', e => {
     case 'burger':  setSide(!S.side); break;
     case 'scrim':   setSide(false); break;
     case 'area':    S.area = id; setSide(false); render(); break;
-    case 'worktab': S.worktab = id; render(); break;
+    case 'ideatab': S.ideatab = id; render(); break;
     case 'asg':     S.assignee = (S.assignee === id ? 'all' : id); closeModal(); S.view='board'; render(); break;
     case 'person':  S.personId = id; S.view = 'person'; render(); break;
     case 'theme':
@@ -1165,7 +1172,8 @@ document.addEventListener('click', e => {
     case 'fab':
       if (S.view === 'inbox') quickCapture();
       else if (S.view === 'people') addPerson();
-      else if (S.view === 'work') (S.worktab === 'tasks' ? addTask() : addIdea());
+      else if (S.view === 'work') addTask();
+      else if (S.view === 'ideas') addIdea();
       else if (S.view === 'board') addCard('idea');
       else quickAdd();
       break;
@@ -1228,7 +1236,7 @@ document.addEventListener('click', e => {
       const i = COLS.findIndex(x => x.id === c.col) + (+el.dataset.d);
       if (i >= 0 && i < COLS.length){
         c.col = COLS[i].id;
-        if (c.col === 'done'){ c.progress = 100; c.doneAt = c.doneAt || today(); }
+        if (c.col === 'done'){ c.progress = 100; c.doneAt = c.doneAt || today(); c.snoozeUntil = ''; }
         else c.doneAt = '';
         stamp(c); save(); closeModal(); render(); toast('→ ' + COLS[i].label);
       } break;
@@ -1254,7 +1262,7 @@ document.addEventListener('click', e => {
     case 'toggleCard': {
       const c = db.cards.find(x => x.id === id);
       if (c.col === 'done'){ c.col = 'doing'; c.doneAt = ''; if (c.progress === 100) c.progress = 90; }
-      else { c.col = 'done'; c.progress = 100; c.doneAt = today(); }
+      else { c.col = 'done'; c.progress = 100; c.doneAt = today(); c.snoozeUntil = ''; }
       stamp(c); save(); render();
       toast(c.col === 'done' ? 'Đã hoàn thành: ' + c.title : 'Mở lại: ' + c.title);
       break;
@@ -1292,8 +1300,14 @@ document.addEventListener('click', e => {
       closeModal();
       const k = el.dataset.k;
       if (k === 'person' || k === 'gift'){ S.personId = id; S.view = 'person'; }
-      else if (k === 'task'){ S.view = 'work'; S.worktab = 'tasks'; render(); editTask(id); break; }
-      else if (k === 'idea'){ S.view = 'work'; S.worktab = 'ideas'; render(); editIdea(id); break; }
+      else if (k === 'task'){ S.view = 'work'; render(); editTask(id); break; }
+      else if (k === 'idea'){
+        /* Ý tưởng đã xong/tạm gác nằm trong Kho — nhảy sang đúng nhóm, không
+           thì đóng ô sửa xong lại thấy danh sách trống trơn. */
+        const i2 = db.ideas.find(x => x.id === id);
+        S.view = 'ideas';
+        S.ideatab = i2 && (i2.status === 'done' || i2.status === 'drop') ? 'kho' : 'live';
+        render(); editIdea(id); break; }
       else if (k === 'card'){ S.view = 'board'; render(); openCard(id); break; }
       else if (k === 'occasion'){ S.view = 'occasions'; }
       render(); break;
