@@ -1190,8 +1190,19 @@ function seedDemo(){
 }
 
 /* ---------------- điều phối sự kiện ---------------- */
+/* Bấm nền tối để đóng — nhưng phải bấm XUỐNG ở nền tối mới tính. Trình duyệt
+   gán cú bấm cho ông tổ chung của chỗ nhấn và chỗ nhả: kéo góc ô ghi chú cho
+   to ra, hay bôi đen chữ rồi nhả tay ra ngoài khung, đều thành "bấm vào nền"
+   → đang điền dở thì mất trắng. Nhớ lấy chỗ nhấn xuống là hết. */
+let ovDown = null;
+document.addEventListener('pointerdown', e => { ovDown = e.target; }, true);
+
 document.addEventListener('click', e => {
-  if (e.target.hasAttribute('data-ovclose') || e.target.closest('[data-close]')){ closeModal(); return; }
+  if (e.target.hasAttribute('data-ovclose')){
+    if (ovDown === e.target) closeModal();   /* nhả tay ngoài khung sau khi kéo thì bỏ qua */
+    return;
+  }
+  if (e.target.closest('[data-close]')){ closeModal(); return; }
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act, id = el.dataset.id;
 
