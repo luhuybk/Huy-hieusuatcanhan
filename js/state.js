@@ -274,7 +274,10 @@ function ensure(){
                            /* mốc đã bấm dời nhắc, "YYYY-MM-DD HH:MM" giờ VN; rỗng = không dời */
                            if(t.snoozeUntil===undefined) t.snoozeUntil='';
                            /* nhắc thêm một tin trước hạn bao nhiêu ngày; 0 = không báo trước */
-                           if(t.remindBefore===undefined) t.remindBefore=0; });
+                           if(t.remindBefore===undefined) t.remindBefore=0;
+                           /* ước tính làm mất bao lâu, phút; 0 = chưa ước tính, trục
+                              thời gian tạm tính 30 phút và ghi rõ là con số đoán */
+                           if(t.mins===undefined) t.mins=0; });
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
                            /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
                               chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
@@ -530,11 +533,15 @@ const TL_MIN_SPAN = 240;         /* trục luôn rộng ít nhất 4 tiếng, kh
 /* Bỏ trống, số âm, số 0 hay chữ vớ vẩn đều rơi về 15 phút; số quá lớn thì cắt
    xuống 12 tiếng. Dòng thời gian không bao giờ được nhận số âm — khối sẽ vẽ
    ngược. Mọi nơi phải gọi hàm này, kể cả bên PHP có bản y hệt. */
-function cleanMins(v){
+function cleanMins(v, def){
   const n = Math.round(Number(v));
-  return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 15;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : (def === undefined ? 15 : def);
 }
-const remMins = r => cleanMins(r && r.mins);
+const remMins  = r => cleanMins(r && r.mins);
+/* Việc lẻ chưa ước tính thì tạm tính 30 phút — phải cho nó một bề rộng nào
+   đó mới xếp lên trục được, nhưng giao diện luôn ghi rõ đó là số đoán. */
+const taskMins = t => cleanMins(t && t.mins, 30);
+const taskEst  = t => cleanMins(t && t.mins, 0) > 0;
 function hhmm2min(s){
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(s == null ? '' : s).trim());
   return m ? +m[1] * 60 + +m[2] : null;
@@ -584,6 +591,66 @@ function weekLoad(areaId){
     return {wd, lbl, items, load:dayLoad(items)};
   });
 }
+/* ---- hôm nay: gộp cả việc lẻ ----
+   Bảy cột của tab Cả tuần là nhịp lặp theo thứ, nên chỉ có việc hằng ngày.
+   Còn "hôm nay" là một ngày có thật, nên việc lẻ đến hạn cũng chiếm giờ của
+   nó — nhìn vào mới biết ngày thật sự phân bổ ra sao. */
+function todayItems(areaId){
+  const A = areaId === undefined ? 'all' : areaId;
+  const t0 = today();
+  const out = dayItems(new Date().getDay(), A).map(x => Object.assign({kind:'rem'}, x));
+  byArea(tasks(), A).forEach(t => {
+    if (t.done) return;
+    const due = String(t.due || '').slice(0,10);
+    if (due.length !== 10 || due > t0) return;      /* chưa tới hạn thì chưa chiếm giờ hôm nay */
+    const start = hhmm2min(t.remindAt);
+    if (start === null) return;                     /* chưa xếp giờ → xuống danh sách riêng */
+    /* id có tiền tố để không đụng id của việc hằng ngày khi dò chồng giờ */
+    out.push({kind:'task', id:'t_' + t.id, t, start, mins:taskMins(t), on:true,
+              title:t.title || 'Việc cần làm', areaId:t.areaId || '',
+              late:due < t0, est:taskEst(t)});
+  });
+  return out.sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
+}
+/* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
+   thật, nên vẫn phải kể ra kèm tổng ước tính. */
+function todayUnscheduled(areaId){
+  const t0 = today();
+  return byArea(tasks(), areaId === undefined ? 'all' : areaId).filter(t => {
+    if (t.done) return false;
+    const due = String(t.due || '').slice(0,10);
+    return due.length === 10 && due <= t0 && hhmm2min(t.remindAt) === null;
+  }).sort((a,b) => (a.due || '').localeCompare(b.due || ''));
+}
+
+/* ---- khoảng trống ----
+   Gộp các khoảng bận (kể cả chồng nhau) rồi lấy phần hở ở giữa. Chỉ tính
+   trong khoảng từ việc đầu tới việc cuối: ngoài khoảng đó app không biết
+   bạn thức lúc mấy giờ, đoán bừa còn tệ hơn không nói gì. */
+function busySpans(items){
+  const live = (items || []).filter(x => x.on)
+    .map(x => [x.start, x.start + x.mins]).sort((a,b) => a[0] - b[0]);
+  const out = [];
+  for (const s of live){
+    const last = out[out.length - 1];
+    if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+    else out.push([s[0], s[1]]);
+  }
+  return out;
+}
+function dayGaps(items, minLen){
+  const b = busySpans(items), min = minLen === undefined ? 30 : minLen;
+  const out = [];
+  for (let i = 1; i < b.length; i++){
+    const from = b[i-1][1], to = b[i][0];
+    if (to - from >= min) out.push({from, to, mins:to - from});
+  }
+  return out;
+}
+/* Bận thật trên đồng hồ — hai việc chồng nhau chỉ tính một lần, khác với
+   tổng số phút của dayLoad(). */
+const busyMins = items => busySpans(items).reduce((n,s) => n + (s[1] - s[0]), 0);
+
 /* Còn mấy việc chưa tick hôm nay — con số trên menu */
 function dailyLeft(){
   const wd = new Date().getDay();

@@ -73,6 +73,65 @@ function durText(m){
   const h = Math.floor(v / 60), r = v % 60;
   return r ? h + 'h' + String(r).padStart(2,'0') : h + 'h';
 }
+/* hình dạng của ngày hôm nay — bản song sinh của todaySlots() bên PHP */
+function hhmmMin(x){
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(x == null ? '' : x).trim());
+  return m ? +m[1] * 60 + +m[2] : null;
+}
+function hhmmText(m){
+  const v = Math.max(0, Math.round(m));
+  return String(Math.floor(v / 60) % 24).padStart(2,'0') + ':' + String(v % 60).padStart(2,'0');
+}
+function taskMinutes(t){
+  const n = Math.round(Number(t && t.mins));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 30;
+}
+function todaySlots(atMs){
+  const now = atMs ? new Date(atMs) : new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const wday = now.getDay();
+  const out = [];
+  for (const r of itemsOf('reminders')){
+    if (!r.enabled) continue;
+    if (!(r.days || []).map(Number).includes(wday)) continue;
+    const st = hhmmMin(r.time); if (st === null) continue;
+    out.push({start:st, mins:remMinutes(r), title:r.title || ''});
+  }
+  for (const t of itemsOf('tasks')){
+    if (t.done) continue;
+    const due = String(t.due || '').slice(0,10);
+    if (due.length !== 10 || due > today) continue;
+    const st = hhmmMin(t.remindAt); if (st === null) continue;
+    out.push({start:st, mins:taskMinutes(t), title:t.title || ''});
+  }
+  return out.sort((a,b) => a.start - b.start);
+}
+function slotClashes(items){
+  const hit = new Set();
+  for (let i = 0; i < items.length; i++)
+    for (let j = i + 1; j < items.length; j++){
+      const a = items[i], b = items[j];
+      if (b.start < a.start + a.mins && a.start < b.start + b.mins){ hit.add(i); hit.add(j); }
+    }
+  return hit.size;
+}
+function slotBusy(items){
+  const sp = [];
+  for (const x of items){
+    const a = x.start, b = x.start + x.mins, last = sp[sp.length - 1];
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else sp.push([a, b]);
+  }
+  return sp;
+}
+function slotGaps(items, min){
+  const sp = slotBusy(items), lim = min === undefined ? 30 : min, out = [];
+  for (let i = 1; i < sp.length; i++){
+    const from = sp[i-1][1], to = sp[i][0];
+    if (to - from >= lim) out.push({from, to, mins:to - from});
+  }
+  return out;
+}
 function remMinutes(r){
   const n = Math.round(Number(r && r.mins));
   return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 15;
@@ -150,6 +209,20 @@ function buildDigest(){
   const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
   const md = today.slice(5);
   const lines = [];
+
+  /* hình dạng của ngày, đặt lên đầu */
+  const slots = todaySlots(now.getTime());
+  if (slots.length){
+    const tot = slots.reduce((n,x) => n + x.mins, 0);
+    const cl = slotClashes(slots), gaps = slotGaps(slots);
+    const free = gaps.reduce((n,g) => n + g.mins, 0);
+    let line = `🗓 Hôm nay ${slots.length} việc theo giờ · ${durText(tot)}`;
+    if (cl) line += `\n   ⚠️ ${cl} việc chồng giờ`;
+    if (free) line += `\n   Trống ${durText(free)}: `
+      + gaps.slice(0,3).map(g => hhmmText(g.from) + '–' + hhmmText(g.to)).join(', ')
+      + (gaps.length > 3 ? '…' : '');
+    lines.push(line);
+  }
 
   const workOn = +confGet('tg_work_hour','-1') >= 0;
   const due = workOn ? []
@@ -461,7 +534,9 @@ function runSchedule(dry, atMs){
       if (alreadySent(key)) continue;
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
+      const est = kind === 'tasks' ? Math.round(Number(t.mins)) : 0;
       done.push({[what]:t.title, ok:true, lead, topic:topicFor(kind),
+                 dur: est > 0 ? durText(Math.min(est, 720)) : '',
                  buttons:tgItemButtons(kind, t.id)});
     }
   }

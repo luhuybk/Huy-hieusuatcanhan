@@ -1192,7 +1192,7 @@ function tlBar(items, clash){
   return `<div class="tlbar-wrap">
     <div class="tlbar">${items.map(x => {
       const c = tlColor(x);
-      return `<i class="${clash.has(x.id) ? 'cl' : ''}" title="${esc(tlLabel(x))}"
+      return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''}" title="${esc(tlLabel(x))}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
     }).join('')}</div>
@@ -1235,7 +1235,9 @@ function tlTrack(items, clash){
 }
 
 function dailyRow(x, clash){
-  const r = x.r, xong = remDoneToday(r), chuoi = remStreak(r), cl = clash.has(x.id);
+  const cl = clash.has(x.id);
+  if (x.kind === 'task') return taskDayRow(x, cl);
+  const r = x.r, xong = remDoneToday(r), chuoi = remStreak(r);
   return `<div class="rem ${r.enabled ? '' : 'off'}">
     <div class="tm">${esc(min2hhmm(x.start))}</div>
     <div class="grow" data-act="editRem" data-id="${r.id}">
@@ -1273,14 +1275,74 @@ function dailyEditRow(x, clash){
   </div>`;
 }
 
-function dailyToday(A, wd){
-  const items = dayItems(wd, A);
-  if (!items.length) return `<div class="empty"><b>${WDAY_NAME[wd]} chưa có việc nào</b>
-    Mở tab <b>Tất cả</b> để chọn thứ cho việc, hoặc thêm việc mới.</div>`;
+/* Việc lẻ trên trục hôm nay. Nét đứt và dấu ~ để phân biệt với việc hằng
+   ngày: giờ của nó là giờ nhắc, còn thời lượng có thể chỉ là con số tạm. */
+function taskDayRow(x, cl){
+  const t = x.t, tre = x.late ? -dayDiff(t.due) : 0;
+  return `<div class="rem tsk">
+    <div class="tm">${esc(min2hhmm(x.start))}</div>
+    <div class="grow" data-act="editTask" data-id="${t.id}">
+      <div class="nm ell">${areaDot(t.areaId)} ${esc(x.title)}</div>
+      <div class="dim">${x.est ? '' : '~'}${fmtDur(x.mins)} → xong ${esc(min2hhmm(x.start + x.mins))} · ${
+        tre ? `<span style="color:var(--bad)">việc lẻ, trễ ${tre} ngày</span>` : 'việc lẻ, hạn hôm nay'}${
+        x.est ? '' : ' · chưa ước tính'}${
+        cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}</div>
+    </div>
+    <button class="iconbtn" data-act="toggleTask" data-id="${t.id}" title="Đánh dấu xong">✓</button>
+  </div>`;
+}
+function unschedRow(t){
+  const tre = -dayDiff(t.due), est = taskEst(t);
+  return `<div class="rem tsk">
+    <div class="tm dim" style="font-size:18px">–</div>
+    <div class="grow" data-act="editTask" data-id="${t.id}">
+      <div class="nm ell">${areaDot(t.areaId)} ${esc(t.title)}</div>
+      <div class="dim">${est ? '' : '~'}${fmtDur(taskMins(t))}${est ? '' : ' · chưa ước tính'} · ${
+        tre > 0 ? `<span style="color:var(--bad)">trễ ${tre} ngày</span>` : 'hạn hôm nay'}</div>
+    </div>
+    <button class="iconbtn" data-act="toggleTask" data-id="${t.id}" title="Đánh dấu xong">✓</button>
+  </div>`;
+}
+/* Kín bao nhiêu, trống bao nhiêu, và trống vào những khúc nào.
+   "Kín" đếm theo đồng hồ nên hai việc chồng nhau chỉ tính một lần — khác
+   với tổng số phút ở dòng tiêu đề, và chênh lệch giữa hai con số đó chính
+   là chỗ mình đang nhét hai việc vào cùng một khoảng. */
+function gapBlock(items, clash){
+  const busy = busyMins(items), gaps = dayGaps(items);
+  const free = gaps.reduce((n, g) => n + g.mins, 0);
+  return `<div class="card" style="margin-bottom:12px">
+    <div class="row dim" style="gap:12px;flex-wrap:wrap">
+      <span title="Đếm theo đồng hồ — hai việc chồng nhau chỉ tính một lần, nên số này nhỏ hơn tổng ở trên khi có việc trùng giờ">Kín <b style="color:var(--tx)">${fmtDur(busy)}</b></span>
+      ${free ? `<span>Trống <b style="color:var(--ok)">${fmtDur(free)}</b></span>` : ''}
+      ${clash.size ? `<span style="color:var(--bad)">⚠ ${clash.size} việc chồng giờ</span>` : ''}
+    </div>
+    ${gaps.length ? `<div class="gaps">` + gaps.map(g =>
+      `<span class="gap">${min2hhmm(g.from)} → ${min2hhmm(g.to)} <b>${fmtDur(g.mins)}</b></span>`).join('')
+      + `</div>` : ''}
+  </div>`;
+}
+
+function dailyToday(A){
+  const wd = new Date().getDay();
+  const items = todayItems(A), un = todayUnscheduled(A);
+  if (!items.length && !un.length) return `<div class="empty"><b>${WDAY_NAME[wd]} chưa có việc nào</b>
+    Mở tab <b>Tất cả</b> để chọn thứ cho việc hằng ngày, hoặc thêm việc mới.</div>`;
+
   const load = dayLoad(items), clash = dayClash(items);
   let h = secHd(WDAY_NAME[wd] + ' — ' + load.count + ' việc · ' + fmtDur(load.mins));
-  h += tlBar(items, clash);
-  h += items.map(x => dailyRow(x, clash)).join('');
+  if (items.length){
+    h += tlBar(items, clash);
+    h += gapBlock(items, clash);
+    h += items.map(x => dailyRow(x, clash)).join('');
+  }
+  if (un.length){
+    const tot = un.reduce((n, t) => n + taskMins(t), 0);
+    h += secHd('Chưa xếp giờ — ' + un.length + ' việc · ~' + fmtDur(tot));
+    h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
+      Việc đến hạn nhưng chưa đặt giờ nên chưa lên được trục. Mở ra điền
+      <b>Nhắn Telegram lúc</b> là nó vào đúng chỗ trong ngày.</div>`;
+    h += un.map(unschedRow).join('');
+  }
   return h;
 }
 
@@ -1318,12 +1380,14 @@ function dailyWeek(A){
 function vDaily(){
   const A = S.area;
   const all = byArea(reminders(), A);
-  if (!all.length) return `<div class="empty"><b>Chưa có việc hằng ngày nào</b>
+  const ti = todayItems(A), un = todayUnscheduled(A);
+  if (!all.length && !ti.length && !un.length) return `<div class="empty"><b>Chưa có việc hằng ngày nào</b>
     Những việc lặp đi lặp lại: tập gym, trả lời tin khách, chốt sổ cuối ngày.
     Ghi giờ và số phút để thấy chúng nằm ở đâu trong ngày.</div>`;
 
-  const wd = new Date().getDay();
-  const left = dailyLeft();
+  /* Số trên tab Hôm nay đếm đúng thứ đang hiện: việc hằng ngày chưa tick,
+     cộng việc lẻ chưa xong. */
+  const left = ti.filter(x => x.kind === 'task' || !remDoneToday(x.r)).length + un.length;
   let h = `<div class="tabs">` + DAILY_TABS.map(([id, label]) =>
     `<button class="tab ${S.dailytab === id ? 'on' : ''}" data-act="dailytab" data-id="${id}">${label}${
       id === 'today' ? `<span class="n">${left}</span>`
@@ -1336,7 +1400,7 @@ function vDaily(){
     return h + secHd('Tất cả (' + list.length + ')', `<button data-act="addRem">+ Thêm</button>`)
              + list.map(remItem).join('');
   }
-  return h + dailyToday(A, wd);
+  return h + dailyToday(A);
 }
 
 function tgBlock(){

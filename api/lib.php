@@ -249,6 +249,76 @@ function remMinutes(array $r): int {
   $n = (int)round((float)($r['mins'] ?? 0));
   return $n > 0 ? min($n, 720) : 15;
 }
+/* ---- hình dạng của ngày hôm nay ----
+   Gom việc hằng ngày của thứ này với việc lẻ đến hạn đã có giờ nhắc, để bản
+   tóm tắt sáng nói được ngay: kín bao nhiêu, chồng chỗ nào, trống khúc nào.
+   Cùng luật với todayItems() bên app — sửa một bên thì phải sửa bên kia. */
+function hhmmMin(string $s): ?int {
+  return preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', trim($s), $m)
+       ? (int)$m[1] * 60 + (int)$m[2] : null;
+}
+function hhmmText(int $m): string {
+  $v = max(0, $m);
+  return sprintf('%02d:%02d', intdiv($v, 60) % 24, $v % 60);
+}
+/* Việc lẻ chưa ước tính thì tạm tính 30 phút, giống taskMins() bên app */
+function taskMinutes(array $t): int {
+  $n = (int)round((float)($t['mins'] ?? 0));
+  return $n > 0 ? min($n, 720) : 30;
+}
+function todaySlots(): array {
+  $today = date('Y-m-d');
+  $wday  = (int)date('w');          /* 0 = Chủ nhật, khớp với getDay() bên app */
+  $out = [];
+  foreach (itemsOf('reminders') as $r) {
+    if (empty($r['enabled'])) continue;
+    if (!in_array($wday, array_map('intval', (array)($r['days'] ?? [])), true)) continue;
+    $st = hhmmMin((string)($r['time'] ?? ''));
+    if ($st === null) continue;
+    $out[] = ['start' => $st, 'mins' => remMinutes($r), 'title' => (string)($r['title'] ?? '')];
+  }
+  foreach (itemsOf('tasks') as $t) {
+    if (!empty($t['done'])) continue;
+    $due = substr((string)($t['due'] ?? ''), 0, 10);
+    if (strlen($due) !== 10 || $due > $today) continue;
+    $st = hhmmMin((string)($t['remindAt'] ?? ''));
+    if ($st === null) continue;      /* chưa xếp giờ thì chưa nằm trên trục */
+    $out[] = ['start' => $st, 'mins' => taskMinutes($t), 'title' => (string)($t['title'] ?? '')];
+  }
+  usort($out, fn($a, $b) => $a['start'] <=> $b['start']);
+  return $out;
+}
+function slotClashes(array $items): int {
+  $hit = []; $n = count($items);
+  for ($i = 0; $i < $n; $i++)
+    for ($j = $i + 1; $j < $n; $j++) {
+      $a = $items[$i]; $b = $items[$j];
+      if ($b['start'] < $a['start'] + $a['mins'] && $a['start'] < $b['start'] + $b['mins']) {
+        $hit[$i] = true; $hit[$j] = true;
+      }
+    }
+  return count($hit);
+}
+/* Gộp khoảng bận (kể cả chồng nhau) — cần $items đã xếp theo giờ */
+function slotBusy(array $items): array {
+  $sp = [];
+  foreach ($items as $x) {
+    $a = $x['start']; $b = $x['start'] + $x['mins'];
+    $k = count($sp) - 1;
+    if ($k >= 0 && $a <= $sp[$k][1]) $sp[$k][1] = max($sp[$k][1], $b);
+    else $sp[] = [$a, $b];
+  }
+  return $sp;
+}
+function slotGaps(array $items, int $min = 30): array {
+  $sp = slotBusy($items); $out = []; $n = count($sp);
+  for ($i = 1; $i < $n; $i++) {
+    $from = $sp[$i-1][1]; $to = $sp[$i][0];
+    if ($to - $from >= $min) $out[] = ['from' => $from, 'to' => $to, 'mins' => $to - $from];
+  }
+  return $out;
+}
+
 function remText(array $r): string {
   $mins = remMinutes($r);
   return '🔔 <b>' . tgEsc((string)($r['title'] ?? 'Nhắc nhở')) . '</b>'
@@ -288,6 +358,25 @@ function buildDigest(): array {
   $today = date('Y-m-d');
   $md    = date('m-d');
   $lines = [];
+
+  /* Hình dạng của ngày, đặt lên đầu: biết ngày dồn chỗ nào lúc 7h sáng thì
+     còn dời được, biết lúc 18h30 thì chỉ còn bực. */
+  $slots = todaySlots();
+  if ($slots) {
+    $tot = 0; foreach ($slots as $x) $tot += $x['mins'];
+    $cl   = slotClashes($slots);
+    $gaps = slotGaps($slots);
+    $free = 0; foreach ($gaps as $g) $free += $g['mins'];
+    $line = '🗓 <b>Hôm nay ' . count($slots) . ' việc theo giờ · ' . durText($tot) . '</b>';
+    if ($cl) $line .= "\n   ⚠️ <b>" . $cl . ' việc chồng giờ</b>';
+    if ($free) {
+      $txt = [];
+      foreach (array_slice($gaps, 0, 3) as $g) $txt[] = hhmmText($g['from']) . '–' . hhmmText($g['to']);
+      $line .= "\n   Trống " . durText($free) . ': ' . implode(', ', $txt)
+             . (count($gaps) > 3 ? '…' : '');
+    }
+    $lines[] = $line;
+  }
 
   /* Việc đến hạn. Nếu bảng công việc riêng đang bật thì bỏ khối này đi,
      không ai muốn đọc cùng một danh sách hai lần trong một buổi sáng. */
@@ -747,8 +836,12 @@ function runSchedule(bool $dry = false): array {
       $extra = $kind === 'cards' && trim((string)($t['assignee'] ?? '')) !== ''
              ? "\nGiao cho <b>" . tgEsc((string)$t['assignee']) . '</b>' : '';
       $note = trim((string)($t['note'] ?? $t['desc'] ?? ''));
-      $head = $lead === 0 ? 'Hạn hôm nay · ' . $at
-            : 'Còn ' . $lead . ' ngày — hạn ' . date('d/m', strtotime($due)) . ' · ' . $at;
+      /* Chỉ ghi thời lượng khi mình có điền thật — số tạm 30 phút là để xếp
+         trục cho gọn, đưa vào tin nhắn thì thành ra máy tự bịa. */
+      $est = $kind === 'tasks' ? (int)round((float)($t['mins'] ?? 0)) : 0;
+      $dur = $est > 0 ? ' · ' . durText(min($est, 720)) : '';
+      $head = $lead === 0 ? 'Hạn hôm nay · ' . $at . $dur
+            : 'Còn ' . $lead . ' ngày — hạn ' . date('d/m', strtotime($due)) . ' · ' . $at . $dur;
       $text = ($lead === 0 ? $icon : '⏳') . ' <b>' . tgEsc((string)($t['title'] ?? 'Việc cần làm')) . '</b>'
             . "\n<i>" . $head . '</i>' . $extra
             . ($note !== '' ? "\n\n" . tgEsc(cutTitle($note, 300)) : '');

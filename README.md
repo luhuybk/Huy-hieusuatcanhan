@@ -140,7 +140,7 @@ Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa 
 Ô nhập tiền hiểu: `300k` · `1tr2` · `1,5tr` · `1tr250` · `250.000` · `2 tỷ`.
 
 ### Công việc
-- **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn.
+- **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn. Mỗi việc có ô **Ước tính (phút)**; việc đến hạn mà có đặt giờ nhắc sẽ hiện luôn trên dòng thời gian của tab [Việc hằng ngày](#việc-hằng-ngày).
 - **Việc lặp lại** — hàng ngày, cách ngày, hàng tuần, 2 tuần, hàng tháng, mỗi quý, nửa năm, hàng năm. Tick xong là hạn tự nhảy sang kỳ kế tiếp, kèm **chuỗi 🔥** đếm số kỳ làm đúng hẹn liên tiếp (bỏ lỡ thì chuỗi về 0). Nếu bỏ lỡ nhiều kỳ, app nhảy thẳng tới mốc sắp tới chứ không dồn việc.
 
 ### Việc hằng ngày
@@ -155,7 +155,7 @@ Ba tab:
 
 | Tab | Cho việc gì |
 |---|---|
-| **Hôm nay** | việc của hôm nay theo thứ tự giờ, kèm nút ✓ và chuỗi 🔥. Trên đầu là một thanh gọn cho thấy ngày dồn vào khúc nào — vừa bề ngang điện thoại, không phải cuộn. |
+| **Hôm nay** | cả việc hằng ngày lẫn **việc lẻ đến hạn**, xếp theo giờ. Trên đầu là một thanh gọn cho thấy ngày dồn vào khúc nào, kèm dòng **Kín / Trống / ⚠ chồng giờ**. |
 | **Cả tuần** | bảy cột T2→CN, cột càng cao là ngày càng nặng. Bấm một cột để xem trục thời gian của ngày đó. |
 | **Tất cả** | danh sách phẳng như cũ: bật/tắt, gửi thử ➤, dải bảy ngày gần nhất. |
 
@@ -177,7 +177,30 @@ Trục luôn dừng ở mốc giờ tròn và luôn rộng ít nhất 4 tiếng 
 
 Số phút bỏ trống, bằng 0, âm hay gõ bậy đều rơi về **15 phút**; quá 12 tiếng thì cắt còn 12 tiếng. Máy chủ dùng đúng luật này nên hai bên không bao giờ ra hai con số khác nhau.
 
-Dòng thời gian hiện tại **chỉ tính việc hằng ngày**, chưa gộp việc lẻ có hạn bên tab Công việc — việc lẻ gắn với một ngày cụ thể, còn bảy cột ở đây là nhịp lặp theo thứ.
+#### Việc lẻ trên trục hôm nay
+
+Tab **Hôm nay** là một ngày có thật, nên việc lẻ bên **Công việc** cũng chiếm giờ của nó. Việc lẻ lên trục khi hội đủ hai điều: **đến hạn** (hôm nay hoặc đã quá hạn, chưa xong) và **có giờ** ở ô *Nhắn Telegram lúc*.
+
+Mỗi việc cần làm giờ có thêm ô **Ước tính (phút)**. Bỏ trống thì app tạm tính 30 phút và ghi rõ bằng dấu `~` cùng chữ *chưa ước tính* — để bạn phân biệt "mình đoán 30" với "bạn bảo 30". Tin Telegram chỉ ghi thời lượng khi bạn có điền thật, không bịa số tạm vào tin nhắn.
+
+Việc lẻ vẽ **nét đứt** cho khác việc hằng ngày, và dòng phụ ghi *việc lẻ, hạn hôm nay* hoặc *việc lẻ, trễ 3 ngày*.
+
+Việc đến hạn mà **chưa đặt giờ** không lên được trục, nên nằm ở mục **Chưa xếp giờ** ngay dưới, kèm tổng ước tính — nó vẫn ngốn thời gian thật của bạn dù chưa có chỗ trên đồng hồ.
+
+Bảy cột của tab **Cả tuần** vẫn chỉ tính việc hằng ngày: đó là nhịp lặp theo thứ, còn việc lẻ gắn với một ngày cụ thể.
+
+#### Kín, trống, và chồng giờ
+
+Ngay dưới thanh ngày có một dòng tổng:
+
+```
+Kín 2h50    Trống 9h30    ⚠ 2 việc chồng giờ
+[ 10:15 → 14:00  3h45 ]  [ 14:30 → 18:30  4h ]  [ 19:15 → 21:00  1h45 ]
+```
+
+- **Kín** đếm theo đồng hồ: hai việc chồng nhau chỉ tính một lần. Nên khi nó **nhỏ hơn** tổng số phút ở dòng tiêu đề, đó chính là dấu hiệu bạn đang nhét hai việc vào cùng một khoảng.
+- **Trống** là các khoảng hở giữa hai việc, chỉ kể khoảng từ **30 phút** trở lên — dưới đó thì không làm được gì.
+- Chỉ tính trong khoảng **từ việc đầu tới việc cuối** trong ngày. Ngoài khoảng đó app không biết bạn thức lúc mấy giờ, đoán bừa còn tệ hơn không nói gì.
 
 ### Ý tưởng
 
@@ -404,6 +427,16 @@ Nếu app vẫn kẹt ở bản cũ dù đã push code mới: xoá dữ liệu d
 ### Nhắc lặp lại theo thứ và giờ
 
 Màn **🔁 Việc hằng ngày** → tab **Tất cả** → **+ Thêm**. Mỗi việc gồm: nội dung, giờ, **số phút**, những thứ trong tuần, mảng việc, nhánh riêng (nếu muốn tin này vào nhánh khác), và ghi chú thêm.
+
+Bản tóm tắt sáng mở đầu bằng **hình dạng của ngày** — biết ngày dồn chỗ nào lúc 7h sáng thì còn dời được, biết lúc 18h30 thì chỉ còn bực:
+
+```
+🗓 Hôm nay 5 việc theo giờ · 3h05
+   ⚠️ 2 việc chồng giờ
+   Trống 9h30: 10:15–14:00, 14:30–18:30, 19:15–21:00
+```
+
+Dòng này gộp cả việc hằng ngày lẫn việc lẻ đến hạn đã có giờ, đúng như tab **Hôm nay** trong app. Không có việc nào theo giờ thì không thêm dòng thừa. Nó nằm trong bản tóm tắt hằng ngày, nên cần bật **Giờ gửi tóm tắt** trong Cài đặt → Telegram.
 
 Đúng ví dụ bạn nói: *Tập gym · T2·T3·T5·T6·T7 · 18:30* — app hiển thị gọn thành `T2 · T3 · T5 · T6 · T7 lúc 18:30`. Chọn cả 7 thứ thì nó rút thành "hằng ngày", chọn T2→T6 thì thành "thứ 2 → thứ 6".
 

@@ -288,6 +288,8 @@ const taskFields = () => [
   {k:'title', label:'Việc cần làm'},
   {k:'areaId',label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
   {k:'due',   label:'Hạn', type:'date', half:true},
+  {k:'mins',  label:'Ước tính (phút)', type:'number', half:true, ph:'30',
+   hint:'để xếp việc lên dòng thời gian hôm nay; bỏ trống thì tạm tính 30'},
   {k:'repeat',label:'Lặp lại', type:'select', half:true, opts:Object.entries(REPEATS)},
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
   {k:'remindAt', label:'Nhắn Telegram lúc', type:'time', half:true,
@@ -299,6 +301,9 @@ const taskFields = () => [
 /* ô số nhập tay nên có thể ra số âm hoặc số vô lý — chặn ngay tại đây */
 function normalizeTask(v){
   v.remindBefore = Math.max(0, Math.min(60, +v.remindBefore || 0));
+  /* 0 = chưa ước tính, và số bậy cũng về 0 chứ không bịa ra một con số —
+     giao diện phải phân biệt được "mình đoán 30" với "bạn bảo 30". */
+  v.mins = cleanMins(v.mins, 0);
   return v;
 }
 function addTask(due){
