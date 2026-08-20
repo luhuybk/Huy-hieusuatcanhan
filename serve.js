@@ -66,6 +66,17 @@ function itemsOf(kind){
     .filter(d => d && !d.deleted);
 }
 const REM_WINDOW = 3600;
+/* giống durText()/remMinutes() bên api/lib.php và fmtDur()/remMins() bên app */
+function durText(m){
+  const v = Math.max(0, Math.round(m));
+  if (v < 60) return v + 'p';
+  const h = Math.floor(v / 60), r = v % 60;
+  return r ? h + 'h' + String(r).padStart(2,'0') : h + 'h';
+}
+function remMinutes(r){
+  const n = Math.round(Number(r && r.mins));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 15;
+}
 const ESCALATE_DAYS = [3, 7, 14, 30];
 const TIER_PING = {S:14, S2:21, A:30, B:60, C:150};
 const SNOOZE_MINS = {240:'4 giờ', 720:'12 giờ', 1440:'1 ngày', 4320:'3 ngày'};
@@ -420,7 +431,8 @@ function runSchedule(dry, atMs){
     if ((r.doneLog || []).map(String).includes(today)) continue;
     if (dry){ done.push({reminder:r.title, dry:true}); continue; }
     markSent(key);
-    done.push({reminder:r.title, ok:true, sent:`🔔 ${r.title}${r.note ? '\n'+r.note : ''}`,
+    done.push({reminder:r.title, ok:true, mins:remMinutes(r),
+               sent:`🔔 ${r.title}\n${r.time} · ${durText(remMinutes(r))}${r.note ? '\n\n'+r.note : ''}`,
                topic:String(r.topic || '').trim() || topicFor('rem')});
   }
 
@@ -897,7 +909,7 @@ function api(req, res, body){
       const kb = confGet('tg_webhook_on','')
         ? [[{text:'✅ Xong hôm nay', callback_data:`remdone:${id}`}]] : null;
       console.log(`[telegram thử · nhắc] nhánh=${String(rem.topic || '').trim() || topicFor('rem')}\n`
-        + `🔔 ${rem.title}\n${rem.time}${rem.note ? '\n\n' + rem.note : ''}`);
+        + `🔔 ${rem.title}\n${rem.time} · ${durText(remMinutes(rem))}${rem.note ? '\n\n' + rem.note : ''}`);
       return send({ok:true, buttons: kb !== null, keyboard: kb, text: rem.title, note: rem.note || ''});
     }
     case 'tg_staff_now': {

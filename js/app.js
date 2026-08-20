@@ -4,6 +4,7 @@
 "use strict";
 
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
+            dailytab:'today', dailyDay: new Date().getDay(),
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -15,6 +16,7 @@ const TITLES = {
   occasions:['Dịp & lễ','Giỗ, Tết, kỷ niệm — có tính âm lịch'],
   work:['Công việc','Việc cần làm, có cả việc lặp lại'],
   ideas:['Ý tưởng','Nghĩ gì ghi đó — kèm hướng triển khai'],
+  daily:['Việc hằng ngày','Việc lặp lại — giờ và thời lượng'],
   board:['Giao việc','Bảng tiến độ nhân viên'],
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
   settings:['Cài đặt','Dữ liệu, nhắc nhở, đồng bộ']
@@ -37,6 +39,7 @@ function render(){
     else if (v === 'person')   html = vPerson();
     else if (v === 'work')     html = vWork();
     else if (v === 'ideas')    html = vIdeas();
+    else if (v === 'daily')    html = vDaily();
     else if (v === 'board')    html = vBoard();
     else if (v === 'review')   html = vReview();
     else if (v === 'occasions')html = vOccasions();
@@ -745,9 +748,12 @@ function staffLink(id){
 
 /* ---------------- nhắc lặp lại qua Telegram ---------------- */
 const remFields = () => [
-  {k:'title', label:'Nhắc gì', ph:'Tập gym, uống thuốc, chốt sổ…'},
+  {k:'title', label:'Việc gì', ph:'Tập gym, trả lời tin khách, chốt sổ…'},
   {k:'time',  label:'Lúc mấy giờ', type:'time', half:true},
-  {k:'topic', label:'Nhánh riêng cho lời nhắc này', half:true, ph:'để trống = nhánh nhắc lặp lại',
+  {k:'mins',  label:'Mất bao lâu (phút)', type:'number', half:true, ph:'45',
+   hint:'để xếp lên dòng thời gian và bắt việc chồng giờ'},
+  {k:'areaId',label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
+  {k:'topic', label:'Nhánh riêng cho việc này', half:true, ph:'để trống = nhánh nhắc lặp lại',
    hint:'số ID của topic, xem hướng dẫn trong Cài đặt'},
   {k:'days',  label:'Những thứ nào trong tuần', type:'days'},
   {k:'note',  label:'Nội dung thêm', type:'textarea', req:false, voice:true,
@@ -773,25 +779,27 @@ function normalizeRem(v){
   v.enabled = v.enabled === 'yes' || v.enabled === true;
   v.days = (v.days || []).map(Number).filter(d => d >= 0 && d <= 6);
   v.topic = String(v.topic || '').trim();
+  v.mins = cleanMins(v.mins);
   if (!/^\d{1,2}:\d{2}$/.test(v.time || '')) v.time = '08:00';
   return v;
 }
 function addRem(){
-  openForm({title:'Lời nhắc mới', fields:remFields(),
-    values:{time:'08:00', days:[1,2,3,4,5], enabled:'yes'},
+  openForm({title:'Việc hằng ngày mới', fields:remFields(),
+    values:{time:'08:00', mins:15, days:[1,2,3,4,5], enabled:'yes',
+            areaId: S.area === 'all' ? '' : S.area},
     top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.6">
       Máy chủ sẽ gửi tin vào Telegram đúng giờ này, kể cả khi bạn không mở app.</div>`,
     onSave(v){
       db.reminders.push(stamp(normalizeRem(v)));
-      save(); render(); toast('Lần tới: ' + reminderNextText(v));
+      save(); S.view = 'daily'; render(); toast('Lần tới: ' + reminderNextText(v));
     }});
 }
 function editRem(id){
   const r = db.reminders.find(x => x.id === id);
-  openForm({title:'Sửa lời nhắc', fields:remFields(),
+  openForm({title:'Sửa việc hằng ngày', fields:remFields(),
     values:Object.assign({}, r, {enabled: r.enabled ? 'yes' : ''}),
     top:`<div class="dim" style="margin:-8px 0 12px">Lần tới: ${esc(reminderNextText(r))}</div>`,
-    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delRem" data-id="${id}">Xoá lời nhắc</button>`,
+    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delRem" data-id="${id}">Xoá việc này</button>`,
     onSave(v){ Object.assign(r, normalizeRem(v)); stamp(r); save(); render(); }});
 }
 
@@ -1197,6 +1205,69 @@ function seedDemo(){
 let ovDown = null;
 document.addEventListener('pointerdown', e => { ovDown = e.target; }, true);
 
+/* ---- kéo khối trên dòng thời gian ----
+   Kéo ngang để dời giờ. Trong lúc kéo chỉ sửa thẳng style của khối chứ không
+   vẽ lại cả màn — vẽ lại giữa chừng là mất luôn cái khối đang cầm trên tay.
+   Nghe trên window chứ không trên khối, để thả tay ở đâu cũng kết thúc gọn,
+   kể cả khi kéo vượt hẳn ra ngoài trục. */
+let tlDrag = null;
+
+function tlMove(e){
+  const d = tlDrag; if (!d) return;
+  const dx = e.clientX - d.x0;
+  if (!d.moved && Math.abs(dx) < 3) return;   /* nhích vài pixel là bấm nhầm chứ không phải kéo */
+  d.moved = true;
+  d.at = snap5(d.start + (dx / d.width) * d.span);
+  d.el.style.left = (((d.at - d.from) / d.span) * 100).toFixed(3) + '%';
+  d.lbl.textContent = min2hhmm(d.at) + d.tail + (d.at !== d.start ? '  ← ' + min2hhmm(d.start) : '');
+}
+function tlEnd(){
+  const d = tlDrag; tlDrag = null;
+  window.removeEventListener('pointermove', tlMove);
+  window.removeEventListener('pointerup', tlEnd);
+  window.removeEventListener('pointercancel', tlEnd);
+  if (!d) return;
+  d.el.classList.remove('mv');
+  if (!d.moved) return;
+  if (d.at === undefined || d.at === d.start){ render(); return; }
+  setRemTime(d.id, min2hhmm(d.at));
+}
+/* Một việc chỉ có một giờ dùng cho cả tuần, nên dời ở thứ này là dời cho mọi
+   thứ khác — nói rõ trong lời báo, đừng để người ta phát hiện sau ba ngày. */
+function setRemTime(id, hhmm){
+  const r = db.reminders.find(x => x.id === id); if (!r) return;
+  r.time = hhmm; stamp(r); save(); render();
+  toast(r.title + ' → ' + hhmm + ((r.days || []).length > 1 ? ' · cả ' + daysText(r.days) : ''));
+}
+
+document.addEventListener('pointerdown', e => {
+  const el = e.target.closest('[data-tlblk]'); if (!el) return;
+  const width = el.parentElement.getBoundingClientRect().width;   /* mốc % tính theo hàng chứa khối */
+  if (!width) return;
+  e.preventDefault();
+  const lbl = el.querySelector('.tllbl');
+  tlDrag = {id:el.dataset.tlblk, el, lbl, x0:e.clientX, width, moved:false,
+            start:+el.dataset.start, span:+el.dataset.span, from:+el.dataset.from,
+            tail:lbl.textContent.trim().slice(5)};   /* phần sau "HH:MM" của nhãn */
+  el.classList.add('mv');
+  window.addEventListener('pointermove', tlMove);
+  window.addEventListener('pointerup', tlEnd);
+  window.addEventListener('pointercancel', tlEnd);
+});
+
+/* ô giờ và ô phút ngay trong danh sách — sửa xong là ghi luôn, không cần mở
+   biểu mẫu. Kéo cho nhanh, gõ ô này khi cần đúng phút. */
+document.addEventListener('change', e => {
+  const t = e.target.closest('[data-tlt]');
+  if (t){ if (hhmm2min(t.value) !== null) setRemTime(t.dataset.tlt, t.value); else render(); return; }
+  const m = e.target.closest('[data-tlm]');
+  if (m){
+    const r = db.reminders.find(x => x.id === m.dataset.tlm); if (!r) return;
+    r.mins = cleanMins(m.value);
+    stamp(r); save(); render();
+  }
+});
+
 document.addEventListener('click', e => {
   if (e.target.hasAttribute('data-ovclose')){
     if (ovDown === e.target) closeModal();   /* nhả tay ngoài khung sau khi kéo thì bỏ qua */
@@ -1213,6 +1284,8 @@ document.addEventListener('click', e => {
     case 'scrim':   setSide(false); break;
     case 'area':    S.area = id; setSide(false); render(); break;
     case 'ideatab': S.ideatab = id; render(); break;
+    case 'dailytab': S.dailytab = id; render(); break;
+    case 'dailyDay': S.dailyDay = +id; render(); break;
     case 'asg':     S.assignee = (S.assignee === id ? 'all' : id); closeModal(); S.view='board'; render(); break;
     case 'person':  S.personId = id; S.view = 'person'; render(); break;
     case 'theme':
@@ -1223,6 +1296,7 @@ document.addEventListener('click', e => {
       else if (S.view === 'people') addPerson();
       else if (S.view === 'work') addTask();
       else if (S.view === 'ideas') addIdea();
+      else if (S.view === 'daily') addRem();
       else if (S.view === 'board') addCard('idea');
       else quickAdd();
       break;
@@ -1351,6 +1425,7 @@ document.addEventListener('click', e => {
       const k = el.dataset.k;
       if (k === 'person' || k === 'gift'){ S.personId = id; S.view = 'person'; }
       else if (k === 'task'){ S.view = 'work'; render(); editTask(id); break; }
+      else if (k === 'reminder'){ S.view = 'daily'; S.dailytab = 'all'; render(); editRem(id); break; }
       else if (k === 'idea'){
         /* Ý tưởng đã xong/tạm gác nằm trong Kho — nhảy sang đúng nhóm, không
            thì đóng ô sửa xong lại thấy danh sách trống trơn. */

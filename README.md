@@ -143,6 +143,42 @@ Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa 
 - **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn.
 - **Việc lặp lại** — hàng ngày, cách ngày, hàng tuần, 2 tuần, hàng tháng, mỗi quý, nửa năm, hàng năm. Tick xong là hạn tự nhảy sang kỳ kế tiếp, kèm **chuỗi 🔥** đếm số kỳ làm đúng hẹn liên tiếp (bỏ lỡ thì chuỗi về 0). Nếu bỏ lỡ nhiều kỳ, app nhảy thẳng tới mốc sắp tới chứ không dồn việc.
 
+### Việc hằng ngày
+
+Màn riêng ở thanh bên — **🔁 Việc hằng ngày**. Đây là những việc lặp đi lặp lại có giờ cố định: tập gym, trả lời tin nhắn khách, chốt sổ cuối ngày. Khác với **Công việc** ở chỗ nó không có hạn để hoàn thành — nó là nhịp sống hằng tuần.
+
+Mỗi việc gồm: tên, **giờ**, **mất bao lâu (phút)**, những thứ trong tuần, mảng việc, ghi chú. Số phút là thứ mới — có nó thì mới xếp được việc lên trục thời gian và mới biết việc nào đè lên việc nào.
+
+> Cùng một bản ghi với **Nhắc lặp lại** trước đây. Không phải làm lại từ đầu: mọi lời nhắc cũ tự có mặt ở đây, mặc định 15 phút cho tới khi bạn sửa. Danh sách trong Cài đặt đã dọn đi, chỉ còn đường dẫn sang màn này — để một việc chỉ có một chỗ sửa.
+
+Ba tab:
+
+| Tab | Cho việc gì |
+|---|---|
+| **Hôm nay** | việc của hôm nay theo thứ tự giờ, kèm nút ✓ và chuỗi 🔥. Trên đầu là một thanh gọn cho thấy ngày dồn vào khúc nào — vừa bề ngang điện thoại, không phải cuộn. |
+| **Cả tuần** | bảy cột T2→CN, cột càng cao là ngày càng nặng. Bấm một cột để xem trục thời gian của ngày đó. |
+| **Tất cả** | danh sách phẳng như cũ: bật/tắt, gửi thử ➤, dải bảy ngày gần nhất. |
+
+Số trên menu bên trái là **số việc hôm nay chưa tick xong**.
+
+#### Dòng thời gian
+
+Tab **Cả tuần** xếp mọi việc của một thứ lên một trục ngang. Mỗi việc một hàng, khối rộng đúng bằng số phút bạn điền.
+
+- **Kéo ngang một khối** để dời giờ, nhích theo từng 5 phút. Nhả tay ở đâu cũng được, kể cả kéo vượt ra ngoài trục.
+- Hoặc **gõ thẳng ô giờ** bên dưới khi cần đúng phút — trên điện thoại kéo trúng 5 phút là chuyện khó.
+- **Ô phút** ngay cạnh, sửa xong là ghi luôn, không phải mở biểu mẫu.
+
+Mỗi việc chỉ có **một** giờ dùng cho cả tuần, nên dời ở thứ này là dời cho mọi thứ khác mà nó đang bật. App nói rõ điều đó ngay lúc bạn thả tay.
+
+**Chồng giờ.** Hai việc có khoảng giờ cắt nhau thì cả hai bị viền đỏ, cột ngày tương ứng hiện `⚠ 2`, và trên đầu có một dòng đếm tổng cả tuần. Việc đang tắt không tính — tắt rồi thì trùng cũng chẳng sao, nhưng vẫn hiện mờ để bạn nhớ là nó có tồn tại.
+
+Trục luôn dừng ở mốc giờ tròn và luôn rộng ít nhất 4 tiếng — một ngày chỉ có mỗi việc 15 phút mà kéo giãn ra cả màn hình thì nhìn như cả ngày chỉ làm mỗi việc đó.
+
+Số phút bỏ trống, bằng 0, âm hay gõ bậy đều rơi về **15 phút**; quá 12 tiếng thì cắt còn 12 tiếng. Máy chủ dùng đúng luật này nên hai bên không bao giờ ra hai con số khác nhau.
+
+Dòng thời gian hiện tại **chỉ tính việc hằng ngày**, chưa gộp việc lẻ có hạn bên tab Công việc — việc lẻ gắn với một ngày cụ thể, còn bảy cột ở đây là nhịp lặp theo thứ.
+
 ### Ý tưởng
 
 Màn riêng ở thanh bên — **💡 Ý tưởng** — chứ không nằm sau một tab của Công việc. Ý tưởng là chỗ nghĩ dài hạn, phải mở được bằng một cú bấm.
@@ -367,7 +403,7 @@ Nếu app vẫn kẹt ở bản cũ dù đã push code mới: xoá dữ liệu d
 
 ### Nhắc lặp lại theo thứ và giờ
 
-Cài đặt → **Nhắc lặp lại** → **+ Thêm**. Mỗi lời nhắc gồm: nội dung, giờ, những thứ trong tuần, nhánh riêng (nếu muốn tin này vào nhánh khác), và ghi chú thêm.
+Màn **🔁 Việc hằng ngày** → tab **Tất cả** → **+ Thêm**. Mỗi việc gồm: nội dung, giờ, **số phút**, những thứ trong tuần, mảng việc, nhánh riêng (nếu muốn tin này vào nhánh khác), và ghi chú thêm.
 
 Đúng ví dụ bạn nói: *Tập gym · T2·T3·T5·T6·T7 · 18:30* — app hiển thị gọn thành `T2 · T3 · T5 · T6 · T7 lúc 18:30`. Chọn cả 7 thứ thì nó rút thành "hằng ngày", chọn T2→T6 thì thành "thứ 2 → thứ 6".
 
@@ -377,7 +413,7 @@ Nút ➤ bên phải mỗi dòng gửi thử ngay lập tức. Ô vuông bên tr
 
 ```
 🔔 Tập gym
-18:30
+18:30 · 45p
 
 mang găng tay
 
@@ -388,7 +424,7 @@ Trong app, mỗi dòng nhắc có nút ✓ tương ứng, một chuỗi 🔥 đ�
 
 ```
 Tập gym
-hằng ngày · hôm nay 18:30 · 🔥 3
+hằng ngày · 45p · hôm nay 18:30 · 🔥 3
 ● ● ○ ● ● ● ●     ← ● xong · ○ bỏ lỡ · · không phải ngày tập
 ```
 

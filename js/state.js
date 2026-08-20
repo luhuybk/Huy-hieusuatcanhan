@@ -291,6 +291,10 @@ function ensure(){
                               if(!r.time) r.time = '08:00'; if(r.topic===undefined) r.topic = '';
                               if(r.enabled===undefined) r.enabled = true;
                               if(r.note===undefined) r.note = ''; if(r.lastSent===undefined) r.lastSent = '';
+                              /* việc này ngốn bao nhiêu phút — để xếp lên dòng thời gian
+                                 và bắt trùng giờ. Bản cũ chưa có, cho tạm 15 phút. */
+                              if(r.mins===undefined) r.mins = 15;
+                              if(r.areaId===undefined) r.areaId = '';
                               /* những ngày đã tick xong — nguồn duy nhất để tính chuỗi 🔥 */
                               if(!Array.isArray(r.doneLog)) r.doneLog = []; });
   db.occasions.forEach(o => { if(!Array.isArray(o.personIds)) o.personIds = [];
@@ -514,6 +518,80 @@ function remStreak(r){
 }
 
 /* ============================================================
+   VIỆC HẰNG NGÀY — DÒNG THỜI GIAN
+   Cùng một bản ghi với lời nhắc lặp lại (db.reminders): tập gym, trả lời
+   tin khách… đều là việc lặp đi lặp lại có giờ. Thêm `mins` là đủ để xếp
+   chúng lên một trục thời gian và thấy việc nào đè lên việc nào.
+   ============================================================ */
+const TL_SNAP = 5;               /* kéo khối thì nhích theo từng 5 phút */
+const TL_MIN_SPAN = 240;         /* trục luôn rộng ít nhất 4 tiếng, không thì một
+                                    việc 15 phút bị kéo giãn ra cả màn hình */
+
+/* Bỏ trống, số âm, số 0 hay chữ vớ vẩn đều rơi về 15 phút; số quá lớn thì cắt
+   xuống 12 tiếng. Dòng thời gian không bao giờ được nhận số âm — khối sẽ vẽ
+   ngược. Mọi nơi phải gọi hàm này, kể cả bên PHP có bản y hệt. */
+function cleanMins(v){
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 15;
+}
+const remMins = r => cleanMins(r && r.mins);
+function hhmm2min(s){
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(s == null ? '' : s).trim());
+  return m ? +m[1] * 60 + +m[2] : null;
+}
+function min2hhmm(m){
+  const v = Math.max(0, Math.round(m));
+  return String(Math.floor(v / 60) % 24).padStart(2,'0') + ':' + String(v % 60).padStart(2,'0');
+}
+function fmtDur(m){
+  const v = Math.max(0, Math.round(m));
+  if (v < 60) return v + 'p';
+  const h = Math.floor(v / 60), r = v % 60;
+  return r ? h + 'h' + String(r).padStart(2,'0') : h + 'h';
+}
+const snap5 = m => Math.max(0, Math.min(Math.round(m / TL_SNAP) * TL_SNAP, 23 * 60 + 55));
+
+/* Mọi việc của một thứ trong tuần, kể cả việc đang tắt — bên dùng tự lọc
+   theo `on` khi cộng tổng, để việc tắt vẫn hiện mờ chứ không biến mất. */
+function dayItems(wd, areaId){
+  return byArea(reminders(), areaId === undefined ? 'all' : areaId)
+    .filter(r => (r.days || []).map(Number).includes(Number(wd)))
+    .map(r => ({id:r.id, r, start:hhmm2min(r.time), mins:remMins(r),
+                on:!!r.enabled, title:r.title || 'Không tên', areaId:r.areaId || ''}))
+    .filter(x => x.start !== null)
+    .sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
+}
+/* Hai việc đè lên nhau khi khoảng giờ của chúng cắt nhau. Việc đang tắt
+   không tính — tắt rồi thì có trùng cũng chẳng sao. */
+function dayClash(items){
+  const live = (items || []).filter(x => x.on);
+  const ids = new Set();
+  for (let i = 0; i < live.length; i++)
+    for (let j = i + 1; j < live.length; j++){
+      const a = live[i], b = live[j];
+      if (b.start < a.start + a.mins && a.start < b.start + b.mins){ ids.add(a.id); ids.add(b.id); }
+    }
+  return ids;
+}
+function dayLoad(items){
+  const live = (items || []).filter(x => x.on);
+  return {count:live.length, mins:live.reduce((n,x) => n + x.mins, 0), clash:dayClash(live).size};
+}
+/* Bảy thứ theo đúng thứ tự T2 → CN */
+function weekLoad(areaId){
+  return WDAYS.map(([wd, lbl]) => {
+    const items = dayItems(wd, areaId);
+    return {wd, lbl, items, load:dayLoad(items)};
+  });
+}
+/* Còn mấy việc chưa tick hôm nay — con số trên menu */
+function dailyLeft(){
+  const wd = new Date().getDay();
+  return reminders().filter(r => r.enabled && (r.days || []).map(Number).includes(wd)
+                                 && !remDoneToday(r)).length;
+}
+
+/* ============================================================
    DỊP & LỄ
    Ngày lưu dạng ngày/tháng + loại lịch (dương hoặc âm), lặp mỗi năm.
    ============================================================ */
@@ -658,6 +736,13 @@ function searchAll(q, limit){
           + (areaName(t.areaId) ? ' · ' + areaName(t.areaId) : ''),
       color:(areaOf(t.areaId)||{}).color || 'var(--ok)'}); });
 
+  /* Việc hằng ngày dùng chung bản ghi với lời nhắc lặp lại — trước nay tìm
+     không ra vì searchAll bỏ sót hẳn, dù nhãn đã có sẵn trong KIND_LABEL. */
+  reminders().forEach(r => { if (hit(r.title, r.note, areaName(r.areaId)))
+    out.push({kind:'reminder', id:r.id, title:r.title,
+      sub:daysText(r.days) + ' · ' + r.time + ' · ' + fmtDur(remMins(r)) + (r.enabled ? '' : ' · đang tắt'),
+      color:(areaOf(r.areaId)||{}).color || 'var(--warn)'}); });
+
   ideas().forEach(i => { if (hit(i.title, i.detail, i.plan, areaName(i.areaId)))
     out.push({kind:'idea', id:i.id, title:i.title,
       sub:(IDEA_ST[i.status]||'') + (areaName(i.areaId) ? ' · ' + areaName(i.areaId) : ''),
@@ -685,7 +770,7 @@ function searchAll(q, limit){
 }
 const KIND_LABEL = {person:'Người', task:'Việc', idea:'Ý tưởng', card:'Thẻ giao việc',
                     occasion:'Dịp', gift:'Trao đổi', birthday:'Sinh nhật',
-                    staffBirthday:'Sinh nhật nhân viên', reminder:'Nhắc lặp lại'};
+                    staffBirthday:'Sinh nhật nhân viên', reminder:'Việc hằng ngày'};
 
 /* ============================================================
    SỔ TIỀN — gom mọi khoản đã ghi trong app về một dòng chảy

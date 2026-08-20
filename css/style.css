@@ -397,3 +397,51 @@ body.locked .app,body.locked .fab{display:none}
 .updbar .iconbtn{width:30px;height:30px;font-size:13px}
 .updbar.warn{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,var(--bg2))}
 .updbar.warn span{color:var(--bad)}
+
+/* ---------- việc hằng ngày: dòng thời gian ---------- */
+/* Cột ngày: bảy cột chia đều, chữ nhỏ để vừa bề ngang 375px không phải cuộn */
+.tlweek{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:12px}
+.tlday{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 9px;
+  background:var(--bg2);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.tlday.on{border-color:var(--acc);background:var(--bg3)}
+.tlday .d{font-weight:700;font-size:12.5px}
+.tlday .bar{width:100%;height:38px;display:flex;align-items:flex-end;justify-content:center}
+.tlday .bar i{width:13px;min-height:2px;border-radius:3px 3px 0 0;background:var(--acc);display:block}
+.tlday .t{font-size:11.5px;font-weight:650;letter-spacing:-.2px}
+.tlday .c{font-size:10px;color:var(--tx3)}
+.tlday .cl{font-size:10px;color:var(--bad)}
+
+/* Trục đầy đủ — cuộn ngang, một hàng một việc */
+.tlwrap{overflow-x:auto;padding-bottom:8px;margin-bottom:14px}
+.tlk{position:relative;padding-top:19px}
+.tlhrs{position:relative;height:15px}
+.tlhr{position:absolute;transform:translateX(-50%);font-size:10.5px;color:var(--tx3);white-space:nowrap}
+.tlrow{position:relative;height:26px;margin-bottom:4px}
+.tlrow.off{opacity:.42}
+.tlgrid{position:absolute;inset:0}
+.tlgrid i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.tlblk{position:absolute;top:0;height:24px;border:1px solid;border-radius:6px;display:flex;
+  align-items:center;padding:0 4px;cursor:grab;touch-action:none;user-select:none}
+.tlblk:active{cursor:grabbing}
+.tlblk.cl{box-shadow:0 0 0 1px var(--bad)}
+.tlblk.mv{z-index:3;box-shadow:0 6px 18px rgba(0,0,0,.45)}
+.tlblk .gr{font-size:9px;color:var(--tx3);pointer-events:none;flex:none}
+.tllbl{position:absolute;left:calc(100% + 7px);font-size:11.5px;white-space:nowrap;
+  color:var(--tx);pointer-events:none}
+
+/* Thanh gọn cho tab Hôm nay — vừa bề ngang màn hình, không cuộn */
+.tlbar-wrap{margin:0 0 14px}
+.tlbar{position:relative;height:26px;background:var(--bg2);border:1px solid var(--line);
+  border-radius:9px;overflow:hidden}
+.tlbar i{position:absolute;top:3px;bottom:3px;border:1px solid;border-radius:4px;min-width:3px}
+.tlbar i.cl{box-shadow:0 0 0 1px var(--bad)}
+
+/* Ô sửa giờ và số phút ngay trong danh sách */
+.rem .tlin{width:98px;flex:none;padding:6px 8px;border-radius:9px;background:var(--bg3);
+  border:1px solid var(--line);font-size:13px;font-weight:650}
+.tlmin{display:inline-flex;align-items:center;gap:4px;flex:none}
+.tlmin input{width:56px;padding:6px 7px;border-radius:9px;background:var(--bg3);
+  border:1px solid var(--line);font-size:13px;text-align:right}
+.tlmin i{font-style:normal;font-size:11px;color:var(--tx3)}
+.rem.two{display:block}
+.rem.two .row{align-items:center}

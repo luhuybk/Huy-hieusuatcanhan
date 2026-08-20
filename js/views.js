@@ -44,6 +44,7 @@ function renderSide(){
        ['people','◍','Quan hệ', nStale],
        ['occasions','🎊','Dịp & lễ', dueOccasions().length],
        ['work','✓','Công việc', tasks().filter(t=>!t.done).length],
+       ['daily','🔁','Việc hằng ngày', dailyLeft()],
        ['ideas','💡','Ý tưởng', ideasDue().length || ideas().filter(i=>i.status==='doing').length],
        ['money','₫','Sổ tiền', 0],
        ['board','▦','Giao việc', nLate],
@@ -1149,8 +1150,9 @@ function remItem(r){
     <div class="cb ${r.enabled?'on':''}" data-act="toggleRem" data-id="${r.id}">✓</div>
     <div class="tm">${esc(r.time)}</div>
     <div class="grow" data-act="editRem" data-id="${r.id}">
-      <div class="nm ell">${esc(r.title)}</div>
-      <div class="dim">${esc(daysText(r.days))}${r.topic ? ' · nhánh ' + esc(r.topic) : ''} · ${esc(next)}${
+      <div class="nm ell">${areaDot(r.areaId)} ${esc(r.title)}</div>
+      <div class="dim">${esc(daysText(r.days))} · ${fmtDur(remMins(r))}${
+        r.topic ? ' · nhánh ' + esc(r.topic) : ''} · ${esc(next)}${
         chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}</div>
       <div class="dim" style="margin-top:2px">${remDots(r)}</div>
     </div>
@@ -1158,6 +1160,183 @@ function remItem(r){
       style="${xong?'color:var(--ok)':''}">✓</button>
     <button class="iconbtn" data-act="remNow" data-id="${r.id}" title="Gửi thử ngay">➤</button>
   </div>`;
+}
+
+/* ---------------- VIỆC HẰNG NGÀY ---------------- */
+/* Cùng một bản ghi với lời nhắc lặp lại — chỉ là nhìn nó như việc trong ngày
+   chứ không như một dòng cấu hình thông báo. */
+const DAILY_TABS = [['today','Hôm nay'], ['week','Cả tuần'], ['all','Tất cả']];
+
+/* Trục luôn dừng ở mốc giờ tròn để nhãn giờ đọc được, và không bao giờ hẹp
+   hơn 4 tiếng — một ngày chỉ có mỗi việc 15 phút mà kéo giãn ra cả màn hình
+   thì nhìn như cả ngày chỉ làm mỗi việc đó. */
+function tlRange(items){
+  if (!items.length) return {from:8*60, to:8*60 + TL_MIN_SPAN};
+  let from = Math.floor(Math.min(...items.map(x => x.start)) / 60) * 60;
+  let to   = Math.ceil(Math.max(...items.map(x => x.start + x.mins)) / 60) * 60;
+  while (to - from < TL_MIN_SPAN){ if (to < 24*60) to += 60; else from -= 60; }
+  return {from, to};
+}
+function tlColor(x){
+  if (!x.on) return 'var(--line)';
+  const a = areaOf(x.areaId);
+  return a ? a.color : 'var(--acc)';
+}
+const tlLabel = x => min2hhmm(x.start) + ' · ' + x.title + ' · ' + fmtDur(x.mins);
+
+/* Thanh gọn cho tab Hôm nay: mọi việc nằm chung một hàng, không nhãn, không
+   kéo — vừa đúng bề ngang điện thoại, liếc một cái là thấy ngày dồn vào đâu. */
+function tlBar(items, clash){
+  const {from, to} = tlRange(items), span = to - from;
+  const pct = m => ((m - from) / span) * 100;
+  return `<div class="tlbar-wrap">
+    <div class="tlbar">${items.map(x => {
+      const c = tlColor(x);
+      return `<i class="${clash.has(x.id) ? 'cl' : ''}" title="${esc(tlLabel(x))}"
+        style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
+               background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
+    }).join('')}</div>
+    <div class="row dim" style="margin-top:4px">
+      <span>${min2hhmm(from)}</span><span class="grow"></span><span>${min2hhmm(to)}</span></div>
+  </div>`;
+}
+
+/* Trục đầy đủ: mỗi việc một hàng riêng, nhãn nằm ngoài khối, kéo ngang được.
+   Nhãn để ngoài vì một việc 15 phút thì khối chỉ rộng vài pixel, nhét chữ
+   vào trong là mất hút. Chừa chỗ bên phải vừa đúng nhãn dài nhất, chứ chừa
+   cứng 300px thì trên điện thoại phải cuộn thêm một đoạn trắng vô ích. */
+function tlTrack(items, clash){
+  const {from, to} = tlRange(items), span = to - from;
+  const pct = m => ((m - from) / span) * 100;
+  const hours = []; for (let m = from; m <= to; m += 60) hours.push(m);
+  const reserve = Math.min(250, Math.max(...items.map(x => tlLabel(x).length)) * 6.7 + 26);
+  const wide = Math.max(500, hours.length * 54);
+
+  let h = `<div class="tlwrap"><div class="tlk" style="min-width:${Math.round(wide + reserve)}px;
+    padding-right:${Math.round(reserve)}px">`;
+  h += `<div class="tlhrs">` + hours.map((m, i) =>
+    `<span class="tlhr" style="left:${pct(m).toFixed(3)}%${
+      i === 0 ? ';transform:none' : i === hours.length - 1 ? ';transform:translateX(-100%)' : ''
+    }">${min2hhmm(m)}</span>`).join('') + `</div>`;
+  h += items.map(x => {
+    const c = tlColor(x);
+    return `<div class="tlrow ${x.on ? '' : 'off'}">
+      <div class="tlgrid">${hours.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join('')}</div>
+      <div class="tlblk ${clash.has(x.id) ? 'cl' : ''}" data-tlblk="${x.id}"
+        data-start="${x.start}" data-span="${span}" data-from="${from}"
+        style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
+               background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
+        <span class="gr">⠿</span>
+        <span class="tllbl">${esc(tlLabel(x))}</span>
+      </div>
+    </div>`;
+  }).join('');
+  return h + `</div></div>`;
+}
+
+function dailyRow(x, clash){
+  const r = x.r, xong = remDoneToday(r), chuoi = remStreak(r), cl = clash.has(x.id);
+  return `<div class="rem ${r.enabled ? '' : 'off'}">
+    <div class="tm">${esc(min2hhmm(x.start))}</div>
+    <div class="grow" data-act="editRem" data-id="${r.id}">
+      <div class="nm ell">${areaDot(r.areaId)} ${esc(x.title)}</div>
+      <div class="dim">${fmtDur(x.mins)} → xong ${esc(min2hhmm(x.start + x.mins))}${
+        chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}${
+        cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
+        r.enabled ? '' : ' · đang tắt'}</div>
+    </div>
+    <button class="iconbtn" data-act="remDone" data-id="${r.id}"
+      title="${xong ? 'Bỏ đánh dấu hôm nay' : 'Xong hôm nay'}"
+      style="${xong ? 'color:var(--ok)' : ''}">✓</button>
+  </div>`;
+}
+/* Hàng trong tab Cả tuần: sửa thẳng giờ và số phút. Kéo khối cho nhanh, gõ
+   ô này khi cần đúng phút — trên điện thoại kéo trúng 5 phút là chuyện khó.
+   Xếp hai dòng chứ không một: tên việc, ô giờ và ô phút nhét chung một hàng
+   là tên bị cắt cụt còn chữ "phút" chui xuống dưới nút tròn ở khổ 375px. */
+function dailyEditRow(x, clash){
+  const r = x.r, cl = clash.has(x.id);
+  return `<div class="rem two ${r.enabled ? '' : 'off'}">
+    <div class="row">
+      <div class="nm ell grow" data-act="editRem" data-id="${r.id}">${areaDot(r.areaId)} ${esc(x.title)}</div>
+      ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
+      ${r.enabled ? '' : `<span class="chip">đang tắt</span>`}
+    </div>
+    <div class="row" style="margin-top:9px;gap:8px">
+      <input class="tlin" type="time" value="${esc(min2hhmm(x.start))}" data-tlt="${r.id}"
+        title="Đổi giờ — áp dụng cho mọi thứ trong tuần mà việc này đang bật">
+      <span class="tlmin"><input type="number" min="1" max="720" value="${remMins(r)}"
+        data-tlm="${r.id}" title="Mất bao lâu"><i>phút → ${esc(min2hhmm(x.start + x.mins))}</i></span>
+      <span class="grow dim ell" style="text-align:right"
+        title="Giờ này dùng chung cho những thứ đó">${esc(daysText(r.days))}</span>
+    </div>
+  </div>`;
+}
+
+function dailyToday(A, wd){
+  const items = dayItems(wd, A);
+  if (!items.length) return `<div class="empty"><b>${WDAY_NAME[wd]} chưa có việc nào</b>
+    Mở tab <b>Tất cả</b> để chọn thứ cho việc, hoặc thêm việc mới.</div>`;
+  const load = dayLoad(items), clash = dayClash(items);
+  let h = secHd(WDAY_NAME[wd] + ' — ' + load.count + ' việc · ' + fmtDur(load.mins));
+  h += tlBar(items, clash);
+  h += items.map(x => dailyRow(x, clash)).join('');
+  return h;
+}
+
+function dailyWeek(A){
+  const wk = weekLoad(A);
+  const busiest = Math.max(1, ...wk.map(d => d.load.mins));
+  const totalClash = wk.reduce((n, d) => n + d.load.clash, 0);
+  const sel = wk.find(d => d.wd === S.dailyDay) || wk[0];
+  const clash = dayClash(sel.items);
+
+  let h = `<div class="tlweek">` + wk.map(d => `
+    <button class="tlday ${d.wd === sel.wd ? 'on' : ''}" data-act="dailyDay" data-id="${d.wd}">
+      <span class="d">${d.lbl}</span>
+      <span class="bar"><i style="height:${Math.round((d.load.mins / busiest) * 100)}%"></i></span>
+      <span class="t">${d.load.mins ? fmtDur(d.load.mins) : '—'}</span>
+      <span class="c">${d.load.count} việc</span>
+      ${d.load.clash ? `<span class="cl">⚠ ${d.load.clash}</span>` : ''}
+    </button>`).join('') + `</div>`;
+
+  h += totalClash
+    ? `<div class="dim" style="color:var(--bad);margin:0 0 14px;line-height:1.6">Có ${totalClash
+       } lượt việc chồng giờ trong tuần — cột có ⚠ là ngày dính. Kéo khối bên dưới để giãn ra.</div>`
+    : `<div class="dim" style="color:var(--ok);margin:0 0 14px">Không có việc nào chồng giờ nhau trong tuần.</div>`;
+
+  h += secHd(WDAY_NAME[sel.wd] + ' — ' + sel.load.count + ' việc · ' + fmtDur(sel.load.mins));
+  if (!sel.items.length) return h + `<div class="empty" style="padding:22px">Ngày này trống.</div>`;
+  h += `<div class="dim" style="margin-bottom:10px;line-height:1.65">
+    Kéo ngang một khối để dời giờ (nhích từng 5 phút), hoặc sửa thẳng ô giờ bên dưới.
+    Mỗi việc chỉ có <b>một</b> giờ dùng cho cả tuần — dời ở đây là dời cho cả những thứ khác.</div>`;
+  h += tlTrack(sel.items, clash);
+  h += sel.items.map(x => dailyEditRow(x, clash)).join('');
+  return h + `<div style="height:56px"></div>`;   /* nút tròn khỏi đè lên hàng cuối */
+}
+
+function vDaily(){
+  const A = S.area;
+  const all = byArea(reminders(), A);
+  if (!all.length) return `<div class="empty"><b>Chưa có việc hằng ngày nào</b>
+    Những việc lặp đi lặp lại: tập gym, trả lời tin khách, chốt sổ cuối ngày.
+    Ghi giờ và số phút để thấy chúng nằm ở đâu trong ngày.</div>`;
+
+  const wd = new Date().getDay();
+  const left = dailyLeft();
+  let h = `<div class="tabs">` + DAILY_TABS.map(([id, label]) =>
+    `<button class="tab ${S.dailytab === id ? 'on' : ''}" data-act="dailytab" data-id="${id}">${label}${
+      id === 'today' ? `<span class="n">${left}</span>`
+    : id === 'all'   ? `<span class="n">${all.length}</span>` : ''}</button>`).join('') + `</div>`;
+
+  if (S.dailytab === 'week') return h + dailyWeek(A);
+  if (S.dailytab === 'all'){
+    const list = all.slice().sort((a, b) =>
+      (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0) || (a.time || '').localeCompare(b.time || ''));
+    return h + secHd('Tất cả (' + list.length + ')', `<button data-act="addRem">+ Thêm</button>`)
+             + list.map(remItem).join('');
+  }
+  return h + dailyToday(A, wd);
 }
 
 function tgBlock(){
@@ -1235,11 +1414,20 @@ function tgBlock(){
     </div>` : ''}
   </div>`;
 
-  h += secHd('Nhắc lặp lại (' + list.length + ')',
-             `<button data-act="addRem">+ Thêm</button>`);
-  h += list.length ? list.map(remItem).join('')
-    : `<div class="empty" style="padding:22px">Chưa có lời nhắc nào.<br>
-       Ví dụ: <b>Tập gym</b> · T2·T3·T5·T6·T7 · 18:30.</div>`;
+  /* Danh sách việc hằng ngày đã dọn sang màn riêng — để cả hai nơi thì sửa
+     một chỗ mà chỗ kia vẫn hiện cũ. Ở đây chỉ còn đường dẫn sang. */
+  h += secHd('Việc hằng ngày (' + list.length + ')',
+             `<button data-act="nav" data-id="daily">Mở →</button>`);
+  h += `<div class="card"><div class="dim" style="line-height:1.7">
+    ${list.length
+      ? 'Có <b>' + list.length + '</b> việc lặp lại đang dùng nhánh này — tập gym, trả lời tin khách…'
+        + ' Giờ giấc, thời lượng và dòng thời gian nằm ở màn <b>Việc hằng ngày</b>.'
+      : 'Chưa có việc nào. Ví dụ: <b>Tập gym</b> · T2·T3·T5·T6·T7 · 18:30 · 45 phút.'}
+    </div>
+    <div class="btns" style="margin-top:12px">
+      <button class="btn sm grow" data-act="nav" data-id="daily">Mở Việc hằng ngày</button>
+      <button class="btn sm grow" data-act="addRem">+ Thêm việc</button>
+    </div></div>`;
   return h;
 }
 

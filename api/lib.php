@@ -236,9 +236,23 @@ function nextRepeat(string $iso, string $code): string {
    bộ hẹn giờ dùng chung một chỗ — trước đây nút thử tự ghép chuỗi riêng
    nên gửi ra tin trơn, không có nút "Xong hôm nay", làm người dùng tưởng
    cả tính năng chưa chạy. */
+/* "45p", "1h30" — viết y hệt bên app để hai nơi không ra hai kiểu chữ */
+function durText(int $m): string {
+  $v = max(0, $m);
+  if ($v < 60) return $v . 'p';
+  $h = intdiv($v, 60); $r = $v % 60;
+  return $r ? $h . 'h' . str_pad((string)$r, 2, '0', STR_PAD_LEFT) : $h . 'h';
+}
+/* Bỏ trống hay số vô lý thì về 15 phút, số quá lớn cắt xuống 12 tiếng —
+   cùng luật với cleanMins() bên app, đừng để hai nơi ra hai con số */
+function remMinutes(array $r): int {
+  $n = (int)round((float)($r['mins'] ?? 0));
+  return $n > 0 ? min($n, 720) : 15;
+}
 function remText(array $r): string {
+  $mins = remMinutes($r);
   return '🔔 <b>' . tgEsc((string)($r['title'] ?? 'Nhắc nhở')) . '</b>'
-       . "\n<i>" . tgEsc((string)($r['time'] ?? '')) . '</i>'
+       . "\n<i>" . tgEsc((string)($r['time'] ?? '')) . ' · ' . durText($mins) . '</i>'
        . (!empty($r['note']) ? "\n\n" . tgEsc((string)$r['note']) : '');
 }
 function remTopic(array $r) {
