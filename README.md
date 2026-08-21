@@ -189,7 +189,26 @@ Việc đến hạn mà **chưa đặt giờ** không lên được trục, nên
 
 Mỗi việc ở đó có nút **→ Xếp vào 10:05**: app đã biết bạn trống khoảng nào và biết việc này cần bao lâu, nên một cú bấm là xong, không phải mở biểu mẫu gõ giờ. Chỉ nhận chỗ trống **từ bây giờ trở đi** — xếp vào 08:30 lúc đã 15:00 thì chẳng để làm gì. Nhiều việc thì gợi ý **nối tiếp nhau**, việc sau không nhận lại giờ của việc trước. Không còn chỗ nào đủ rộng thì nó nói thẳng thay vì đề nghị bừa.
 
-Bảy cột của tab **Cả tuần** vẫn chỉ tính việc hằng ngày: đó là nhịp lặp theo thứ, còn việc lẻ gắn với một ngày cụ thể.
+#### Việc lẻ trên trục cả tuần
+
+Bảy cột của tab **Cả tuần** ứng với bảy ngày có thật của tuần này — T2 → CN, và CN là cột cuối tuần này chứ không phải ngày đầu tuần sau. Việc lẻ đến hạn ngày nào thì nằm ở cột đó. Riêng cột hôm nay ôm luôn việc quá hạn: nợ cũ đang chiếm giờ của hôm nay chứ không nằm lại cái ngày đã trôi qua.
+
+Cột chia **hai màu**: phần dưới (cam) là việc lẻ, phần trên là việc hằng ngày — cột cao mà không biết vì sao cao thì con số chẳng giúp được gì. Số `+2` dưới cột là việc lẻ **chưa xếp giờ** của ngày đó. Ngày đã qua thì cột mờ đi.
+
+Chọn một ngày rồi kéo khối trên trục, hoặc sửa thẳng ô giờ ở hàng bên dưới. Hai loại khác nhau ở một điểm quan trọng:
+
+* **Việc hằng ngày** chỉ có *một* giờ dùng chung cho mọi thứ nó đang bật — dời ở T4 là dời luôn cho T2 và T6.
+* **Việc lẻ** (hàng nét đứt, gắn nhãn *việc lẻ*) thì giờ là của riêng nó, dời chỉ ảnh hưởng chính nó.
+
+Mục **Chưa xếp giờ** cũng có ở đây, và nút **→ Xếp vào** tính theo cửa sổ của đúng ngày đang xem: hôm nay thì chỉ nhận chỗ trống từ bây giờ trở đi, ngày mai trở đi thì lấy trọn cửa sổ, ngày đã qua thì thôi không đề nghị nữa.
+
+#### Dời sang mai
+
+Ngày kín quá thì mỗi việc lẻ có nút **→ Mai**: hạn nhảy sang ngày mai và mốc dời nhắc cũ bị xoá theo. Việc đang trễ ba ngày mà bấm thì ra **ngày mai thật**, không phải hai hôm trước.
+
+App **đếm số lần dời**. Dời một lần là dòng phụ đã ghi *đã dời 1 lần* màu cam; từ lần thứ ba đổi sang đỏ, nút thành **→ Mai ⚠**, và bản tóm tắt sáng qua Telegram cũng ghi kèm *— đã dời 4 lần*. Một việc dời tới lần thứ ba không còn là việc bận, nó là việc mình đang né: chia nhỏ ra hoặc bỏ hẳn đi.
+
+Việc **lặp lại** thì mỗi kỳ đếm lại từ đầu — tick xong kỳ này là kỳ sau bắt đầu sạch. Bỏ tích thì số lần dời của kỳ trước quay lại.
 
 #### Tích xong việc
 

@@ -277,7 +277,8 @@ function buildDigest(){
   if (due.length){
     const late = due.filter(t => String(t.due).slice(0,10) < today).length;
     lines.push(`✓ ${due.length} việc đến hạn${late ? ` (${late} đã trễ)` : ''}`);
-    due.slice(0,6).forEach(t => lines.push('   • ' + (t.title || '')));
+    due.slice(0,6).forEach(t => { const n = +(t.pushes || 0);
+      lines.push('   • ' + (t.title || '') + (n >= 3 ? ` — đã dời ${n} lần` : '')); });
   }
 
   const bdToday = [], bdSoon = [];

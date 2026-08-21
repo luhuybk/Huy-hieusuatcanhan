@@ -474,7 +474,13 @@ function buildDigest(): array {
     $late = 0;
     foreach ($due as $t) if (substr((string)$t['due'], 0, 10) < $today) $late++;
     $lines[] = '✓ <b>' . count($due) . ' việc đến hạn</b>' . ($late ? " ($late đã trễ)" : '');
-    foreach (array_slice($due, 0, 6) as $t) $lines[] = '   • ' . tgEsc((string)($t['title'] ?? ''));
+    /* Việc dời tới lần thứ ba là việc mình đang né chứ không phải việc bận —
+       nói ra lúc 7h sáng thì còn kịp chia nhỏ hoặc bỏ hẳn. */
+    foreach (array_slice($due, 0, 6) as $t) {
+      $n = (int)($t['pushes'] ?? 0);
+      $lines[] = '   • ' . tgEsc((string)($t['title'] ?? ''))
+               . ($n >= 3 ? ' — <i>đã dời ' . $n . ' lần</i>' : '');
+    }
   }
 
   /* sinh nhật — cả người quen lẫn nhân viên */

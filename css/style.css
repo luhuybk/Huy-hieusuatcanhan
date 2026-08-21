@@ -410,6 +410,11 @@ body.locked .app,body.locked .fab{display:none}
 .tlday .t{font-size:11.5px;font-weight:650;letter-spacing:-.2px}
 .tlday .c{font-size:10px;color:var(--tx3)}
 .tlday .cl{font-size:10px;color:var(--bad)}
+.tlday .u{font-size:10px;color:var(--warn);font-weight:700}
+.tlday.past{opacity:.5}
+/* Phần dưới của cột là việc lẻ đến hạn ngày đó — cột cao mà không biết vì sao cao thì vô nghĩa */
+.tlday .cbar i{position:relative;overflow:hidden}
+.tlday .cbar i b{position:absolute;left:0;right:0;bottom:0;display:block;background:var(--warn)}
 
 /* Trục đầy đủ — cuộn ngang, một hàng một việc */
 .tlwrap{overflow-x:auto;padding-bottom:8px;margin-bottom:14px}

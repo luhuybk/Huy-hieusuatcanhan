@@ -280,7 +280,11 @@ function ensure(){
                            if(t.mins===undefined) t.mins=0;
                            if(t.doneTime===undefined) t.doneTime='';
                            /* hạn của kỳ trước, để bỏ tick việc lặp lại thì trả hạn về chỗ cũ */
-                           if(t.prevDue===undefined) t.prevDue=''; });
+                           if(t.prevDue===undefined) t.prevDue='';
+                           /* đã bấm "dời sang mai" bao nhiêu lần, và lần gần nhất là ngày nào */
+                           if(t.pushes===undefined) t.pushes=0;
+                           if(t.pushedAt===undefined) t.pushedAt='';
+                           if(t.prevPushes===undefined) t.prevPushes=0; });
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
                            /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
                               chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
@@ -516,7 +520,8 @@ function reminderNextText(r){
 /* Tick "xong hôm nay" cho lời nhắc lặp lại. Máy chủ (webhook Telegram) chỉ
    ghi thêm ngày vào doneLog; luật tính chuỗi để nguyên một chỗ ở đây, để
    hai bên không bao giờ tính ra hai con số khác nhau. */
-const remDoneToday = r => (r.doneLog || []).map(String).includes(today());
+const remDoneOn = (r, dstr) => (r.doneLog || []).map(String).includes(dstr);
+const remDoneToday = r => remDoneOn(r, today());
 function remStreak(r){
   const days = (r.days || []).map(Number);
   if (!days.length) return 0;
@@ -600,11 +605,11 @@ function dayLoad(items){
   const live = (items || []).filter(x => x.on);
   return {count:live.length, mins:live.reduce((n,x) => n + x.mins, 0), clash:dayClash(live).size};
 }
-/* Bảy thứ theo đúng thứ tự T2 → CN */
+/* Bảy thứ theo đúng thứ tự T2 → CN, mỗi thứ gồm cả việc lẻ đến hạn ngày đó */
 function weekLoad(areaId){
   return WDAYS.map(([wd, lbl]) => {
-    const items = dayItems(wd, areaId);
-    return {wd, lbl, items, load:dayLoad(items)};
+    const items = dayAll(wd, areaId);
+    return {wd, lbl, items, un:dayUnsched(wd, areaId), load:dayLoad(items)};
   });
 }
 /* ---- cửa sổ làm việc ----
@@ -641,11 +646,11 @@ const winIsOff = wd => workWindow(wd).off;
 /* ---- xong hôm nay ----
    Việc lẻ tick xong thì cờ done bật; việc lặp lại tick xong thì hạn nhảy
    sang kỳ sau và chỉ có doneLog ghi lại — nên phải dò hai kiểu khác nhau. */
-function taskDoneToday(t){
-  const t0 = today();
-  if (t.repeat) return (t.doneLog || []).some(d => String(d).slice(0,10) === t0);
-  return !!t.done && String(t.doneAt || '').slice(0,10) === t0;
+function taskDoneOn(t, dstr){
+  if (t.repeat) return (t.doneLog || []).some(d => String(d).slice(0,10) === dstr);
+  return !!t.done && String(t.doneAt || '').slice(0,10) === dstr;
 }
+const taskDoneToday = t => taskDoneOn(t, today());
 /* Có mặt trong danh sách hôm nay khi: chưa xong mà đã đến hạn, hoặc vừa tick
    xong ngay hôm nay. Tick xong mà biến mất luôn thì mình tưởng bấm hụt. */
 function taskOnToday(t){
@@ -659,41 +664,64 @@ function nowStamp(){
   const d = new Date();
   return today() + ' ' + min2hhmm(d.getHours() * 60 + d.getMinutes());
 }
-/* "09:09" nếu tick trong hôm nay, còn không thì để trống */
-function doneHhmm(v){
+/* "09:09" nếu tick đúng ngày đang xem, còn không thì để trống */
+function doneHhmm(v, dstr){
   const s = String(v == null ? '' : v);
-  return s.slice(0,10) === today() ? s.slice(11,16) : '';
+  return s.slice(0,10) === (dstr === undefined ? today() : dstr) ? s.slice(11,16) : '';
 }
 
-/* ---- hôm nay: gộp cả việc lẻ ----
-   Bảy cột của tab Cả tuần là nhịp lặp theo thứ, nên chỉ có việc hằng ngày.
-   Còn "hôm nay" là một ngày có thật, nên việc lẻ đến hạn cũng chiếm giờ của
-   nó — nhìn vào mới biết ngày thật sự phân bổ ra sao. */
-function todayItems(areaId){
-  const A = areaId === undefined ? 'all' : areaId;
-  const t0 = today();
-  const out = dayItems(new Date().getDay(), A).map(x => Object.assign({kind:'rem'}, x, {
-    done:remDoneToday(x.r), doneTime:doneHhmm(x.r.doneTime)}));
-  byArea(tasks(), A).forEach(t => {
-    if (!taskOnToday(t)) return;                    /* chưa tới hạn thì chưa chiếm giờ hôm nay */
-    const start = hhmm2min(t.remindAt);
-    if (start === null) return;                     /* chưa xếp giờ → xuống danh sách riêng */
-    const due = String(t.due || '').slice(0,10), xong = taskDoneToday(t);
-    /* id có tiền tố để không đụng id của việc hằng ngày khi dò chồng giờ */
-    out.push({kind:'task', id:'t_' + t.id, t, start, mins:taskMins(t), on:true,
-              title:t.title || 'Việc cần làm', areaId:t.areaId || '',
-              late:due < t0, est:taskEst(t),
-              done:xong, doneTime:doneHhmm(t.doneTime)});
+/* ---- một ngày cụ thể: gộp việc hằng ngày với việc lẻ ----
+   Bảy cột của tab Cả tuần là nhịp lặp theo thứ, nhưng mỗi cột vẫn ứng với
+   một ngày có thật trong tuần này — nên việc lẻ đến hạn ngày đó cũng chiếm
+   giờ của nó. Không gộp thì bảng tuần báo "trống 6h" trong khi ngày ấy đã
+   kín, rồi mình xếp thêm việc vào đúng chỗ không còn trống. */
+const wdIdx = w => (Number(w) + 6) % 7;             /* T2 = 0 … CN = 6, khớp thứ tự bảy cột */
+/* Ngày thật ứng với một thứ trong tuần đang xem. CN là cột cuối của tuần
+   này chứ không phải ngày đầu tuần sau. */
+function wdDate(wd){
+  const d = new Date();
+  d.setDate(d.getDate() + (wdIdx(wd) - wdIdx(d.getDay())));
+  return ymd(d);
+}
+/* Việc lẻ rơi vào ngày đó — ba luật khác nhau cho ba loại ngày:
+   · hôm nay ôm luôn việc quá hạn, nợ cũ đang chiếm giờ của hôm nay;
+   · ngày đã qua chỉ kể việc thật sự đã làm hôm đó, vì việc chưa xong đã
+     được đếm sang hôm nay rồi — kể cả hai chỗ là cộng đôi một việc;
+   · ngày tới thì theo hạn. */
+function dayTasks(wd, areaId){
+  const dstr = wdDate(wd), t0 = today();
+  return byArea(tasks(), areaId === undefined ? 'all' : areaId).filter(t => {
+    if (dstr === t0) return taskOnToday(t);
+    if (dstr <  t0)  return taskDoneOn(t, dstr);
+    return !t.done && String(t.due || '').slice(0,10) === dstr;
+  });
+}
+function taskSlot(t, dstr){
+  const due = String(t.due || '').slice(0,10);
+  /* id có tiền tố để không đụng id của việc hằng ngày khi dò chồng giờ */
+  return {kind:'task', id:'t_' + t.id, t, start:hhmm2min(t.remindAt), mins:taskMins(t), on:true,
+          title:t.title || 'Việc cần làm', areaId:t.areaId || '',
+          late:due < dstr, est:taskEst(t),
+          done:taskDoneOn(t, dstr), doneTime:doneHhmm(t.doneTime, dstr)};
+}
+function dayAll(wd, areaId){
+  const dstr = wdDate(wd);
+  const out = dayItems(wd, areaId).map(x => Object.assign({kind:'rem'}, x, {
+    done:remDoneOn(x.r, dstr), doneTime:doneHhmm(x.r.doneTime, dstr)}));
+  dayTasks(wd, areaId).forEach(t => {
+    const s = taskSlot(t, dstr);
+    if (s.start !== null) out.push(s);              /* chưa xếp giờ → xuống danh sách riêng */
   });
   return out.sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
 }
 /* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
    thật, nên vẫn phải kể ra kèm tổng ước tính. */
-function todayUnscheduled(areaId){
-  return byArea(tasks(), areaId === undefined ? 'all' : areaId)
-    .filter(t => taskOnToday(t) && hhmm2min(t.remindAt) === null)
+function dayUnsched(wd, areaId){
+  return dayTasks(wd, areaId).filter(t => hhmm2min(t.remindAt) === null)
     .sort((a,b) => (a.due || '').localeCompare(b.due || ''));
 }
+function todayItems(areaId){ return dayAll(new Date().getDay(), areaId); }
+function todayUnscheduled(areaId){ return dayUnsched(new Date().getDay(), areaId); }
 
 /* ---- khoảng trống ----
    Gộp các khoảng bận (kể cả chồng nhau) rồi lấy phần hở ở giữa. Chỉ tính
@@ -750,13 +778,17 @@ function outsideWin(items, wd){
 }
 
 /* ---- chỗ trống gần nhất còn nhét vừa ----
-   Chỉ tính từ bây giờ trở đi: xếp một việc vào 08:30 trong khi đã 15:00 thì
-   chẳng để làm gì. Trả về null khi hôm nay không còn chỗ nào đủ rộng. */
+   Hôm nay thì chỉ tính từ bây giờ trở đi: xếp một việc vào 08:30 trong khi
+   đã 15:00 thì chẳng để làm gì. Ngày mai trở đi lấy trọn cửa sổ, ngày đã
+   qua thì thôi. Trả về null khi ngày đó không còn chỗ nào đủ rộng. */
 const snap5up = m => Math.ceil(m / 5) * 5;
-function nextFreeSlot(items, mins){
-  const d = new Date(), nowM = snap5up(d.getHours() * 60 + d.getMinutes());
-  for (const g of dayGaps(items, undefined, 5)){
-    const from = Math.max(g.from, nowM);
+function nextFreeSlot(items, mins, wd){
+  const d = new Date(), w = wd === undefined ? d.getDay() : Number(wd);
+  const dstr = wdDate(w), t0 = today();
+  if (dstr < t0) return null;
+  const floor = dstr === t0 ? snap5up(d.getHours() * 60 + d.getMinutes()) : 0;
+  for (const g of dayGaps(items, w, 5)){
+    const from = Math.max(g.from, floor);
     if (g.to - from >= mins) return from;
   }
   return null;

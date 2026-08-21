@@ -334,6 +334,7 @@ function toggleTask(id){
     const t0 = today();
     t.doneLog = (t.doneLog || []).filter(d => String(d).slice(0,10) !== t0);
     if (t.prevDue) { t.due = t.prevDue; t.prevDue = ''; }
+    t.pushes = t.prevPushes || 0; t.prevPushes = 0;
     t.streak = Math.max(0, (t.streak || 0) - 1);   /* kỷ lục thì giữ, đã lập được là đã lập được */
     t.doneAt = null; t.doneTime = '';
     stamp(t); save(); render(); toast('Đã bỏ đánh dấu kỳ này');
@@ -352,6 +353,7 @@ function toggleTask(id){
     t.doneLog = (t.doneLog||[]).concat(today()).slice(-80);
     t.doneAt = today(); t.doneTime = nowStamp();
     t.prevDue = t.due || today();
+    t.prevPushes = t.pushes || 0; t.pushes = 0;   /* kỳ mới, đếm lại từ đầu */
     t.due = nextRepeat(t.due || today(), t.repeat);
     toast('Xong kỳ này · lần tới ' + fmtDate(t.due) + (t.streak > 1 ? ` · chuỗi ${t.streak} 🔥` : ''));
   } else { t.done = true; t.doneAt = today(); t.doneTime = nowStamp();
@@ -867,6 +869,21 @@ function workAllLikeMonday(){
   save(); render(); pushWorkWindow();
   toast(src === WORK_OFF ? 'Cả tuần đều là ngày nghỉ' : 'Cả tuần theo T2: ' + src.replace('-', '–'));
 }
+/* Dời hạn sang ngày mai. Mốc là ngày muộn hơn giữa hạn cũ và hôm nay: việc
+   trễ ba ngày mà bấm "→ Mai" phải ra ngày mai thật, chứ không phải hai hôm
+   trước. Đếm số lần dời để còn biết mình đang né việc nào. */
+function pushTask(id){
+  const t = db.tasks.find(x => x.id === id); if (!t) return;
+  const cur = String(t.due || '').slice(0,10);
+  t.due = addDays(cur > today() ? cur : today(), 1);
+  t.pushes = (t.pushes || 0) + 1;
+  t.pushedAt = today();
+  t.snoozeUntil = '';                    /* hạn đổi rồi thì mốc dời nhắc cũ vô nghĩa */
+  stamp(t); save(); render();
+  toast(t.title + ' → ' + fmtDate(t.due) + (t.pushes >= 3
+    ? ' · đã dời ' + t.pushes + ' lần rồi, chia nhỏ ra hay bỏ hẳn đi?'
+    : t.pushes > 1 ? ' · lần dời thứ ' + t.pushes : ''));
+}
 /* Xếp một việc chưa có giờ vào chỗ trống gần nhất còn nhét vừa nó */
 function slotTask(id, at){
   const t = db.tasks.find(x => x.id === id); if (!t || !at) return;
@@ -1313,12 +1330,21 @@ function tlEnd(){
   d.el.classList.remove('mv');
   if (!d.moved) return;
   if (d.at === undefined || d.at === d.start){ render(); return; }
-  setRemTime(d.id, min2hhmm(d.at));
+  setSlotTime(d.id, min2hhmm(d.at));
 }
-/* Một việc chỉ có một giờ dùng cho cả tuần, nên dời ở thứ này là dời cho mọi
-   thứ khác — nói rõ trong lời báo, đừng để người ta phát hiện sau ba ngày. */
-function setRemTime(id, hhmm){
-  const r = db.reminders.find(x => x.id === id); if (!r) return;
+/* Trên trục có hai loại khối. Việc hằng ngày chỉ có một giờ dùng cho cả
+   tuần, nên dời ở thứ này là dời cho mọi thứ khác — nói rõ trong lời báo,
+   đừng để người ta phát hiện sau ba ngày. Việc lẻ (id có tiền tố "t_") thì
+   giờ là của riêng nó, dời chỉ ảnh hưởng chính nó. */
+function setSlotTime(id, hhmm){
+  const s = String(id);
+  if (s.slice(0, 2) === 't_'){
+    const t = db.tasks.find(x => x.id === s.slice(2)); if (!t) return;
+    t.remindAt = hhmm; stamp(t); save(); render();
+    toast(t.title + ' → ' + hhmm);
+    return;
+  }
+  const r = db.reminders.find(x => x.id === s); if (!r) return;
   r.time = hhmm; stamp(r); save(); render();
   toast(r.title + ' → ' + hhmm + ((r.days || []).length > 1 ? ' · cả ' + daysText(r.days) : ''));
 }
@@ -1342,10 +1368,17 @@ document.addEventListener('pointerdown', e => {
    biểu mẫu. Kéo cho nhanh, gõ ô này khi cần đúng phút. */
 document.addEventListener('change', e => {
   const t = e.target.closest('[data-tlt]');
-  if (t){ if (hhmm2min(t.value) !== null) setRemTime(t.dataset.tlt, t.value); else render(); return; }
+  if (t){ if (hhmm2min(t.value) !== null) setSlotTime(t.dataset.tlt, t.value); else render(); return; }
   const m = e.target.closest('[data-tlm]');
   if (m){
-    const r = db.reminders.find(x => x.id === m.dataset.tlm); if (!r) return;
+    const id = String(m.dataset.tlm);
+    if (id.slice(0, 2) === 't_'){
+      const tk = db.tasks.find(x => x.id === id.slice(2)); if (!tk) return;
+      tk.mins = cleanMins(m.value, 30);
+      stamp(tk); save(); render();
+      return;
+    }
+    const r = db.reminders.find(x => x.id === id); if (!r) return;
     r.mins = cleanMins(m.value);
     stamp(r); save(); render();
   }
@@ -1588,6 +1621,7 @@ document.addEventListener('click', e => {
     case 'workOff':  toggleWorkOff(+id); break;
     case 'workAll':  workAllLikeMonday(); break;
     case 'slotTask': slotTask(id, el.dataset.at); break;
+    case 'pushTask': pushTask(id); break;
     case 'saveHour':
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;
