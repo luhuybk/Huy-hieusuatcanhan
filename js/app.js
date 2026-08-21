@@ -830,19 +830,48 @@ function editRem(id){
    hai con số khác nhau cho cùng một ngày thì chẳng tin được cái nào. */
 function pushWorkWindow(){
   if (!Server.available()) return Promise.resolve();
-  return Server.call('work_save', {from:db.settings.workFrom, to:db.settings.workTo})
-               .catch(() => {});
+  return Server.call('work_save', {from:db.settings.workFrom, to:db.settings.workTo,
+                                   week:db.settings.workWeek}).catch(() => {});
 }
+/* Đọc cả bảy hàng một lượt. Một ô viết sai thì dừng hẳn, không lưu nửa vời —
+   lưu được ba thứ rồi báo lỗi là kiểu tệ nhất, không ai biết đã lưu tới đâu. */
 function saveWorkWindow(){
-  const f = winMin($('#set_wfrom').value, null);
-  const t = winMin($('#set_wto').value, null);
-  if (f === null || t === null){ toast('Giờ phải viết dạng 08:30 hoặc 24:00'); return; }
-  if (t <= f){ toast('Giờ kết thúc phải sau giờ bắt đầu'); return; }
-  db.settings.workFrom = winText(f);
-  db.settings.workTo   = winText(t);
-  save(); render();
-  pushWorkWindow();
-  toast('Cửa sổ làm việc ' + winText(f) + '–' + winText(t) + ' · dài ' + fmtDur(t - f));
+  const week = {}, bad = [];
+  WDAYS.forEach(([wd, lbl]) => {
+    if (String((db.settings.workWeek || {})[wd] || '') === WORK_OFF){ week[wd] = WORK_OFF; return; }
+    const f = winMin(($('[data-wf="' + wd + '"]') || {}).value, null);
+    const t = winMin(($('[data-wt="' + wd + '"]') || {}).value, null);
+    if (f === null || t === null || t <= f){ bad.push(lbl); return; }
+    week[wd] = winText(f) + '-' + winText(t);
+  });
+  if (bad.length){
+    toast(bad.join(', ') + ': giờ phải viết dạng 08:30, và giờ kết thúc phải sau giờ bắt đầu');
+    return;
+  }
+  db.settings.workWeek = week;
+  /* Cặp mặc định bám theo T2 — nó chỉ còn dùng khi bảng bảy thứ thiếu mục nào */
+  const m = /^(.+)-(.+)$/.exec(week[1] || '');
+  if (m){ db.settings.workFrom = m[1]; db.settings.workTo = m[2]; }
+  save(); render(); pushWorkWindow();
+  toast('Đã lưu cửa sổ làm việc cả tuần');
+}
+function toggleWorkOff(wd){
+  const cur = String((db.settings.workWeek || {})[wd] || '');
+  db.settings.workWeek[wd] = cur === WORK_OFF
+    ? db.settings.workFrom + '-' + db.settings.workTo : WORK_OFF;
+  save(); render(); pushWorkWindow();
+}
+function workAllLikeMonday(){
+  const src = String((db.settings.workWeek || {})[1] || '');
+  WDAYS.forEach(([wd]) => { db.settings.workWeek[wd] = src; });
+  save(); render(); pushWorkWindow();
+  toast(src === WORK_OFF ? 'Cả tuần đều là ngày nghỉ' : 'Cả tuần theo T2: ' + src.replace('-', '–'));
+}
+/* Xếp một việc chưa có giờ vào chỗ trống gần nhất còn nhét vừa nó */
+function slotTask(id, at){
+  const t = db.tasks.find(x => x.id === id); if (!t || !at) return;
+  t.remindAt = at; stamp(t); save(); render();
+  toast(t.title + ' → ' + at + (Server.available() ? ' · Telegram sẽ nhắc đúng giờ này' : ''));
 }
 
 /* ---------------- Telegram ---------------- */
@@ -855,7 +884,8 @@ function tgLoad(){
     TG = d;
     /* Máy chủ đang giữ mốc khác với máy này thì đẩy lên cho khớp — app là
        nơi đặt, máy chủ chỉ giữ một bản để tính bản tóm tắt sáng. */
-    if (d && (d.workFrom !== db.settings.workFrom || d.workTo !== db.settings.workTo))
+    if (d && (d.workFrom !== db.settings.workFrom || d.workTo !== db.settings.workTo
+              || JSON.stringify(d.workWeek || {}) !== JSON.stringify(db.settings.workWeek || {})))
       pushWorkWindow();
     return d;
   }).catch(() => null);
@@ -890,6 +920,8 @@ function tgBox(){
        ph:'để trống = nhánh mặc định', hint:'câu hỏi "làm hay bỏ" khi tới hẹn xem lại'},
       {k:'ideaHour', label:'Giờ hỏi lại ý tưởng', type:'number', half:true,
        ph:'0-23', hint:'chỉ hỏi khi ý tưởng có đặt ngày xem lại'},
+      {k:'enddayHour', label:'Giờ nhắc sắp hết ngày', type:'number', half:true,
+       ph:'0-23', hint:'điểm lại việc chưa tick; xong hết thì không gửi. -1 = tắt'},
       {k:'weeklyHour', label:'Giờ gửi tóm tắt tuần (Chủ nhật)', type:'number', half:true,
        ph:'0-23', hint:'để trống thì không gửi'},
       {k:'staffWeekly', label:'Tổng kết tuần theo nhân sự', type:'select', half:true,
@@ -910,6 +942,7 @@ function tgBox(){
             reportTopic: t.reportTopic || t.workTopic || '',
             ideaTopic: t.ideaTopic || '',
             ideaHour: t.ideaHour == null ? 9 : t.ideaHour,
+            enddayHour: t.enddayHour == null ? 22 : t.enddayHour,
             weeklyHour: t.weeklyHour == null ? -1 : t.weeklyHour,
             staffWeekly: t.staffWeekly ? 'yes' : '',
             escalate: t.escalate ? 'yes' : '',
@@ -929,6 +962,7 @@ function tgBox(){
                     reportTopic:String(v.reportTopic || '').trim(),
                     ideaTopic:  String(v.ideaTopic || '').trim(),
                     ideaHour:   v.ideaHour === '' ? -1 : +v.ideaHour,
+                    enddayHour: v.enddayHour === '' ? -1 : +v.enddayHour,
                     weeklyHour: v.weeklyHour === '' ? -1 : +v.weeklyHour,
                     staffWeekly: v.staffWeekly === 'yes',
                     escalate:   v.escalate === 'yes',
@@ -1551,6 +1585,9 @@ document.addEventListener('click', e => {
       break;
     case 'testNotify': Notify.testFire(); break;
     case 'saveWork': saveWorkWindow(); break;
+    case 'workOff':  toggleWorkOff(+id); break;
+    case 'workAll':  workAllLikeMonday(); break;
+    case 'slotTask': slotTask(id, el.dataset.at); break;
     case 'saveHour':
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;

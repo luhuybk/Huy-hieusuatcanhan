@@ -325,6 +325,12 @@ function ensure(){
   /* cửa sổ làm việc — mốc để tính khoảng trống trong ngày */
   if (!db.settings.workFrom) db.settings.workFrom = WORK_FROM_DEF;
   if (!db.settings.workTo)   db.settings.workTo   = WORK_TO_DEF;
+  /* Cửa sổ riêng từng thứ. Bản trước chỉ có một cặp giờ dùng chung, nên
+     điền sẵn cả bảy thứ bằng cặp đó — không ai bị đổi giờ sau khi cập nhật. */
+  if (!db.settings.workWeek || typeof db.settings.workWeek !== 'object'){
+    db.settings.workWeek = {};
+    WDAYS.forEach(([wd]) => { db.settings.workWeek[wd] = db.settings.workFrom + '-' + db.settings.workTo; });
+  }
 }
 /* Safari ở chế độ riêng tư, hoặc kho đầy, sẽ ném lỗi ở đây. Không bắt thì
    thao tác đang làm dở sẽ đứng im mà không báo gì. */
@@ -615,13 +621,22 @@ function winMin(v, def){
   return (+m[2] < 60 && n >= 0 && n <= 1440) ? n : def;
 }
 const winText = m => m >= 1440 ? '24:00' : min2hhmm(m);
-function workWindow(){
-  const f = winMin(db.settings.workFrom, 510);
-  const t = winMin(db.settings.workTo, 1440);
+/* Cửa sổ của một thứ: "HH:MM-HH:MM", hoặc "off" cho ngày nghỉ. Thiếu mục
+   nào thì lùi về cặp mặc định. Không truyền thứ thì lấy của hôm nay. */
+const WORK_OFF = 'off';
+function workWindow(wd){
+  const d = wd === undefined ? new Date().getDay() : Number(wd);
+  const raw = String((db.settings.workWeek || {})[d] || '');
+  if (raw === WORK_OFF) return {from:0, to:0, off:true};
+  const m = /^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/.exec(raw);
+  const f = winMin(m ? m[1] : db.settings.workFrom, 510);
+  const t = winMin(m ? m[2] : db.settings.workTo, 1440);
   /* Đặt ngược hoặc bằng nhau thì quay về mặc định — không thì mọi phép trừ
      phía sau ra số âm và giao diện vẽ ngược. */
-  return t > f ? {from:f, to:t} : {from:winMin(WORK_FROM_DEF, 510), to:1440};
+  return t > f ? {from:f, to:t, off:false}
+               : {from:winMin(WORK_FROM_DEF, 510), to:1440, off:false};
 }
+const winIsOff = wd => workWindow(wd).off;
 
 /* ---- xong hôm nay ----
    Việc lẻ tick xong thì cờ done bật; việc lặp lại tick xong thì hạn nhảy
@@ -697,8 +712,10 @@ function busySpans(items){
 }
 /* Khoảng hở bên trong cửa sổ làm việc, kể cả đoạn đầu ngày và cuối ngày.
    Chỉ kể khoảng từ 30 phút trở lên — dưới đó thì không làm được gì. */
-function dayGaps(items, minLen){
-  const w = workWindow(), min = minLen === undefined ? 30 : minLen;
+function dayGaps(items, wd, minLen){
+  const w = workWindow(wd);
+  if (w.off) return [];
+  const min = minLen === undefined ? 30 : minLen;
   const b = busySpans(items)
     .map(sp => [Math.max(sp[0], w.from), Math.min(sp[1], w.to)])
     .filter(sp => sp[1] > sp[0]);
@@ -714,18 +731,35 @@ function dayGaps(items, minLen){
 /* Bận thật trên đồng hồ, tính trong cửa sổ — hai việc chồng nhau chỉ tính
    một lần, nên nó nhỏ hơn tổng số phút của dayLoad() khi có việc trùng giờ.
    Kín + Trống luôn đúng bằng độ dài cửa sổ. */
-function busyMins(items){
-  const w = workWindow();
+function busyMins(items, wd){
+  const w = workWindow(wd);
+  if (w.off) return 0;
   return busySpans(items).reduce((n, sp) =>
     n + Math.max(0, Math.min(sp[1], w.to) - Math.max(sp[0], w.from)), 0);
 }
-const freeMins = items => { const w = workWindow();
-                            return Math.max(0, (w.to - w.from) - busyMins(items)); };
+function freeMins(items, wd){
+  const w = workWindow(wd);
+  return w.off ? 0 : Math.max(0, (w.to - w.from) - busyMins(items, wd));
+}
 /* Việc rơi ra ngoài cửa sổ — vẫn hiện, nhưng phải nói ra chứ đừng lặng lẽ
-   bỏ nó khỏi mọi con số. */
-function outsideWin(items){
-  const w = workWindow();
+   bỏ nó khỏi mọi con số. Ngày nghỉ thì mọi việc đều nằm ngoài. */
+function outsideWin(items, wd){
+  const w = workWindow(wd);
+  if (w.off) return (items || []).filter(x => x.on);
   return (items || []).filter(x => x.on && (x.start < w.from || x.start + x.mins > w.to));
+}
+
+/* ---- chỗ trống gần nhất còn nhét vừa ----
+   Chỉ tính từ bây giờ trở đi: xếp một việc vào 08:30 trong khi đã 15:00 thì
+   chẳng để làm gì. Trả về null khi hôm nay không còn chỗ nào đủ rộng. */
+const snap5up = m => Math.ceil(m / 5) * 5;
+function nextFreeSlot(items, mins){
+  const d = new Date(), nowM = snap5up(d.getHours() * 60 + d.getMinutes());
+  for (const g of dayGaps(items, undefined, 5)){
+    const from = Math.max(g.from, nowM);
+    if (g.to - from >= mins) return from;
+  }
+  return null;
 }
 
 /* Còn mấy việc chưa tick hôm nay — con số trên menu */

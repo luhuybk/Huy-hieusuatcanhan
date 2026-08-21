@@ -187,6 +187,8 @@ Việc lẻ vẽ **nét đứt** cho khác việc hằng ngày, và dòng phụ 
 
 Việc đến hạn mà **chưa đặt giờ** không lên được trục, nên nằm ở mục **Chưa xếp giờ** ngay dưới, kèm tổng ước tính — nó vẫn ngốn thời gian thật của bạn dù chưa có chỗ trên đồng hồ.
 
+Mỗi việc ở đó có nút **→ Xếp vào 10:05**: app đã biết bạn trống khoảng nào và biết việc này cần bao lâu, nên một cú bấm là xong, không phải mở biểu mẫu gõ giờ. Chỉ nhận chỗ trống **từ bây giờ trở đi** — xếp vào 08:30 lúc đã 15:00 thì chẳng để làm gì. Nhiều việc thì gợi ý **nối tiếp nhau**, việc sau không nhận lại giờ của việc trước. Không còn chỗ nào đủ rộng thì nó nói thẳng thay vì đề nghị bừa.
+
 Bảy cột của tab **Cả tuần** vẫn chỉ tính việc hằng ngày: đó là nhịp lặp theo thứ, còn việc lẻ gắn với một ngày cụ thể.
 
 #### Tích xong việc
@@ -223,11 +225,37 @@ Kín 2h50    Trống 9h30    ⚠ 2 việc chồng giờ
 
 #### Cửa sổ làm việc
 
-Cài đặt → **Cửa sổ làm việc** → hai ô giờ. Ví dụ *08:30 → 24:00* nghĩa là một ngày làm việc dài 15h30. Mốc kết thúc viết **24:00** nếu làm tới nửa đêm — viết `00:00` sẽ bị hiểu là đầu ngày.
+Cài đặt → **Cửa sổ làm việc** → một hàng cho mỗi thứ:
+
+```
+T2  [08:30] – [24:00]   15h30  😴
+T7  [08:00] – [12:00]   3h30   😴
+CN  [      ] – [      ]  nghỉ   😴
+```
+
+Mốc kết thúc viết **24:00** nếu làm tới nửa đêm — viết `00:00` sẽ bị hiểu là đầu ngày. Bấm **😴** để đánh dấu ngày nghỉ; hôm đó app không tính kín/trống nữa mà chỉ nói *Ngày nghỉ*, và nếu vẫn còn việc xếp trong ngày thì nó nói ra.
+
+**Đặt cả tuần theo T2** chép hàng T2 sang sáu thứ còn lại — nhanh hơn gõ bảy lần.
+
+Một ô viết sai thì **không lưu gì cả**, kể cả những ô đúng: lưu được ba thứ rồi mới báo lỗi là kiểu tệ nhất, không ai biết đã lưu tới đâu.
 
 Không có mốc này thì app chỉ đo được phần hở **giữa hai việc**, vì nó không biết bạn thức lúc mấy giờ. Có rồi thì mọi khoảng trống đều đo được, kể cả đầu ngày và cuối ngày.
 
-Mốc này nằm trong cài đặt của máy nên **không** đi qua đồng bộ như các dữ liệu khác. App tự đẩy riêng nó lên máy chủ mỗi lần lưu, để tin Telegram tính ra đúng con số như trên màn hình — hai nơi báo hai con số khác nhau cho cùng một ngày thì chẳng tin được cái nào.
+Mốc này nằm trong cài đặt của máy nên **không** đi qua đồng bộ như các dữ liệu khác. App tự đẩy riêng cả bảng bảy thứ lên máy chủ mỗi lần lưu, để tin Telegram tính ra đúng con số như trên màn hình — hai nơi báo hai con số khác nhau cho cùng một ngày thì chẳng tin được cái nào.
+
+#### Nhắc sắp hết ngày
+
+Cột *quá giờ* trong app chỉ thấy khi bạn mở app. Nên đúng **22:00** (đổi được trong Cài đặt → Telegram → *Giờ nhắc sắp hết ngày*, `-1` để tắt) máy chủ điểm lại những việc còn chưa tick:
+
+```
+🌙 Sắp hết ngày — còn 3 việc · 1h50
+   • 18:30 Tập gym · 45p
+   • 21:00 Chốt sổ cuối ngày · 20p
+   • Đi lấy hàng · ~45p (chưa xếp giờ)
+Còn trống 2h40 tới 24:00.
+```
+
+**Tick xong hết thì không gửi gì.** Tin nhắc mà ngày nào cũng có, kể cả ngày bạn làm trọn vẹn, thì chỉ vài hôm là bị tắt. Dòng cuối tính từ *bây giờ* tới hết cửa sổ và đã trừ phần việc đã xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. Ngày nghỉ thì bỏ dòng đó đi.
 
 ### Ý tưởng
 

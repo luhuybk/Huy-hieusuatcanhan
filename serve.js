@@ -86,23 +86,42 @@ function taskMinutes(t){
   const n = Math.round(Number(t && t.mins));
   return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 30;
 }
+const dayStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function remDoneTodayJs(r, today){
+  return (r.doneLog || []).some(d => String(d).slice(0,10) === today);
+}
+function taskDoneTodayJs(t, today){
+  if (t.repeat) return (t.doneLog || []).some(d => String(d).slice(0,10) === today);
+  return !!t.done && String(t.doneAt || '').slice(0,10) === today;
+}
+function taskOnTodayJs(t, today){
+  if (taskDoneTodayJs(t, today)) return true;
+  if (t.done) return false;
+  const due = String(t.due || '').slice(0,10);
+  return due.length === 10 && due <= today;
+}
+function todayUnsched(atMs){
+  const today = dayStr(atMs ? new Date(atMs) : new Date());
+  return itemsOf('tasks').filter(t => taskOnTodayJs(t, today) && hhmmMin(t.remindAt) === null)
+    .map(t => ({title:t.title || '', mins:taskMinutes(t), done:taskDoneTodayJs(t, today),
+                est:Math.round(Number(t.mins)) > 0}));
+}
 function todaySlots(atMs){
   const now = atMs ? new Date(atMs) : new Date();
-  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  const wday = now.getDay();
+  const today = dayStr(now), wday = now.getDay();
   const out = [];
   for (const r of itemsOf('reminders')){
     if (!r.enabled) continue;
     if (!(r.days || []).map(Number).includes(wday)) continue;
     const st = hhmmMin(r.time); if (st === null) continue;
-    out.push({start:st, mins:remMinutes(r), title:r.title || ''});
+    out.push({start:st, mins:remMinutes(r), title:r.title || '',
+              done:remDoneTodayJs(r, today), est:true});
   }
   for (const t of itemsOf('tasks')){
-    if (t.done) continue;
-    const due = String(t.due || '').slice(0,10);
-    if (due.length !== 10 || due > today) continue;
+    if (!taskOnTodayJs(t, today)) continue;
     const st = hhmmMin(t.remindAt); if (st === null) continue;
-    out.push({start:st, mins:taskMinutes(t), title:t.title || ''});
+    out.push({start:st, mins:taskMinutes(t), title:t.title || '',
+              done:taskDoneTodayJs(t, today), est:Math.round(Number(t.mins)) > 0});
   }
   return out.sort((a,b) => a.start - b.start);
 }
@@ -130,14 +149,20 @@ function winMinutes(v, def){
   const n = +m[1] * 60 + +m[2];
   return (+m[2] < 60 && n >= 0 && n <= 1440) ? n : def;
 }
-function workWin(){
-  const f = winMinutes(confGet('work_from','08:30'), 510);
-  const t = winMinutes(confGet('work_to','24:00'), 1440);
-  return t > f ? {from:f, to:t} : {from:510, to:1440};
+function workWin(wd){
+  const d = wd === undefined || wd === null ? new Date().getDay() : Number(wd);
+  let week = {}; try { week = JSON.parse(confGet('work_week','') || '{}') || {}; } catch(e){}
+  const raw = String(week[d] === undefined ? (week[String(d)] || '') : week[d]);
+  if (raw === 'off') return {from:0, to:0, off:true};
+  const m = /^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/.exec(raw);
+  const f = winMinutes(m ? m[1] : confGet('work_from','08:30'), 510);
+  const t = winMinutes(m ? m[2] : confGet('work_to','24:00'), 1440);
+  return t > f ? {from:f, to:t, off:false} : {from:510, to:1440, off:false};
 }
 const winText = m => m >= 1440 ? '24:00' : hhmmText(m);
 function slotGaps(items, min){
-  const w = workWin(), lim = min === undefined ? 30 : min;
+  const w = workWin(); if (w.off) return [];
+  const lim = min === undefined ? 30 : min;
   const sp = slotBusy(items).map(x => [Math.max(x[0], w.from), Math.min(x[1], w.to)])
                             .filter(x => x[1] > x[0]);
   const out = []; let cur = w.from;
@@ -149,7 +174,7 @@ function slotGaps(items, min){
   return out;
 }
 function slotBusyMins(items){
-  const w = workWin();
+  const w = workWin(); if (w.off) return 0;
   return slotBusy(items).reduce((n,x) => n + Math.max(0, Math.min(x[1], w.to) - Math.max(x[0], w.from)), 0);
 }
 function remMinutes(r){
@@ -237,7 +262,8 @@ function buildDigest(){
     const cl = slotClashes(slots), gaps = slotGaps(slots), w = workWin();
     const busy = slotBusyMins(slots), free = Math.max(0, (w.to - w.from) - busy);
     let line = `🗓 Hôm nay ${slots.length} việc theo giờ · ${durText(tot)}`
-      + `\n   Cửa sổ ${winText(w.from)}–${winText(w.to)} · kín ${durText(busy)} · trống ${durText(free)}`;
+      + (w.off ? `\n   😴 Hôm nay là ngày nghỉ mà vẫn có việc xếp trong ngày`
+               : `\n   Cửa sổ ${winText(w.from)}–${winText(w.to)} · kín ${durText(busy)} · trống ${durText(free)}`);
     if (cl) line += `\n   ⚠️ ${cl} việc chồng giờ`;
     if (gaps.length) line += `\n   Còn rảnh: `
       + gaps.slice(0,3).map(g => winText(g.from) + '–' + winText(g.to)).join(', ')
@@ -614,6 +640,32 @@ function runSchedule(dry, atMs){
     }
   }
 
+  /* sắp hết ngày: còn việc nào chưa tick — bản song sinh của khối cùng tên bên lib.php */
+  const eh = +confGet('tg_endday_hour', '22');
+  if (eh >= 0 && now.getHours() >= eh && !alreadySent('endday:' + today)){
+    const slots = todaySlots(now.getTime());
+    const left = slots.filter(x => !x.done);
+    const leftUn = todayUnsched(now.getTime()).filter(x => !x.done);
+    if (left.length || leftUn.length){
+      const w = workWin(), nm = now.getHours()*60 + now.getMinutes();
+      const rest = left.concat(leftUn).reduce((n,x) => n + x.mins, 0);
+      const edl = [`🌙 Sắp hết ngày — còn ${left.length + leftUn.length} việc · ${durText(rest)}`];
+      left.slice(0,8).forEach(x =>
+        edl.push(`   • ${hhmmText(x.start)} ${x.title} · ${x.est ? '' : '~'}${durText(x.mins)}`));
+      leftUn.slice(0,4).forEach(x =>
+        edl.push(`   • ${x.title} · ${x.est ? '' : '~'}${durText(x.mins)} (chưa xếp giờ)`));
+      if (!w.off && w.to > nm){
+        const busyAhead = slotBusy(slots).reduce((n, sp) =>
+          n + Math.max(0, Math.min(sp[1], w.to) - Math.max(sp[0], nm)), 0);
+        edl.push(`Còn trống ${durText(Math.max(0, (w.to - nm) - busyAhead))} tới ${winText(w.to)}.`);
+      }
+      const text = edl.join('\n');
+      if (dry) done.push({endday:left.length + leftUn.length, dry:true, sent:text});
+      else { markSent('endday:' + today);
+             done.push({endday:left.length + leftUn.length, ok:true, sent:text, topic:topicFor('report')}); }
+    }
+  }
+
   /* ý tưởng tới hẹn xem lại — bản song sinh của khối cùng tên bên lib.php */
   const ih = +confGet('tg_idea_hour', '9');
   if (ih >= 0 && now.getHours() >= ih){
@@ -926,7 +978,17 @@ function api(req, res, body){
       const f = String(inp.from || '').trim(), t = String(inp.to || '').trim();
       const ok = /^\d{1,2}:\d{2}$/.test(f) && /^\d{1,2}:\d{2}$/.test(t);
       if (ok){ confSet('work_from', f); confSet('work_to', t); }
-      return send({ok, from:confGet('work_from','08:30'), to:confGet('work_to','24:00')});
+      if (inp.week && typeof inp.week === 'object'){
+        const week = {};
+        for (const [k, v] of Object.entries(inp.week)){
+          const d = +k, s2 = String(v).trim();
+          if (!(d >= 0 && d <= 6)) continue;
+          if (s2 === 'off' || /^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(s2)) week[String(d)] = s2;
+        }
+        confSet('work_week', JSON.stringify(week));
+      }
+      let wk = {}; try { wk = JSON.parse(confGet('work_week','') || '{}'); } catch(e){}
+      return send({ok, from:confGet('work_from','08:30'), to:confGet('work_to','24:00'), week:wk});
     }
     case 'tg_get':
     case 'tg_save': {
@@ -946,6 +1008,8 @@ function api(req, res, body){
           confSet(conf, String(inp[k] || '').trim());
         const ih = inp.ideaHour == null ? 9 : +inp.ideaHour;
         confSet('tg_idea_hour', (ih >= 0 && ih <= 23) ? ih : -1);
+        const eh = inp.enddayHour == null ? 22 : +inp.enddayHour;
+        confSet('tg_endday_hour', (eh >= 0 && eh <= 23) ? eh : -1);
         const wk = inp.weeklyHour == null ? -1 : +inp.weeklyHour;
         confSet('tg_weekly_hour', (wk >= 0 && wk <= 23) ? wk : -1);
         confSet('tg_staff_weekly', inp.staffWeekly ? '1' : '');
@@ -971,6 +1035,8 @@ function api(req, res, body){
         webhookOn: !!confGet('tg_webhook_on',''),
         enabled: !!confGet('tg_enabled',''),
         workFrom: confGet('work_from','08:30'), workTo: confGet('work_to','24:00'),
+        workWeek: (() => { try { return JSON.parse(confGet('work_week','') || '{}'); } catch(e){ return {}; } })(),
+        enddayHour: +confGet('tg_endday_hour','22'),
         cron: '/usr/bin/php ' + path.join(__dirname, 'api/cron.php'),
         cronUrl: 'http://localhost:' + PORT + '/api/cron.php?key=' + confGet('cron_key','')});
     }

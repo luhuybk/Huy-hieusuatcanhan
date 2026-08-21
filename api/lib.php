@@ -268,6 +268,40 @@ function taskMinutes(array $t): int {
   $n = (int)round((float)($t['mins'] ?? 0));
   return $n > 0 ? min($n, 720) : 30;
 }
+function remDoneTodayPhp(array $r): bool {
+  $today = date('Y-m-d');
+  foreach ((array)($r['doneLog'] ?? []) as $d)
+    if (substr((string)$d, 0, 10) === $today) return true;
+  return false;
+}
+/* Việc lẻ tick xong thì cờ done bật; việc lặp lại tick xong thì hạn nhảy kỳ
+   sau và chỉ doneLog ghi lại — dò hai kiểu khác nhau, y như bên app. */
+function taskDoneTodayPhp(array $t): bool {
+  $today = date('Y-m-d');
+  if (!empty($t['repeat'])) {
+    foreach ((array)($t['doneLog'] ?? []) as $d)
+      if (substr((string)$d, 0, 10) === $today) return true;
+    return false;
+  }
+  return !empty($t['done']) && substr((string)($t['doneAt'] ?? ''), 0, 10) === $today;
+}
+function taskOnTodayPhp(array $t): bool {
+  if (taskDoneTodayPhp($t)) return true;
+  if (!empty($t['done'])) return false;
+  $due = substr((string)($t['due'] ?? ''), 0, 10);
+  return strlen($due) === 10 && $due <= date('Y-m-d');
+}
+/* Việc đến hạn mà chưa đặt giờ — chưa nằm trên trục nhưng vẫn phải làm */
+function todayUnsched(): array {
+  $out = [];
+  foreach (itemsOf('tasks') as $t) {
+    if (!taskOnTodayPhp($t)) continue;
+    if (hhmmMin((string)($t['remindAt'] ?? '')) !== null) continue;
+    $out[] = ['title' => (string)($t['title'] ?? ''), 'mins' => taskMinutes($t),
+              'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
+  }
+  return $out;
+}
 function todaySlots(): array {
   $today = date('Y-m-d');
   $wday  = (int)date('w');          /* 0 = Chủ nhật, khớp với getDay() bên app */
@@ -277,15 +311,15 @@ function todaySlots(): array {
     if (!in_array($wday, array_map('intval', (array)($r['days'] ?? [])), true)) continue;
     $st = hhmmMin((string)($r['time'] ?? ''));
     if ($st === null) continue;
-    $out[] = ['start' => $st, 'mins' => remMinutes($r), 'title' => (string)($r['title'] ?? '')];
+    $out[] = ['start' => $st, 'mins' => remMinutes($r), 'title' => (string)($r['title'] ?? ''),
+              'done' => remDoneTodayPhp($r), 'est' => true];
   }
   foreach (itemsOf('tasks') as $t) {
-    if (!empty($t['done'])) continue;
-    $due = substr((string)($t['due'] ?? ''), 0, 10);
-    if (strlen($due) !== 10 || $due > $today) continue;
+    if (!taskOnTodayPhp($t)) continue;
     $st = hhmmMin((string)($t['remindAt'] ?? ''));
     if ($st === null) continue;      /* chưa xếp giờ thì chưa nằm trên trục */
-    $out[] = ['start' => $st, 'mins' => taskMinutes($t), 'title' => (string)($t['title'] ?? '')];
+    $out[] = ['start' => $st, 'mins' => taskMinutes($t), 'title' => (string)($t['title'] ?? ''),
+              'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
   }
   usort($out, fn($a, $b) => $a['start'] <=> $b['start']);
   return $out;
@@ -319,14 +353,30 @@ function winMinutes(string $v, int $def): int {
   $n = (int)$m[1] * 60 + (int)$m[2];
   return ((int)$m[2] < 60 && $n >= 0 && $n <= 1440) ? $n : $def;
 }
-function workWin(): array {
-  $f = winMinutes((string)confGet('work_from', '08:30'), 510);
-  $t = winMinutes((string)confGet('work_to', '24:00'), 1440);
-  return $t > $f ? ['from' => $f, 'to' => $t] : ['from' => 510, 'to' => 1440];
+/* Cửa sổ của một thứ (0 = Chủ nhật). work_week là JSON {thứ: "HH:MM-HH:MM"|"off"},
+   thiếu mục nào thì lùi về cặp work_from/work_to — cùng luật với workWindow() bên app. */
+function workWin(?int $wd = null): array {
+  $d = $wd === null ? (int)date('w') : $wd;
+  $week = json_decode((string)confGet('work_week', ''), true);
+  $raw = '';
+  if (is_array($week)) {
+    if (isset($week[$d])) $raw = (string)$week[$d];
+    elseif (isset($week[(string)$d])) $raw = (string)$week[(string)$d];
+  }
+  if ($raw === 'off') return ['from' => 0, 'to' => 0, 'off' => true];
+  $f = -1; $t = -1;
+  if (preg_match('/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/', $raw, $m)) {
+    $f = winMinutes($m[1], -1); $t = winMinutes($m[2], -1);
+  }
+  if ($f < 0) $f = winMinutes((string)confGet('work_from', '08:30'), 510);
+  if ($t < 0) $t = winMinutes((string)confGet('work_to', '24:00'), 1440);
+  return $t > $f ? ['from' => $f, 'to' => $t, 'off' => false]
+                 : ['from' => 510, 'to' => 1440, 'off' => false];
 }
 /* Khoảng hở bên trong cửa sổ, kể cả đoạn đầu ngày và cuối ngày */
 function slotGaps(array $items, int $min = 30): array {
   $w = workWin();
+  if (!empty($w['off'])) return [];
   $sp = [];
   foreach (slotBusy($items) as $x) {
     $a = max($x[0], $w['from']); $b = min($x[1], $w['to']);
@@ -342,7 +392,9 @@ function slotGaps(array $items, int $min = 30): array {
 }
 /* Kín trong cửa sổ; Kín + Trống luôn đúng bằng độ dài cửa sổ */
 function slotBusyMins(array $items): int {
-  $w = workWin(); $n = 0;
+  $w = workWin();
+  if (!empty($w['off'])) return 0;
+  $n = 0;
   foreach (slotBusy($items) as $x) $n += max(0, min($x[1], $w['to']) - max($x[0], $w['from']));
   return $n;
 }
@@ -397,8 +449,10 @@ function buildDigest(): array {
     $w    = workWin();
     $free = max(0, ($w['to'] - $w['from']) - slotBusyMins($slots));
     $line = '🗓 <b>Hôm nay ' . count($slots) . ' việc theo giờ · ' . durText($tot) . '</b>'
-          . "\n   Cửa sổ " . winText($w['from']) . '–' . winText($w['to'])
-          . ' · kín ' . durText(slotBusyMins($slots)) . ' · trống ' . durText($free);
+          . (!empty($w['off'])
+             ? "\n   😴 Hôm nay là <b>ngày nghỉ</b> mà vẫn có việc xếp trong ngày"
+             : "\n   Cửa sổ " . winText($w['from']) . '–' . winText($w['to'])
+               . ' · kín ' . durText(slotBusyMins($slots)) . ' · trống ' . durText($free));
     if ($cl) $line .= "\n   ⚠️ <b>" . $cl . ' việc chồng giờ</b>';
     if ($gaps) {
       $txt = [];
@@ -908,6 +962,56 @@ function runSchedule(bool $dry = false): array {
       $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
       if (!empty($res['ok'])) markSent($key);
       $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
+    }
+  }
+
+  /* --- sắp hết ngày: còn việc nào chưa tick ---
+     Cột "quá giờ" trong app chỉ thấy khi mở app; cái này tới tận tay lúc
+     còn kịp làm. Xong hết thì im — tin nhắc mà ngày nào cũng có, kể cả
+     ngày mình làm trọn vẹn, thì chỉ vài hôm là bị tắt. */
+  $eh = confGet('tg_endday_hour', '22');
+  if ($eh !== null && (int)$eh >= 0 && (int)date('G', $now) >= (int)$eh
+      && !alreadySent('endday:' . $today)) {
+    $slots = todaySlots();
+    $left  = [];
+    foreach ($slots as $x) if (empty($x['done'])) $left[] = $x;
+    $leftUn = [];
+    foreach (todayUnsched() as $x) if (empty($x['done'])) $leftUn[] = $x;
+
+    if ($left || $leftUn) {
+      $w   = workWin();
+      $nm  = (int)date('G', $now) * 60 + (int)date('i', $now);
+      $rest = 0;
+      foreach ($left as $x)   $rest += $x['mins'];
+      foreach ($leftUn as $x) $rest += $x['mins'];
+
+      $edl = ['🌙 <b>Sắp hết ngày — còn ' . (count($left) + count($leftUn))
+                . ' việc · ' . durText($rest) . '</b>'];
+      foreach (array_slice($left, 0, 8) as $x)
+        $edl[] = '   • ' . hhmmText($x['start']) . ' ' . tgEsc($x['title'])
+                 . ' · ' . (empty($x['est']) ? '~' : '') . durText($x['mins']);
+      foreach (array_slice($leftUn, 0, 4) as $x)
+        $edl[] = '   • ' . tgEsc($x['title']) . ' · ' . (empty($x['est']) ? '~' : '')
+                 . durText($x['mins']) . ' <i>(chưa xếp giờ)</i>';
+
+      /* Còn trống bao nhiêu tính từ bây giờ tới hết cửa sổ, đã trừ phần
+         việc đã xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. */
+      if (empty($w['off']) && $w['to'] > $nm) {
+        $busyAhead = 0;
+        foreach (slotBusy($slots) as $sp)
+          $busyAhead += max(0, min($sp[1], $w['to']) - max($sp[0], $nm));
+        $edl[] = 'Còn trống ' . durText(max(0, ($w['to'] - $nm) - $busyAhead))
+                 . ' tới ' . winText($w['to']) . '.';
+      }
+      $text = implode("\n", $edl);
+
+      if ($dry) { $done[] = ['endday' => count($left) + count($leftUn), 'dry' => true, 'sent' => $text]; }
+      else {
+        $res = tgSend($text, topicFor('report'));
+        if (!empty($res['ok'])) markSent('endday:' . $today);
+        $done[] = ['endday' => count($left) + count($leftUn), 'ok' => !empty($res['ok']),
+                   'error' => $res['error'] ?? null];
+      }
     }
   }
 

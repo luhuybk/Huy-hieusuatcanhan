@@ -102,6 +102,8 @@ function tgState(): array {
        Trả về đây để app biết máy chủ đang dùng mốc nào mà đẩy lên cho khớp. */
     'workFrom'   => confGet('work_from', '08:30'),
     'workTo'     => confGet('work_to', '24:00'),
+    'workWeek'   => json_decode((string)confGet('work_week', '{}'), true) ?: [],
+    'enddayHour' => (int)confGet('tg_endday_hour', '22'),
     'cron'       => '/usr/bin/php ' . __DIR__ . '/cron.php',
     'cronUrl'    => $base . '/cron.php?key=' . cronKey()];
 }
@@ -238,8 +240,20 @@ switch ($action) {
     $t = trim((string)($in['to'] ?? ''));
     $ok = preg_match('/^\d{1,2}:\d{2}$/', $f) && preg_match('/^\d{1,2}:\d{2}$/', $t);
     if ($ok) { confSet('work_from', $f); confSet('work_to', $t); }
+    /* Bảng bảy thứ: chỉ nhận đúng "HH:MM-HH:MM" hoặc "off", mục nào viết sai
+       thì bỏ mục đó chứ không vứt cả bảng — mất im lặng còn tệ hơn. */
+    if (isset($in['week']) && is_array($in['week'])) {
+      $week = [];
+      foreach ($in['week'] as $k => $v) {
+        $d = (int)$k; $v = trim((string)$v);
+        if ($d < 0 || $d > 6) continue;
+        if ($v === 'off' || preg_match('/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/', $v)) $week[(string)$d] = $v;
+      }
+      confSet('work_week', json_encode($week, JSON_UNESCAPED_UNICODE));
+    }
     out(['ok' => (bool)$ok, 'from' => confGet('work_from', '08:30'),
-         'to' => confGet('work_to', '24:00')]);
+         'to' => confGet('work_to', '24:00'),
+         'week' => json_decode((string)confGet('work_week', '{}'), true) ?: []]);
   }
 
   case 'tg_save': {
@@ -258,6 +272,8 @@ switch ($action) {
       confSet($conf, trim((string)($in[$k] ?? '')));
     $ih = isset($in['ideaHour']) ? (int)$in['ideaHour'] : 9;
     confSet('tg_idea_hour', ($ih >= 0 && $ih <= 23) ? $ih : -1);
+    $eh = isset($in['enddayHour']) ? (int)$in['enddayHour'] : 22;
+    confSet('tg_endday_hour', ($eh >= 0 && $eh <= 23) ? $eh : -1);
     $wk = isset($in['weeklyHour']) ? (int)$in['weeklyHour'] : -1;
     confSet('tg_weekly_hour', ($wk >= 0 && $wk <= 23) ? $wk : -1);
     confSet('tg_staff_weekly', !empty($in['staffWeekly']) ? '1' : '');
