@@ -200,6 +200,20 @@ function toast(msg){
   document.body.appendChild(t); setTimeout(() => t.remove(), 2100);
 }
 
+/* Dấu bản của app. Không có bước dựng nên phải tự tay đổi số này mỗi lần
+   sửa code — Cài đặt → Phiên bản đối chiếu số này với số trong file trên
+   máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
+   bản cũ. Dạng: ngày.lần-trong-ngày, so bằng chữ nên tăng dần là đúng. */
+const APP_BUILD = '2026-08-21.4';
+
+/* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
+function httpTime(v){
+  const d = new Date(String(v || ''));
+  if (isNaN(d.getTime())) return '';
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0')
+       + ' ' + fmtDate(ymd(d));
+}
+
 /* ---------------- kho dữ liệu ---------------- */
 const KEY = 'lifehub.v2';
 const OLD  = 'lifehub.v1';

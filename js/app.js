@@ -52,6 +52,10 @@ function render(){
   $('#view').innerHTML = html;
   try { renderSide(); } catch(e){}
 
+  /* Hỏi máy chủ một lần cho mỗi lần mở app, và chỉ khi vào Cài đặt — không
+     ai cần biết dấu bản lúc đang xem lịch. */
+  if (v === 'settings' && !buildAsked) buildCheck();
+
   if (v === 'staff'){
     const s2 = staff().find(x => x.id === S.staffId);
     $('#ttl').innerHTML = `<span data-act="nav" data-id="board" style="color:var(--acc);margin-right:6px;cursor:pointer">‹</span>${esc(s2 ? s2.name : '')}`;
@@ -891,6 +895,29 @@ function slotTask(id, at){
   toast(t.title + ' → ' + at + (Server.available() ? ' · Telegram sẽ nhắc đúng giờ này' : ''));
 }
 
+/* ---------------- bản đang chạy so với bản trên máy chủ ----------------
+   Hai câu hỏi khác nhau mà nhìn bề ngoài giống hệt: "Hostinger kéo code mới
+   về chưa?" và "máy mình còn giữ bản cũ à?". Hỏi thẳng file state.js trên
+   máy chủ rồi so dấu bản là tách được hai chuyện đó ra.
+   Phải no-store kèm tham số ngẫu nhiên: chính bộ nhớ đệm là thứ đang soi,
+   hỏi qua nó thì bao giờ cũng ra "giống nhau". */
+let BUILD = null, buildAsked = false;
+function buildCheck(){
+  buildAsked = true;
+  BUILD = {busy:true};
+  return fetch('js/state.js?v=' + Date.now(), {cache:'no-store'})
+    .then(r => {
+      if (!r.ok) throw new Error('máy chủ trả về ' + r.status);
+      const at = r.headers.get('last-modified') || '';
+      return r.text().then(t => {
+        const m = /APP_BUILD\s*=\s*'([^']+)'/.exec(t);
+        BUILD = {srv: m ? m[1] : '', at};
+      });
+    })
+    .catch(e => { BUILD = {err: e.message || String(e)}; })
+    .then(() => { if (S.view === 'settings') render(); });
+}
+
 /* ---------------- lịch nhập từ app khác ---------------- */
 /* Một chiều, bằng file. Lỗi phải nói ra bằng tiếng người và nói rõ mục nào
    hỏng, vì file do app khác sinh ra — mình không sửa được ở đây, chỉ có thể
@@ -1698,6 +1725,7 @@ document.addEventListener('click', e => {
     case 'workAll':  workAllLikeMonday(); break;
     case 'slotTask': slotTask(id, el.dataset.at); break;
     case 'pushTask': pushTask(id); break;
+    case 'buildAgain': buildCheck(); render(); break;
     case 'feedPick':  feedPick(); break;
     case 'feedPaste': feedPasteBox(); break;
     case 'feedSpec':  feedSpecBox(); break;

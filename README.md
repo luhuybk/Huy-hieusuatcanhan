@@ -36,6 +36,16 @@ Trong hPanel → **Git**, trỏ tới repo này và nhánh `main`, đường d�
 
 Không cần chạy lệnh gì trước khi push. Sửa code → commit → push → xong.
 
+Một việc duy nhất phải nhớ khi sửa code: **đổi `APP_BUILD` ở đầu `js/state.js`** (dạng `ngày.lần-trong-ngày`, ví dụ `2026-08-21.4`). Không có bước dựng nên không ai đổi hộ được, và **Cài đặt → Phiên bản** dựa vào số này để trả lời câu "web đã cập nhật chưa".
+
+### Web như chưa đổi gì — xem ở đâu
+
+Vào **Cài đặt → Phiên bản**. Nó nói bản đang chạy, rồi hỏi thẳng file `js/state.js` trên máy chủ (bỏ qua mọi bộ nhớ đệm) để so:
+
+* **Máy chủ cũng đang ở bản này** — code đã lên, kèm giờ file được sửa trên máy chủ.
+* **Máy chủ đã có bản mới hơn** — máy này còn giữ bản cũ. Bấm **Tải lại ngay**: nó xoá bộ nhớ đệm của service worker rồi mới tải lại.
+* **Máy chủ vẫn ở bản cũ** (số nhỏ hơn cái bạn vừa push) — Hostinger chưa kéo code về. Vào hPanel → Git → **Deploy**. Hostinger chỉ tự kéo khi webhook đã gắn bên GitHub.
+
 ### Ba điều phải nhớ
 
 1. **Bật SSL** trong hPanel. Không có `https` thì trình duyệt chặn cài app, chặn thông báo, chặn micro, và cookie đăng nhập cũng không gửi đi được.

@@ -94,6 +94,12 @@ self.addEventListener('fetch', e => {
     return;
   }
 
+  /* Có tham số trên URL nghĩa là bên gọi cố tình muốn hỏi thẳng máy chủ —
+     Cài đặt → Phiên bản làm đúng vậy để soi chính bộ nhớ đệm này. Cho đi
+     thẳng, đừng đệm: mỗi lần hỏi lại là một khoá mới, đệm lại thì mỗi lần
+     mở Cài đặt là kho phình thêm một bản state.js nữa. */
+  if (url.search) return;
+
   /* Dùng bản đã lưu trước cho nhanh, tải bản mới ngầm ở phía sau.
 
      waitUntil phải gọi ĐỒNG BỘ ngay đây. Không có nó, trình duyệt coi

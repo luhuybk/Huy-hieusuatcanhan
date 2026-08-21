@@ -48,7 +48,8 @@ a{color:var(--acc);text-decoration:none}
 .side-hd .nm{font-weight:700;letter-spacing:-.3px;font-size:15px}
 .side-hd .st{font-size:10.5px;color:var(--tx3);display:flex;align-items:center;gap:5px}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);flex:none}
-.dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)} .dot.sync{background:var(--warn);animation:pulse 1s infinite}
+.dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)} .dot.warn{background:var(--warn)}
+.dot.sync{background:var(--warn);animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
 
 .side-scroll{flex:1;overflow-y:auto;padding:4px 10px 10px}

@@ -1196,12 +1196,16 @@ http.createServer((req, res) => {
        service worker dựa vào dấu này để biết máy chủ đã có bản mới. */
     const etag = '"' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 16) + '"';
     if (req.headers['if-none-match'] === etag){ res.writeHead(304, {ETag: etag}); return res.end(); }
-    res.writeHead(200, {
+    /* Last-Modified cũng gửi luôn — Cài đặt → Phiên bản đọc header này để
+       nói "file trên máy chủ sửa lúc mấy giờ". */
+    let lm = '';
+    try { lm = fs.statSync(file).mtime.toUTCString(); } catch(_){}
+    res.writeHead(200, Object.assign({
       'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
       'Content-Length': data.length,
       'ETag': etag,
       'Cache-Control': 'no-cache, must-revalidate'
-    });
+    }, lm ? {'Last-Modified': lm} : {}));
     res.end(data);
   });
 }).listen(PORT, () => {

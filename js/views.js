@@ -1881,5 +1881,51 @@ function vSettings(){
       Ai biết tên không gian + anon key đều đọc ghi được dữ liệu đó, nên đặt tên khó đoán và
       chỉ đưa cho người bạn tin.
     </div>
+  </div>
+
+  ${buildBlock()}`;
+}
+
+/* Bản đang chạy là bản nào, và máy chủ đang giữ bản nào. Hai chuyện khác
+   nhau: code chưa được kéo về Hostinger, hay máy mình còn giữ bản cũ —
+   nhìn bề ngoài giống hệt, mà cách xử lý thì ngược nhau. */
+function buildBlock(){
+  const b = BUILD;
+  let dot = '', line = '', act = '';
+  if (!b || b.busy){
+    line = 'Đang hỏi máy chủ…';
+  } else if (b.err){
+    dot = 'bad';
+    line = 'Không hỏi được máy chủ — ' + esc(b.err);
+  } else if (b.srv === APP_BUILD){
+    dot = 'ok';
+    line = 'Máy chủ cũng đang ở bản này' +
+      (b.at ? ' · file trên máy chủ sửa lúc <b>' + esc(httpTime(b.at)) + '</b>' : '');
+  } else if (b.srv){
+    dot = 'warn';
+    line = 'Máy chủ đã có bản <b>' + esc(b.srv) + '</b> — app đang chạy bản cũ giữ trong máy này' +
+      (b.at ? ', file trên máy chủ sửa lúc <b>' + esc(httpTime(b.at)) + '</b>' : '');
+    act = `<button class="btn sm pri" data-act="doRefresh">Tải lại ngay</button>`;
+  } else {
+    dot = 'bad';
+    line = 'Không đọc được dấu bản trong file trên máy chủ — có thể máy chủ đang trả về trang khác.';
+  }
+  return `
+  ${secHd('Phiên bản')}
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <span class="dot ${dot}"></span>
+      <div class="grow"><b>Đang chạy bản ${esc(APP_BUILD)}</b></div>
+    </div>
+    <div class="dim" style="line-height:1.65">${line}</div>
+    <div class="btns" style="margin-top:12px">
+      ${act}
+      <button class="btn sm" data-act="buildAgain">Kiểm lại</button>
+    </div>
+    <div class="dim" style="margin-top:12px;line-height:1.65">
+      Dùng khi thấy web như chưa đổi gì. Máy chủ ở bản cũ hơn nghĩa là
+      Hostinger <b>chưa kéo code về</b> — vào hPanel → Git → Deploy. Máy chủ ở
+      bản mới hơn nghĩa là <b>máy này còn giữ bản cũ</b> — bấm Tải lại ngay.
+    </div>
   </div>`;
 }
