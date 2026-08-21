@@ -150,18 +150,18 @@ Riêng `api/config.php` (mã mật khẩu) và `api/data/` (cơ sở dữ liệu
 
 ### Tổng quan
 
-Màn hình mở ra nhiều nhất trong ngày, nên hình dạng của hôm nay nằm ngay đây chứ không bắt đi tìm. Ba khối đầu trả lời ba câu, theo đúng thứ tự bạn hỏi:
+Màn hình mở ra nhiều nhất trong ngày, nên hai khối đầu là hai thứ dùng để sắp xếp:
 
 | Khối | Trả lời câu |
 |---|---|
-| **Hôm nay** | *Giờ này nên làm gì?* — trục thu nhỏ, số việc, cửa sổ làm việc, đã kín bao nhiêu, việc nào đã qua giờ mà chưa tích, và ba mốc sắp tới |
-| **Chưa xếp giờ** | *Việc nào chưa có chỗ trong ngày?* — kèm nút **Xếp vào HH:MM** nhét thẳng vào khoảng trống gần nhất còn đủ chỗ |
+| **Trục cả tuần** | *Tuần này nằm ở đâu, và hôm nay nên làm gì?* — bảy cột T2→CN, bấm cột nào là mở trục ngày đó, **kéo thả được ngay tại chỗ** |
 | **Đang bị né** | *Việc nào mình đang tránh?* — những việc đã bấm **→ Mai** từ ba lần trở lên |
-| **Cần bổ sung** | *Chỗ nào còn thiếu khiến app chưa giúp được gì?* — bấm vào là mở đúng ô cần điền |
 
-Khối **Hôm nay** cố ý **không** chép cả mục Hằng ngày sang. Ở đây chỉ để nhìn và quyết định; sửa giờ, đổi số phút, tick từng dòng thì bấm **Hằng ngày →**. Hai bản sao của cùng một danh sách trên hai màn hình là hai chỗ để lệch nhau.
+Cố ý là **cả tuần** chứ không chỉ hôm nay: sắp xếp thì phải nhìn cả tuần, vì dời một việc khỏi thứ Sáu là phải biết thứ Bảy đang trống bao nhiêu.
 
-Con số **trống** ở đây tính **từ bây giờ** tới hết cửa sổ, không phải cả ngày. 22 giờ tối mà app báo *"còn trống 14h25"* thì đúng về số học nhưng vô dụng — chỗ trống hồi 9 giờ sáng đâu còn nhét được gì. Con số trống của cả ngày, cùng danh sách từng khoảng hở, nằm trong mục Hằng ngày.
+Và cố ý dùng **thẳng** khối của mục Hằng ngày chứ không dựng một bản rút gọn riêng — kéo thả được luôn, và hai màn hình không bao giờ lệch nhau vì chúng là một. `S.dailyDay` dùng chung, nên đổi ngày ở đây thì mở mục Hằng ngày cũng đúng ngày đó.
+
+Khi ngày đang xem **là hôm nay**, khối *Cửa sổ / Kín / Trống* nói thêm hai con số chỉ đúng cho hôm nay: chỗ trống tính **từ bây giờ** tới hết cửa sổ (22 giờ tối mà báo *"còn trống 14h25"* thì đúng về số học nhưng vô dụng — chỗ trống hồi 9 giờ sáng đâu còn nhét được gì), và những việc **đã qua giờ mà chưa tích**.
 
 #### Đang bị né — ba đường ra, không có đường thứ tư
 
@@ -177,9 +177,7 @@ Cả ba đều **kết thúc việc cũ**. Để nó nằm lại thì hôm sau n
 
 Khối này cũng vào **tổng kết tuần Telegram** (🔁 *Đang bị né*), tách riêng khỏi khối ⚠️ *Đang trễ*: trễ là chưa kịp làm, né là chuyện khác, và cách xử hai thứ đó khác nhau.
 
-**Cần bổ sung** chỉ nêu thứ mà thiếu nó thì app *không làm được việc gì*: việc chưa có hạn (sẽ không bao giờ nổi lên), việc đến hạn mà chưa ước tính số phút (không xếp vào chỗ trống được), việc hằng ngày đang bật mà chưa chọn thứ hay chưa đặt giờ (không hiện ở ngày nào cả), việc chưa gán mảng. Ô trống nào không cản trở gì thì kệ nó — nhắc mọi ô trống thì chỉ vài hôm là bạn ngó lơ cả khối.
-
-Dưới ba khối đó là phần cũ: việc đã giao đang trễ, dịp và sinh nhật sắp tới, ân tình chưa trả, và mục **“Hôm nay nên hỏi thăm ai”** gợi ý ba người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
+Dưới hai khối đó là phần cũ: việc đã giao đang trễ, dịp và sinh nhật sắp tới, ân tình chưa trả, và mục **“Hôm nay nên hỏi thăm ai”** gợi ý ba người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
 
 ### Quan hệ — năm module S / S2 / A / B / C
 Cuộn một mạch từ trên xuống, mỗi nhóm là một khối riêng có tiêu đề và đường ngăn, người bên trong hiển thị dạng **thẻ**.
@@ -479,9 +477,15 @@ Nhật ký bài học. Hai loại ghi, cùng kết ở một chỗ.
 
 #### Gốc vấn đề — thứ biến cuốn nhật ký thành cái gương
 
-Mỗi mục có thêm ô **Gốc vấn đề**: một nhãn ngắn như `cầu toàn`, `nóng vội`, `không hỏi lại`. Gõ tự do, có gợi ý sẵn, và **gốc bạn đã dùng sẽ tự vào danh sách gợi ý lần sau** — dùng select thì mỗi lần gặp một gốc chưa có tên là phải đi sửa code, mà gốc thì mỗi người mỗi khác.
+Mỗi mục có thêm ô **Gốc vấn đề**, và **chọn được nhiều** — một chuyện hỏng thường có mấy yếu tố cùng góp vào (cầu toàn *cộng* nóng vội *cộng* không hiểu cảm xúc người kia). Ép chọn đúng một cái "chính" thì mấy cái kia biến mất khỏi thống kê, mà chúng mới là thứ đáng đếm.
 
-Cái nhãn đó để làm một việc: gom lại. Đọc từng mục riêng lẻ thì mục nào cũng có vẻ là chuyện riêng của hôm đó. Gom theo gốc mới thấy cùng một chuyện đang quay lại lần thứ ba. Đầu mục Hành trình có khối **Gốc lặp lại** liệt kê mọi gốc đã gặp **từ 2 lần trở lên** (gốc nào cũng đúng một lần thì chẳng nói lên điều gì) — bấm vào một nhãn là lọc còn đúng những mục cùng gốc. Trên thẻ, nhãn ghi luôn *lần thứ mấy*, và từ 3 lần trở lên nó chuyển sang màu đỏ.
+Ô này là **một dãy nút bấm**: mọi gốc bạn từng dùng, rồi tới gợi ý sẵn. Gốc chưa có thì gõ vào ô bên dưới, cách nhau bằng dấu phẩy — gõ xong nó tự thành nút cho lần sau. Chữ được chuẩn hoá về chữ thường và bỏ khoảng trắng thừa, nên `Cầu Toàn ` và `cầu toàn` được đếm là một.
+
+Cái nhãn đó để làm một việc: gom lại. Đọc từng mục riêng lẻ thì mục nào cũng có vẻ là chuyện riêng của hôm đó. Gom theo gốc mới thấy cùng một chuyện đang quay lại lần thứ ba. Đầu mục Hành trình có khối **Gốc lặp lại** liệt kê mọi gốc đã gặp **từ 2 lần trở lên** (gốc nào cũng đúng một lần thì chẳng nói lên điều gì) — bấm vào một nhãn là lọc còn đúng những mục cùng gốc, kể cả mục mang nhiều gốc.
+
+Trên thẻ, **mỗi gốc một nhãn riêng**, và mỗi nhãn mang số lần của riêng nó: cùng một chuyện có thể là *lần 3* của `cầu toàn` mà mới là *lần 1* của `nóng vội`. Từ 3 lần trở lên nhãn chuyển sang màu đỏ.
+
+Mục ghi từ bản trước — kể cả khi bạn đã gõ mấy gốc ngăn bằng dấu phẩy vào một ô — được tách ra đúng như vậy, không mất gì.
 
 #### Nối với danh bạ
 

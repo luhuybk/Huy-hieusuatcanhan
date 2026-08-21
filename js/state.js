@@ -205,7 +205,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-21.10';
+const APP_BUILD = '2026-08-21.11';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -355,9 +355,17 @@ function ensure(){
   /* Hành trình phát triển. Hai loại ghi: lỗi lầm và bài học. Loại lạ thì
      đưa về "bài học" — mất một cái nhãn còn hơn mất cả bản ghi. */
   db.journey.forEach(o => { if (!JOURNEY_KIND[o.kind]) o.kind = 'hoc';
-    /* gốc vấn đề: một nhãn ngắn để nhận ra chuyện cũ lặp lại */
-    if (typeof o.cause !== 'string') o.cause = '';
-    o.cause = o.cause.trim().slice(0, 32);
+    /* Gốc vấn đề: NHIỀU nhãn, vì một chuyện hỏng thường có mấy yếu tố cùng
+       góp vào — cầu toàn cộng nóng vội cộng không hiểu người kia. Bắt chọn
+       đúng một gốc thì phải chọn cái "chính", mà chọn xong là mất luôn mấy
+       cái kia khỏi thống kê.
+       Bản trước chỉ có một ô chữ; ai đã gõ mấy gốc ngăn bằng dấu phẩy vào đó
+       thì tách ra đúng như vậy, không mất gì. */
+    if (!Array.isArray(o.causes)) o.causes = [];
+    if (typeof o.cause === 'string' && o.cause.trim())
+      o.causes = o.causes.concat(splitCauses(o.cause));
+    delete o.cause;
+    o.causes = [...new Set(o.causes.map(cleanCause).filter(Boolean))].slice(0, 8);
     /* người trong danh bạ chịu ảnh hưởng — ô "who" vẫn giữ cho ai không có trong danh bạ */
     if (!Array.isArray(o.whoIds)) o.whoIds = [];
     o.whoIds = o.whoIds.filter(id => typeof id === 'string');
@@ -505,37 +513,6 @@ function duckedTasks(areaId){
     .filter(t => !t.done && (t.pushes || 0) >= PUSH_LIMIT)
     .sort((a, b) => (b.pushes || 0) - (a.pushes || 0)
                  || String(a.due || '').localeCompare(String(b.due || '')));
-}
-
-/* ---- những chỗ còn thiếu ----
-   Chỉ nêu thứ mà thiếu nó thì app KHÔNG LÀM ĐƯỢC việc gì cho mình: không
-   xếp được vào trục, không nhắc được, không lọc được. Ô trống nào không cản
-   trở gì thì kệ nó — nhắc mọi ô trống thì chỉ vài hôm là mình ngó lơ cả khối.
-   Mỗi việc chỉ nêu MỘT chỗ thiếu, cái cản trở nhất, để danh sách còn đọc được. */
-function needFill(areaId){
-  const A = areaId === undefined ? 'all' : areaId;
-  const nArea = areas().length;
-  const out = [];
-  byArea(tasks(), A).forEach(t => {
-    const nm = t.title || 'Việc chưa đặt tên';
-    if (!t.due)
-      out.push({id:t.id, act:'editTask', areaId:t.areaId, title:nm,
-                why:'chưa có hạn — sẽ không bao giờ nổi lên'});
-    else if (dayDiff(t.due) <= 0 && !taskEst(t))
-      out.push({id:t.id, act:'editTask', areaId:t.areaId, title:nm,
-                why:'đến hạn rồi mà chưa ước tính mất bao lâu — chưa xếp vào chỗ trống được'});
-    else if (nArea > 1 && !t.areaId)
-      out.push({id:t.id, act:'editTask', areaId:'', title:nm, why:'chưa gán mảng việc'});
-  });
-  byArea(reminders(), A).forEach(r => {
-    if (r.enabled && !(r.days || []).length)
-      out.push({id:r.id, act:'editRem', areaId:r.areaId, title:r.title || 'Việc hằng ngày',
-                why:'đang bật mà chưa chọn thứ nào — không hiện ở ngày nào cả'});
-    else if (r.enabled && hhmm2min(r.time) === null)
-      out.push({id:r.id, act:'editRem', areaId:r.areaId, title:r.title || 'Việc hằng ngày',
-                why:'chưa đặt giờ — không lên được trục'});
-  });
-  return out;
 }
 function lateCards(){ return cards().filter(c => c.col !== 'done' && c.due && dayDiff(c.due) < 0); }
 function staleP(){
@@ -1145,7 +1122,16 @@ const JOURNEY_KIND = {loi:'Lỗi lầm', hoc:'Bài học'};
    Cố ý viết ở ngôi mình, không phải ngôi kể tội người khác. */
 const CAUSE_HINTS = ['cầu toàn', 'nóng vội', 'không hỏi lại', 'chủ quan',
   'thiếu chuẩn bị', 'ôm đồm', 'nể nang', 'thiếu thông tin', 'quên',
-  'nói không rõ ý', 'không đặt giới hạn', 'để cảm xúc dẫn'];
+  'nói không rõ ý', 'không đặt giới hạn', 'để cảm xúc dẫn',
+  'không hiểu cảm xúc người khác', 'không đặt mình vào vị trí họ'];
+/* Đưa về một dạng duy nhất để đếm cho đúng — "Cầu Toàn " với "cầu toàn"
+   mà tính thành hai gốc khác nhau thì con số lặp lại vô nghĩa. */
+const cleanCause = v => String(v == null ? '' : v)
+  .trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 32);
+/* Gõ tay thì ngăn bằng dấu phẩy, chấm phẩy hay xuống dòng đều được. */
+const splitCauses = v => String(v == null ? '' : v)
+  .split(/[,;\n]/).map(cleanCause).filter(Boolean);
+const causesOf = o => (o && Array.isArray(o.causes) ? o.causes : []).filter(Boolean);
 const JOURNEY_ICON = {loi:'⚠', hoc:'💡'};
 function journeys(){ return alive(db.journey); }
 /* Mới nhất lên trước. Cùng ngày thì cái vừa sửa lên trên, để vừa ghi xong
@@ -1153,7 +1139,7 @@ function journeys(){ return alive(db.journey); }
 function journeyList(areaId, kind, cause){
   return byArea(journeys(), areaId === undefined ? 'all' : areaId)
     .filter(o => !kind || kind === 'all' || o.kind === kind)
-    .filter(o => !cause || (o.cause || '').trim() === cause)
+    .filter(o => !cause || causesOf(o).includes(cause))
     .sort((a, b) => String(b.date).localeCompare(String(a.date))
                  || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
@@ -1163,10 +1149,8 @@ function journeyList(areaId, kind, cause){
    là tính cách. */
 function causeStats(areaId){
   const m = new Map();
-  byArea(journeys(), areaId === undefined ? 'all' : areaId).forEach(o => {
-    const c = (o.cause || '').trim();
-    if (c) m.set(c, (m.get(c) || 0) + 1);
-  });
+  byArea(journeys(), areaId === undefined ? 'all' : areaId)
+    .forEach(o => causesOf(o).forEach(c => m.set(c, (m.get(c) || 0) + 1)));
   return [...m.entries()].map(([cause, n]) => ({cause, n}))
     .sort((a, b) => b.n - a.n || a.cause.localeCompare(b.cause));
 }
@@ -1175,12 +1159,14 @@ function causeOptions(){
   const used = causeStats('all').map(x => x.cause);
   return used.concat(CAUSE_HINTS.filter(c => !used.includes(c)));
 }
-/* Mục này là lần thứ mấy của cùng một gốc, tính theo thứ tự ngày. */
-function causeNth(o){
-  const c = (o.cause || '').trim();
+/* Mục này là lần thứ mấy của MỘT gốc cụ thể, tính theo thứ tự ngày.
+   Tính riêng từng gốc: cùng một chuyện có thể là lần thứ 3 của "cầu toàn"
+   nhưng mới là lần đầu của "nóng vội". */
+function causeNth(o, c){
   if (!c) return 0;
-  const same = journeys().filter(x => (x.cause || '').trim() === c)
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const same = journeys().filter(x => causesOf(x).includes(c))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date))
+                 || String(a.id).localeCompare(String(b.id)));
   return same.findIndex(x => x.id === o.id) + 1;
 }
 /* Hành trình có nhắc tới một người — dùng ở trang của người đó. */

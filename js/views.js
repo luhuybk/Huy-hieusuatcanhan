@@ -86,102 +86,14 @@ function renderSide(){
 }
 
 /* ---------------- TỔNG QUAN ---------------- */
-/* ---------------- TỔNG QUAN: KHỐI HÔM NAY ----------------
-   Đây là màn hình mở ra nhiều nhất trong ngày, nên hình dạng của hôm nay
-   phải nằm ở đây chứ không bắt đi tìm. Cố ý KHÔNG chép cả mục Hằng ngày
-   sang: chỗ này trả lời "giờ này nên làm gì, còn thiếu chỗ nào", còn sửa
-   giờ với tick từng dòng thì bấm sang mục kia. Hai bản sao của cùng một
-   danh sách trên hai màn hình là hai chỗ để lệch nhau. */
-function dashToday(A){
-  const wd = new Date().getDay(), w = workWindow(wd);
-  const items = todayItems(A), un = todayUnscheduled(A);
-  const open = `<button data-act="nav" data-id="daily">Hằng ngày →</button>`;
-
-  if (!items.length && !un.length)
-    return secHd('Hôm nay · ' + WDAY_NAME[wd] + ' ' + fmtDate(today()).slice(0, 5), open) +
-      `<div class="card"><div class="dim" style="line-height:1.65">
-        Hôm nay chưa có gì trên trục. Thêm việc hằng ngày trong mục
-        <b>Hằng ngày</b>, hoặc đặt hạn cho một việc lẻ là nó tự hiện ở đây.</div></div>`;
-
-  const load = dayLoad(items), clash = dayClash(items);
-  const nowMin = (d => d.getHours() * 60 + d.getMinutes())(new Date());
-  /* Lịch của app khác không tick được ở đây nên để ngoài mọi phép đếm
-     "xong / chưa xong" — không thì thanh tiến độ chẳng bao giờ đầy. */
-  const mine  = items.filter(x => x.kind !== 'feed');
-  const total = mine.length + un.length;
-  const done  = mine.filter(x => x.done).length + un.filter(taskDoneToday).length;
-  /* Đã qua giờ mà chưa tick — thứ đáng nói nhất lúc 3 giờ chiều. */
-  const slip  = mine.filter(x => !x.done && x.start + x.mins <= nowMin);
-  const next  = items.filter(x => !x.done && x.start + x.mins > nowMin).slice(0, 3);
-
-  /* Tiêu đề chỉ giữ ngày. Nhét cả số việc vào đây thì trên khổ 375px nó gãy
-     làm hai dòng và đẩy luôn cái nút xuống — mấy con số để trong thẻ vừa hơn. */
-  let h = secHd('Hôm nay · ' + WDAY_NAME[wd] + ' ' + fmtDate(today()).slice(0, 5), open);
-  h += `<div class="card" style="margin-bottom:12px">
-    ${items.length ? tlBar(items, clash, wd) : ''}
-    <div class="row dim" style="gap:12px;flex-wrap:wrap;margin-top:${items.length ? '10px' : '0'}">
-      <span><b style="color:var(--tx)">${load.count} việc</b> · ${fmtDur(load.mins)}</span>
-      ${w.off
-        ? `<span style="color:var(--warn)">😴 <b>Ngày nghỉ</b></span>`
-        : `<span>Cửa sổ <b style="color:var(--tx)">${winText(w.from)}–${winText(w.to)}</b></span>
-           <span>Kín <b style="color:var(--tx)">${fmtDur(busyMins(items, wd))}</b></span>`}
-      ${clash.size ? `<span style="color:var(--bad)">⚠ ${clash.size} việc chồng giờ</span>` : ''}
-    </div>
-    ${/* Cố tình chỉ đưa MỘT con số trống, và là con số tính từ bây giờ. Mục
-          Hằng ngày có con số trống của cả ngày cùng danh sách khoảng hở; để
-          cả hai cạnh nhau ở đây thì hai số khác nhau cùng tên "Trống", và
-          lúc cần quyết định thì mình sẽ tin nhầm cái rộng hơn. */''}
-    ${w.off ? '' : `<div class="dim" style="margin-top:7px">
-      Từ bây giờ tới ${winText(w.to)} còn trống <b style="color:var(--ok)">${
-        fmtDur(freeAhead(items))}</b> — đó mới là chỗ thật sự còn nhét được.</div>`}
-    ${slip.length ? `<div class="dim" style="margin-top:9px;color:var(--warn)">
-      ${slip.length} việc đã qua giờ mà chưa tích: ${
-        slip.slice(0, 3).map(x => esc(min2hhmm(x.start) + ' ' + x.title)).join(' · ')}${
-        slip.length > 3 ? ' …' : ''}</div>` : ''}
-    <div class="hr"></div>
-    ${chkHead(done, total)}
-    ${next.length ? `<div class="dim" style="margin-top:10px;line-height:1.7">
-      <b style="color:var(--tx)">Sắp tới:</b> ${next.map(x =>
-        esc(min2hhmm(x.start) + ' ' + x.title) +
-        (x.kind === 'feed' ? ` <i>(${esc(x.src)})</i>` : '')).join(' · ')}</div>`
-      : `<div class="dim" style="margin-top:10px">Hết việc theo giờ trong hôm nay.</div>`}
-  </div>`;
-  return h;
-}
-
-/* Việc đến hạn mà chưa có giờ — chỗ duy nhất trên Tổng quan bấm một nút là
-   xong việc luôn, nên để nguyên nút "Xếp vào HH:MM" chứ không chỉ liệt kê. */
-function dashUnsched(A){
-  const un = todayUnscheduled(A);
-  if (!un.length) return '';
-  const items = todayItems(A);
-  const tot = un.reduce((n, t) => n + taskMins(t), 0);
-  let h = secHd('Chưa xếp giờ — ' + un.length + ' việc · ~' + fmtDur(tot),
-                `<button data-act="nav" data-id="daily">Mở Hằng ngày →</button>`);
-  h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
-    Đến hạn hôm nay nhưng chưa có giờ nên chưa nằm trên trục.
-    Bấm <b>Xếp vào</b> là app nhét vào khoảng trống gần nhất còn đủ chỗ.</div>`;
-  /* Xếp nối tiếp: việc vừa đề xuất xong coi như đã nằm trong ngày, để việc
-     kế tiếp không nhận đúng cái giờ đó lần nữa. */
-  const plan = items.slice();
-  /* Cắt ở bốn dòng: Tổng quan là chỗ liếc, không phải chỗ cuộn. Vẫn tính
-     gợi ý giờ cho cả danh sách để bốn dòng đầu không nhận trùng giờ nhau. */
-  const rows = un.map(t => {
-    if (taskDoneToday(t)) return unschedRow(t, '');
-    const need = taskMins(t), at = nextFreeSlot(plan, need);
-    if (at !== null) plan.push({id:'plan_' + t.id, start:at, mins:need, on:true});
-    return unschedRow(t, slotBtn(t, at, need));
-  });
-  h += rows.slice(0, 4).join('');
-  if (rows.length > 4)
-    h += `<div class="dim" style="margin-top:8px;cursor:pointer" data-act="nav" data-id="daily">
-      +${rows.length - 4} việc nữa — mở Hằng ngày để xếp nốt →</div>`;
-  return h;
-}
-
-/* Việc đã dời từ ba lần trở lên. Đặt ngay dưới "Chưa xếp giờ" vì nó chính
-   là chỗ mấy việc kia sẽ trôi tới nếu cứ bấm "→ Mai" mãi. Ba nút, không có
-   nút thứ tư nào tên là "để đó" — cái đó bấm bằng cách không làm gì cả. */
+/* ---------------- TỔNG QUAN: TRỤC CẢ TUẦN ----------------
+   Đây là màn hình mở ra nhiều nhất trong ngày, nên thứ nằm ở đây phải là
+   thứ dùng để sắp xếp — mà sắp xếp thì cần nhìn cả tuần chứ không chỉ hôm
+   nay: dời một việc khỏi thứ Sáu là phải biết thứ Bảy đang trống bao nhiêu.
+   Dùng thẳng khối của mục Hằng ngày, không dựng bản rút gọn riêng: kéo thả
+   được luôn, và hai màn hình không bao giờ lệch nhau vì chúng là một. */
+/* Việc đã dời từ ba lần trở lên. Ba nút, không có nút thứ tư nào tên là
+   "để đó" — cái đó bấm bằng cách không làm gì cả. */
 function dashDucked(A){
   const list = duckedTasks(A);
   if (!list.length) return '';
@@ -216,21 +128,9 @@ function dashDucked(A){
   return h;
 }
 
-/* Chỗ còn thiếu thông tin. Bấm vào là mở đúng form để điền nốt. */
-function dashFill(A){
-  const g = needFill(A);
-  if (!g.length) return '';
-  let h = secHd('Cần bổ sung — ' + g.length + ' chỗ');
-  h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
-    Thiếu mấy chỗ này thì app chưa giúp được gì: không xếp vào trục được,
-    không nhắc được, không lọc được. Bấm vào là mở đúng ô cần điền.</div>`;
-  h += g.slice(0, 6).map(x => `<div class="item" data-act="${x.act}" data-id="${x.id}">
-      <div class="grow" style="min-width:0">
-        <div class="t ell">${areaDot(x.areaId) ? areaDot(x.areaId) + ' ' : ''}${esc(x.title)}</div>
-        <div class="s">${esc(x.why)}</div></div>
-      <span class="chip warn">Bổ sung</span></div>`).join('');
-  if (g.length > 6) h += `<div class="dim" style="margin-top:8px">+${g.length - 6} chỗ nữa</div>`;
-  return h;
+function dashWeek(A){
+  return secHd('Trục cả tuần', `<button data-act="nav" data-id="daily">Hằng ngày →</button>`)
+       + dailyWeek(A, true);
 }
 
 function vDash(){
@@ -262,12 +162,10 @@ function vDash(){
     <div class="stat"><div class="v" style="${totalDebt?'color:var(--bad)':''}">${moneyShort(totalDebt)}</div><div class="l">Nợ ân tình</div></div>
   </div>`;
 
-  /* Hôm nay lên trước mọi thứ khác: đây là câu hỏi mình mở app ra để hỏi. */
+  /* Trục tuần lên trước mọi thứ khác: đây là câu hỏi mình mở app ra để hỏi. */
   h += feedNote();
-  h += dashToday(A);
-  h += dashUnsched(A);
+  h += dashWeek(A);
   h += dashDucked(A);
-  h += dashFill(A);
 
   /* gợi ý chạm nhẹ — chống vô tâm */
   const touch = stale.slice().sort((a,b) =>
@@ -473,7 +371,8 @@ function vPerson(){
         <div class="t ell">${JOURNEY_ICON[o.kind]} ${esc(o.title || '(chưa đặt tên)')}</div>
         <div class="s ell">${esc(fmtDate(o.date))}${o.lesson ? ' · ' + esc(o.lesson) : ''}</div>
       </div>
-      ${o.cause ? `<span class="chip warn">⟲ ${esc(o.cause)}</span>` : ''}</div>`).join('');
+      ${causesOf(o).slice(0, 2).map(c => `<span class="chip warn">⟲ ${esc(c)}</span>`).join('')}${
+        causesOf(o).length > 2 ? `<span class="chip">+${causesOf(o).length - 2}</span>` : ''}</div>`).join('');
     if (jn.length > 5) h += `<div class="dim" style="margin-top:6px">+${jn.length - 5} mục nữa</div>`;
   }
 
@@ -1594,11 +1493,25 @@ function gapBlock(items, clash, prog, wd){
          style="cursor:pointer">Cửa sổ <b style="color:var(--tx)">${winText(w.from)}–${winText(w.to)}</b></span>
        <span title="Đếm theo đồng hồ trong cửa sổ — hai việc chồng nhau chỉ tính một lần, nên khi nó nhỏ hơn tổng ở trên là mình đang nhét hai việc vào cùng một khoảng">Kín <b style="color:var(--tx)">${fmtDur(busy)}</b></span>
        <span>Trống <b style="color:var(--ok)">${fmtDur(free)}</b></span>`;
+  /* Đang xem đúng hôm nay thì hai con số nữa mới thật sự dùng được: chỗ còn
+     lại tính TỪ BÂY GIỜ (chỗ trống hồi 9 giờ sáng đâu nhét được gì nữa), và
+     những việc đã qua giờ mà chưa tích. Ngày khác thì cả hai đều vô nghĩa. */
+  const live = wdDate(wd === undefined ? new Date().getDay() : wd) === today();
+  const nowMin = (d => d.getHours() * 60 + d.getMinutes())(new Date());
+  const slip = live ? items.filter(x => x.kind !== 'feed' && !x.done
+                                     && x.start + x.mins <= nowMin) : [];
   return `<div class="card" style="margin-bottom:12px">
     <div class="row dim" style="gap:12px;flex-wrap:wrap">
       ${head}
       ${clash.size ? `<span style="color:var(--bad)">⚠ ${clash.size} việc chồng giờ</span>` : ''}
     </div>
+    ${live && !w.off ? `<div class="dim" style="margin-top:7px">
+      Từ bây giờ tới ${winText(w.to)} còn trống <b style="color:var(--ok)">${
+        fmtDur(freeAhead(items))}</b> — đó mới là chỗ thật sự còn nhét được.</div>` : ''}
+    ${slip.length ? `<div class="dim" style="margin-top:7px;color:var(--warn)">
+      ${slip.length} việc đã qua giờ mà chưa tích: ${
+        slip.slice(0, 3).map(x => esc(min2hhmm(x.start) + ' ' + x.title)).join(' · ')}${
+        slip.length > 3 ? ' …' : ''}</div>` : ''}
     ${w.off ? '' : gaps.length ? `<div class="gaps">` + gaps.map(g =>
       `<span class="gap">${winText(g.from)} → ${winText(g.to)} <b>${fmtDur(g.mins)}</b></span>`).join('')
       + `</div>` : `<div class="dim" style="margin-top:9px">Không còn khoảng trống nào từ 30 phút trở lên.</div>`}
@@ -1678,7 +1591,9 @@ function taskWeekRow(x, clash, past, live){
   </div>`;
 }
 
-function dailyWeek(A){
+function dailyWeek(A, embed){
+  /* embed = đang nằm giữa Tổng quan, còn khối khác ở dưới nên không cần
+     chừa chỗ cho nút tròn. */
   const wk = weekLoad(A);
   const busiest = Math.max(1, ...wk.map(d => d.load.mins));
   const totalClash = wk.reduce((n, d) => n + d.load.clash, 0);
@@ -1742,7 +1657,7 @@ function dailyWeek(A){
       return unschedRow(t, slotBtn(t, at, need), dstr, live);
     }).join('');
   }
-  return h + `<div style="height:56px"></div>`;   /* nút tròn khỏi đè lên hàng cuối */
+  return h + (embed ? '' : `<div style="height:56px"></div>`);   /* nút tròn khỏi đè lên hàng cuối */
 }
 
 /* Nguồn lâu chưa nhập lại thì nói ra. Con số "trống 3h" dựng trên lịch của
@@ -1856,17 +1771,20 @@ const J_DETAIL = [['story','Sự việc'], ['who','Ảnh hưởng tới'],
                   ['root','Vấn đề cốt lõi'], ['fix','Cách khắc phục']];
 const jDetailN = o => J_DETAIL.filter(([k]) => o[k]).length;
 
-/* Nhãn gốc, kèm "lần thứ N" khi đã lặp. Con số đó mới là thứ đáng nhìn:
-   một chuyện là chuyện, ba chuyện cùng gốc là tính cách. */
-function causeChip(o, clickable){
-  const c = (o.cause || '').trim();
-  if (!c) return '';
-  const nth = causeNth(o), n = causeStats('all').find(x => x.cause === c);
-  const many = n && n.n >= 3;
-  return `<span class="chip ${many ? 'bad' : 'warn'}"${
-    clickable ? ` data-act="journeyCause" data-id="${esc(c)}" style="cursor:pointer"` : ''
-  } title="Gốc vấn đề${n && n.n > 1 ? ` — đã gặp ${n.n} lần` : ''}">⟲ ${esc(c)}${
-    nth > 1 ? ` · lần ${nth}` : ''}</span>`;
+/* Một nhãn cho mỗi gốc, và mỗi nhãn mang số lần của RIÊNG nó: cùng một
+   chuyện có thể là lần thứ 3 của "cầu toàn" mà mới là lần đầu của "nóng
+   vội". Con số đó mới là thứ đáng nhìn — một chuyện là chuyện, ba chuyện
+   cùng gốc là tính cách. */
+function causeChips(o, clickable){
+  const stats = causeStats('all');
+  return causesOf(o).map(c => {
+    const nth = causeNth(o, c), n = stats.find(x => x.cause === c);
+    const many = n && n.n >= 3;
+    return `<span class="chip ${many ? 'bad' : 'warn'}"${
+      clickable ? ` data-act="journeyCause" data-id="${esc(c)}" style="cursor:pointer"` : ''
+    } title="Gốc vấn đề${n && n.n > 1 ? ` — đã gặp ${n.n} lần` : ''}">⟲ ${esc(c)}${
+      nth > 1 ? ` · lần ${nth}` : ''}</span>`;
+  }).join('');
 }
 /* Người trong danh bạ — bấm là sang thẳng trang của họ */
 function whoChips(o){
@@ -1893,8 +1811,8 @@ function journeyCard(o){
       <button class="iconbtn sm" data-act="editJourney" data-id="${o.id}" title="Sửa">✎</button>
     </div>
     <div class="jt" data-act="viewJourney" data-id="${o.id}">${esc(o.title || '(chưa đặt tên)')}</div>
-    ${o.cause || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
-      ${causeChip(o, true)}${whoChips(o)}</div>` : ''}
+    ${causesOf(o).length || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+      ${causeChips(o, true)}${whoChips(o)}</div>` : ''}
     ${o.lesson ? `<div class="jless" data-act="viewJourney" data-id="${o.id}"><span class="lb">Bài học</span>${
       esc(o.lesson)}</div>` : ''}
     ${n ? `<div class="row jmore" data-act="viewJourney" data-id="${o.id}">
@@ -1916,8 +1834,8 @@ function journeyView(o){
       ${a ? `<span class="chip"><span class="sw" style="background:${esc(a.color)}"></span>${esc(a.name)}</span>` : ''}
     </div>
     <h2 style="margin-bottom:12px">${esc(o.title || '(chưa đặt tên)')}</h2>
-    ${o.cause || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:12px">
-      ${causeChip(o, false)}${whoChips(o)}</div>` : ''}
+    ${causesOf(o).length || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${causeChips(o, false)}${whoChips(o)}</div>` : ''}
     ${o.lesson ? `<div class="jless"><span class="lb">Bài học</span>${esc(o.lesson)}</div>` : ''}
     ${detail ? `<div class="jdet">${detail}</div>`
              : `<div class="dim" style="margin-top:12px">Chưa ghi diễn biến, chỉ có bài học.</div>`}

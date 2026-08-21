@@ -930,8 +930,9 @@ const journeyFields = kind => kind === 'loi' ? [
   {k:'fix',    label:'Cách khắc phục', type:'textarea', voice:true, ph:'chữa lần này, và chặn lần sau'},
   {k:'lesson', label:'Bài học rút ra', type:'textarea', voice:true,
    hint:'câu này là thứ sáu tháng nữa mình đọc lại — viết cho mình lúc đó hiểu'},
-  {k:'cause',  label:'Gốc vấn đề', list:causeOptions(), ph:'cầu toàn, nóng vội, không hỏi lại…',
-   hint:'một nhãn ngắn thôi. Ba chuyện cùng một gốc thì đó không còn là chuyện, mà là tính cách'},
+  {k:'causes', label:'Gốc vấn đề', type:'multi', opts:causeOptions().map(c => [c, c]),
+   hint:'chọn hết những yếu tố đã góp vào — một chuyện hỏng thường có mấy gốc cùng lúc, ép chọn một cái thì mấy cái kia biến mất khỏi thống kê'},
+  {k:'causeNew', label:'Gốc chưa có ở trên', ph:'gõ thêm, cách nhau bằng dấu phẩy'},
   {k:'kind',   label:'Loại', type:'select', opts:Object.entries(JOURNEY_KIND)}
 ] : [
   {k:'title',  label:'Hôm nay học được gì', voice:true, ph:'một câu gọn'},
@@ -942,9 +943,19 @@ const journeyFields = kind => kind === 'loi' ? [
   {k:'lesson', label:'Bài học tổng', type:'textarea', voice:true,
    hint:'rút gọn thành nguyên tắc dùng được cho lần sau'},
   {k:'whoIds', label:'Liên quan tới ai trong danh bạ', type:'people'},
-  {k:'cause',  label:'Gốc vấn đề', list:causeOptions(), ph:'để trống cũng được'},
+  {k:'causes', label:'Gốc vấn đề', type:'multi', opts:causeOptions().map(c => [c, c]),
+   hint:'để trống cũng được'},
+  {k:'causeNew', label:'Gốc chưa có ở trên', ph:'gõ thêm, cách nhau bằng dấu phẩy'},
   {k:'kind',   label:'Loại', type:'select', opts:Object.entries(JOURNEY_KIND)}
 ];
+/* Ô "gõ thêm" chỉ là lối vào, không phải một trường dữ liệu — gộp vào mảng
+   gốc rồi bỏ đi, không thì nó theo cả sang máy chủ và lần sửa sau lại hiện
+   ra nguyên si những gốc mình đã chọn thành nút. */
+function mergeCauses(v){
+  v.causes = [...new Set(causesOf(v).concat(splitCauses(v.causeNew)))].slice(0, 8);
+  delete v.causeNew;
+  return v;
+}
 function addJourney(kind){
   const k = JOURNEY_KIND[kind] ? kind : 'hoc';
   openForm({title:k === 'loi' ? 'Ghi một lỗi lầm' : 'Ghi một bài học',
@@ -952,7 +963,8 @@ function addJourney(kind){
     values:{kind:k, date:today(), areaId:S.area === 'all' ? '' : S.area},
     onSave(v){
       db.journey.push(stamp(Object.assign(
-        {kind:k, story:'', who:'', root:'', fix:'', lesson:'', cause:'', whoIds:[]}, v)));
+        {kind:k, story:'', who:'', root:'', fix:'', lesson:'', causes:[], whoIds:[]},
+        mergeCauses(v))));
       save(); S.view = 'journey'; S.journeytab = 'all'; render();
       toast('Đã ghi vào hành trình');
     }});
@@ -1045,7 +1057,7 @@ function editJourney(id){
   openForm({title:'Sửa mục hành trình', fields:journeyFields(o.kind), values:o,
     extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px"
       data-act="delJourney" data-id="${id}">Xoá mục này</button>`,
-    onSave(v){ Object.assign(o, v); stamp(o); save(); render(); }});
+    onSave(v){ Object.assign(o, mergeCauses(v)); stamp(o); save(); render(); }});
 }
 function delJourney(id){
   const o = db.journey.find(x => x.id === id); if (!o) return;
