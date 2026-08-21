@@ -204,7 +204,7 @@ function toast(msg){
    sửa code — Cài đặt → Phiên bản đối chiếu số này với số trong file trên
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày, so bằng chữ nên tăng dần là đúng. */
-const APP_BUILD = '2026-08-21.4';
+const APP_BUILD = '2026-08-21.5';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -217,12 +217,12 @@ function httpTime(v){
 /* ---------------- kho dữ liệu ---------------- */
 const KEY = 'lifehub.v2';
 const OLD  = 'lifehub.v1';
-const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds'];
+const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds','journey'];
 
 function blank(){
   return {
     people:[], gifts:[], tasks:[], ideas:[], cards:[], staff:[], areas:[], occasions:[], inbox:[],
-    reminders:[], feeds:[],
+    reminders:[], feeds:[], journey:[],
     settings:{
       theme:'dark',
       notifyHour:8,
@@ -351,6 +351,12 @@ function ensure(){
                           if(typeof f.importedAt!=='string') f.importedAt='';
                           f.mins = cleanMins(f.mins, 15);
                           if (!f.title || hhmm2min(f.time) === null || (!f.date && !f.days.length)) f.deleted = true; });
+  /* Hành trình phát triển. Hai loại ghi: lỗi lầm và bài học. Loại lạ thì
+     đưa về "bài học" — mất một cái nhãn còn hơn mất cả bản ghi. */
+  db.journey.forEach(o => { if (!JOURNEY_KIND[o.kind]) o.kind = 'hoc';
+                            if (typeof o.date !== 'string' || o.date.length < 10) o.date = today();
+                            ['title','story','who','root','fix','lesson','areaId']
+                              .forEach(k => { if (typeof o[k] !== 'string') o[k] = ''; }); });
   if (!db.settings.workspace) db.settings.workspace = '';
   /* cửa sổ làm việc — mốc để tính khoảng trống trong ngày */
   if (!db.settings.workFrom) db.settings.workFrom = WORK_FROM_DEF;
@@ -814,6 +820,48 @@ function feedNum(v){
 }
 const pick = (o, keys) => { for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]; return ''; };
 
+/* ---- bản sao lưu của app Nhật ký giao dịch ----
+   App đó không có nút xuất riêng lịch, chỉ có nút sao lưu toàn bộ. Nên đọc
+   thẳng năm chỗ sinh ra mốc giờ trong bản sao lưu. CHỈ lấy tên, giờ, thứ và
+   số phút; lệnh, vốn, bài học, và nhất là mã bot Telegram trong file thì
+   không đụng tới — chúng không có việc gì ở app này. */
+const NKGD_MIN = {sl:5, setupCheck:30, symbolWatch:10, reminder:10, report:15};
+function feedFromNkgd(j){
+  const st = j.slReminderSettings || {};
+  const dur = st.taskDurations || {};
+  const out = [];
+  const mins = (kind, over) => cleanMins(over, cleanMins(dur[kind], NKGD_MIN[kind]));
+  const add = (title, hours, days, kind, over) => {
+    (Array.isArray(hours) ? hours : [hours]).forEach(h => {
+      if (h) out.push({title, time:h, days, mins:mins(kind, over)});
+    });
+  };
+  (st.schedules || []).forEach(x => {
+    /* Bên kia còn tắt mốc này khi tài khoản không có lệnh nào đang mở. Ở đây
+       không biết được điều đó, nên cứ hiện — đây là lịch dự tính của ngày,
+       thà thấy thừa còn hơn tưởng mình rảnh rồi nhận thêm việc. */
+    if (!st.enabled || !x || !x.enabled) return;
+    add('Dời SL · ' + (x.accountName || '—'), x.hours, x.activeDays, 'sl', x.minutes);
+  });
+  (st.setupCheckSchedules || []).forEach(x => {
+    if (!st.setupCheckEnabled || !x || !x.enabled) return;
+    add('Kiểm tra setup · ' + (x.accountName || '—'), x.hours, x.activeDays, 'setupCheck', x.minutes);
+  });
+  (j.symbolWatches || []).forEach(w => {
+    if (!st.symbolWatchEnabled || !w || !w.enabled) return;
+    add('Symbol · ' + (w.label || w.symbol || '—'), w.hours, w.activeDays, 'symbolWatch', w.minutes);
+  });
+  const one = (o, title) => { if (o && o.enabled) add(title, [o.time], [o.weekday], 'report', o.minutes); };
+  one(st.incompleteReminder, 'Nhắc điền nốt lệnh');
+  one(st.weeklySummary, 'Tổng kết tuần');
+  (j.reminders || []).forEach(r => {
+    if (!r || r.active === false || r.frequency !== 'weekly' || !r.notifyTelegram) return;
+    add(r.title || 'Nhắc nhở', [r.notifyTime || '08:00'], [r.weekday], 'reminder', r.minutes);
+  });
+  return out;
+}
+const isNkgd = j => !!(j && !Array.isArray(j) && (j.slReminderSettings || j.symbolWatches));
+
 function parseFeed(raw){
   let j = raw;
   if (typeof raw === 'string'){
@@ -822,8 +870,14 @@ function parseFeed(raw){
   }
   if (!j || typeof j !== 'object') throw new Error('File rỗng hoặc không phải JSON.');
 
-  /* Danh sách mục có thể nằm ngay ở gốc, hoặc dưới một trong mấy tên quen thuộc */
-  let list = Array.isArray(j) ? j : null;
+  /* Danh sách mục có thể nằm ngay ở gốc, hoặc dưới một trong mấy tên quen
+     thuộc — hoặc là cả một bản sao lưu mà mình tự rút lịch ra. */
+  let list = null, known = '';
+  if (isNkgd(j)){
+    const its = feedFromNkgd(j);
+    if (its.length){ list = its; known = 'Nhật ký giao dịch'; }
+  }
+  if (!list) list = Array.isArray(j) ? j : null;
   if (!list) for (const k of FEED_LISTS) if (Array.isArray(j[k])){ list = j[k]; break; }
   if (!list){
     const keys = Object.keys(j).slice(0, 10);
@@ -835,14 +889,27 @@ function parseFeed(raw){
     throw new Error('File có ' + list.length + ' mục, quá mức ' + FEED_MAX + ' — chắc có gì đó không ổn bên kia.');
 
   const head  = Array.isArray(j) ? {} : j;
-  const name  = String(pick(head, ['name','title','app','label','feed','src']) || 'Lịch ngoài').trim().slice(0, 40);
+  const name  = known ||
+    String(pick(head, ['name','title','app','label','feed','src']) || 'Lịch ngoài').trim().slice(0, 40);
   /* Mã nguồn dùng để nhận ra "vẫn là lịch đó" khi nhập lại. Bên kia không
      đặt thì lấy từ tên — miễn là lần sau vẫn ra đúng mã đó. */
-  const src   = feedSlug(pick(head, ['feed','src','id','source','app','key','slug']) || name) || 'ngoai';
+  const src   = known ? 'nkgd'
+    : feedSlug(pick(head, ['feed','src','id','source','app','key','slug']) || name) || 'ngoai';
   const color = isHex(pick(head, ['color','colour'])) ? String(pick(head, ['color','colour'])) : '';
+  /* Một mục mang cả một mảng giờ ("hours") thì tách thành nhiều mốc — nhiều
+     app ghi kiểu đó, và một mốc một dòng mới vẽ được lên trục. */
+  const flat = [];
+  list.forEach(x => {
+    if (x && typeof x === 'object' && !x.time && Array.isArray(x.hours) && x.hours.length)
+      x.hours.forEach(h => flat.push(Object.assign({}, x, {time:h, hours:undefined})));
+    else flat.push(x);
+  });
+  if (flat.length > FEED_MAX)
+    throw new Error('Tách ra thành ' + flat.length + ' mốc, quá mức ' + FEED_MAX + '.');
+
   const at = nowStamp();
   const out = []; let bad = 0, why = '';
-  list.forEach((x, i) => {
+  flat.forEach((x, i) => {
     const note = m => { bad++; if (!why) why = 'mục ' + (i + 1) + ' ' + m; };
     if (!x || typeof x !== 'object'){ note('không phải một object'); return; }
     const title = String(pick(x, ['title','name','label','text','task']) || '').trim().slice(0, 80);
@@ -1002,6 +1069,36 @@ function dailyLeft(){
 }
 
 /* ============================================================
+   HÀNH TRÌNH PHÁT TRIỂN
+   Nhật ký bài học. Hai loại: "lỗi lầm" ghi lại chuyện đã hỏng và cách chữa,
+   "bài học" ghi lại kinh nghiệm rút ra trong ngày. Cả hai đều kết ở cùng một
+   chỗ — dòng bài học — vì đó mới là thứ đáng đọc lại sau nửa năm.
+   ============================================================ */
+const JOURNEY_KIND = {loi:'Lỗi lầm', hoc:'Bài học'};
+const JOURNEY_ICON = {loi:'⚠', hoc:'💡'};
+function journeys(){ return alive(db.journey); }
+/* Mới nhất lên trước. Cùng ngày thì cái vừa sửa lên trên, để vừa ghi xong
+   là thấy ngay chứ không phải đi tìm. */
+function journeyList(areaId, kind){
+  return byArea(journeys(), areaId === undefined ? 'all' : areaId)
+    .filter(o => !kind || kind === 'all' || o.kind === kind)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date))
+                 || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+/* Gom theo tháng để cuộn xuống còn biết mình đang ở đâu */
+function journeyMonths(list){
+  const out = [];
+  list.forEach(o => {
+    const m = String(o.date).slice(0, 7);
+    const last = out[out.length - 1];
+    if (last && last.m === m) last.items.push(o);
+    else out.push({m, items:[o]});
+  });
+  return out;
+}
+const monthName = m => 'Tháng ' + (+String(m).slice(5, 7)) + '/' + String(m).slice(0, 4);
+
+/* ============================================================
    DỊP & LỄ
    Ngày lưu dạng ngày/tháng + loại lịch (dương hoặc âm), lặp mỗi năm.
    ============================================================ */
@@ -1153,6 +1250,14 @@ function searchAll(q, limit){
       sub:daysText(r.days) + ' · ' + r.time + ' · ' + fmtDur(remMins(r)) + (r.enabled ? '' : ' · đang tắt'),
       color:(areaOf(r.areaId)||{}).color || 'var(--warn)'}); });
 
+  /* Bài học tìm được thì mới có ích. Ghi xong cất đi không đọc lại thì đó
+     là nhật ký, không phải học. */
+  journeys().forEach(o => { if (hit(o.title, o.story, o.who, o.root, o.fix, o.lesson, areaName(o.areaId)))
+    out.push({kind:'journey', id:o.id, title:o.title || (JOURNEY_KIND[o.kind] || ''),
+      sub:JOURNEY_KIND[o.kind] + ' · ' + fmtDate(o.date) +
+          (o.lesson ? ' · ' + String(o.lesson).slice(0, 60) : ''),
+      color:(areaOf(o.areaId)||{}).color || 'var(--ok)'}); });
+
   ideas().forEach(i => { if (hit(i.title, i.detail, i.plan, areaName(i.areaId)))
     out.push({kind:'idea', id:i.id, title:i.title,
       sub:(IDEA_ST[i.status]||'') + (areaName(i.areaId) ? ' · ' + areaName(i.areaId) : ''),
@@ -1180,7 +1285,8 @@ function searchAll(q, limit){
 }
 const KIND_LABEL = {person:'Người', task:'Việc', idea:'Ý tưởng', card:'Thẻ giao việc',
                     occasion:'Dịp', gift:'Trao đổi', birthday:'Sinh nhật',
-                    staffBirthday:'Sinh nhật nhân viên', reminder:'Việc hằng ngày'};
+                    staffBirthday:'Sinh nhật nhân viên', reminder:'Việc hằng ngày',
+                    journey:'Hành trình'};
 
 /* ============================================================
    SỔ TIỀN — gom mọi khoản đã ghi trong app về một dòng chảy

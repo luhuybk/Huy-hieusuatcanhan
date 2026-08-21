@@ -46,6 +46,7 @@ function renderSide(){
        ['work','✓','Công việc', tasks().filter(t=>!t.done).length],
        ['daily','🔁','Việc hằng ngày', dailyLeft()],
        ['ideas','💡','Ý tưởng', ideasDue().length || ideas().filter(i=>i.status==='doing').length],
+       ['journey','🌱','Hành trình', 0],
        ['money','₫','Sổ tiền', 0],
        ['board','▦','Giao việc', nLate],
        ['review','◷','Ôn lại tuần', 0]];
@@ -1656,6 +1657,61 @@ function feedBlock(){
       <button class="btn sm" data-act="feedSpec" title="Gửi mẫu này cho app bên kia">Mẫu file</button>
     </div>
   </div>`;
+}
+
+/* ---------------- HÀNH TRÌNH PHÁT TRIỂN ---------------- */
+/* Bài học lên trên cùng, chuyện đã xảy ra ở dưới. Sáu tháng sau mở lại,
+   thứ mình cần là câu kết luận chứ không phải diễn biến — để diễn biến lên
+   đầu thì mỗi lần ôn lại phải đọc hết mới tới chỗ đáng đọc. */
+function jRow(label, v){
+  return v ? `<div class="jr"><span class="k">${esc(label)}</span><span class="v">${esc(v)}</span></div>` : '';
+}
+function journeyCard(o){
+  const a = areaOf(o.areaId);
+  const detail = jRow('Sự việc', o.story) + jRow('Ảnh hưởng tới', o.who)
+               + jRow('Vấn đề cốt lõi', o.root) + jRow('Cách khắc phục', o.fix);
+  return `<div class="card jcard ${o.kind}" style="margin-bottom:10px">
+    <div class="row" style="gap:8px;margin-bottom:9px">
+      <span class="chip ${o.kind === 'loi' ? 'bad' : 'ok'}">${JOURNEY_ICON[o.kind]} ${
+        esc(JOURNEY_KIND[o.kind])}</span>
+      <span class="dim">${esc(fmtDate(o.date))}</span>
+      ${a ? `<span class="chip"><span class="sw" style="background:${esc(a.color)}"></span>${esc(a.name)}</span>` : ''}
+      <span class="grow"></span>
+      <button class="iconbtn sm" data-act="editJourney" data-id="${o.id}" title="Sửa">✎</button>
+    </div>
+    <div class="jt" data-act="editJourney" data-id="${o.id}">${esc(o.title || '(chưa đặt tên)')}</div>
+    ${o.lesson ? `<div class="jless"><span class="lb">Bài học</span>${esc(o.lesson)}</div>` : ''}
+    ${detail ? `<div class="jdet">${detail}</div>` : ''}
+  </div>`;
+}
+function vJourney(){
+  const A = S.area;
+  const all = journeyList(A, 'all');
+  if (!all.length) return `<div class="empty"><b>Chưa ghi gì trong hành trình</b>
+    Hôm nay hỏng chuyện gì, hay học được điều gì? Ghi lại lúc còn nóng —
+    ba hôm sau chỉ còn nhớ là "có chuyện gì đó".
+    <div class="btns" style="justify-content:center;margin-top:14px">
+      <button class="btn pri" data-act="addJourney" data-id="loi">⚠ Ghi lỗi lầm</button>
+      <button class="btn" data-act="addJourney" data-id="hoc">💡 Ghi bài học</button>
+    </div></div>`;
+
+  const list = journeyList(A, S.journeytab);
+  const n = k => all.filter(o => k === 'all' || o.kind === k).length;
+  let h = `<div class="tabs">` + [['all','Tất cả'],['loi','Lỗi lầm'],['hoc','Bài học']].map(([id, lb]) =>
+    `<button class="tab ${S.journeytab === id ? 'on' : ''}" data-act="journeytab" data-id="${id}">${
+      lb}<span class="n">${n(id)}</span></button>`).join('') + `</div>`;
+
+  h += `<div class="btns" style="margin-bottom:14px">
+    <button class="btn sm grow" data-act="addJourney" data-id="loi">⚠ Ghi lỗi lầm</button>
+    <button class="btn sm grow" data-act="addJourney" data-id="hoc">💡 Ghi bài học</button>
+  </div>`;
+
+  if (!list.length) return h + `<div class="empty" style="padding:22px">Chưa có mục nào loại này.</div>`;
+  journeyMonths(list).forEach(g => {
+    h += secHd(monthName(g.m) + ' — ' + g.items.length + ' mục');
+    h += g.items.map(journeyCard).join('');
+  });
+  return h + `<div style="height:56px"></div>`;
 }
 
 function tgBlock(){

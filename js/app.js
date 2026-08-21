@@ -4,7 +4,7 @@
 "use strict";
 
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
-            dailytab:'today', dailyDay: new Date().getDay(),
+            dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all',
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -19,6 +19,7 @@ const TITLES = {
   daily:['Việc hằng ngày','Việc lặp lại — giờ và thời lượng'],
   board:['Giao việc','Bảng tiến độ nhân viên'],
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
+  journey:['Hành trình phát triển','Lỗi lầm, bài học, và thứ rút ra được'],
   settings:['Cài đặt','Dữ liệu, nhắc nhở, đồng bộ']
 };
 
@@ -40,6 +41,7 @@ function render(){
     else if (v === 'work')     html = vWork();
     else if (v === 'ideas')    html = vIdeas();
     else if (v === 'daily')    html = vDaily();
+    else if (v === 'journey')  html = vJourney();
     else if (v === 'board')    html = vBoard();
     else if (v === 'review')   html = vReview();
     else if (v === 'occasions')html = vOccasions();
@@ -895,6 +897,58 @@ function slotTask(id, at){
   toast(t.title + ' → ' + at + (Server.available() ? ' · Telegram sẽ nhắc đúng giờ này' : ''));
 }
 
+/* ---------------- hành trình phát triển ---------------- */
+/* Hai bộ ô khác nhau cho hai loại. Ghi một bài học trong ngày mà phải nhìn
+   sáu ô trống, trong đó bốn ô không liên quan, thì lần sau khỏi ghi.
+   Ô loại vẫn để đó để đổi được về sau — dữ liệu của ô không hiện vẫn giữ
+   nguyên, vì lưu là ghi đè từng trường chứ không thay cả bản ghi. */
+const journeyFields = kind => kind === 'loi' ? [
+  {k:'title',  label:'Lỗi lầm hôm đó', voice:true, ph:'một câu gọi tên chuyện đã hỏng'},
+  {k:'date',   label:'Ngày', type:'date', half:true},
+  {k:'areaId', label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
+  {k:'story',  label:'Mô tả sự việc', type:'textarea', voice:true, ph:'chuyện đã diễn ra thế nào'},
+  {k:'who',    label:'Người ảnh hưởng', voice:true, ph:'khách, nhân viên, đối tác… ai chịu hậu quả'},
+  {k:'root',   label:'Vấn đề cốt lõi', type:'textarea', voice:true,
+   hint:'không phải "ai làm sai", mà "vì sao chuyện này xảy ra được"'},
+  {k:'fix',    label:'Cách khắc phục', type:'textarea', voice:true, ph:'chữa lần này, và chặn lần sau'},
+  {k:'lesson', label:'Bài học rút ra', type:'textarea', voice:true,
+   hint:'câu này là thứ sáu tháng nữa mình đọc lại — viết cho mình lúc đó hiểu'},
+  {k:'kind',   label:'Loại', type:'select', opts:Object.entries(JOURNEY_KIND)}
+] : [
+  {k:'title',  label:'Hôm nay học được gì', voice:true, ph:'một câu gọn'},
+  {k:'date',   label:'Ngày', type:'date', half:true},
+  {k:'areaId', label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
+  {k:'story',  label:'Ghi lại kinh nghiệm hôm nay', type:'textarea', voice:true,
+   ph:'chuyện gì dẫn tới điều này'},
+  {k:'lesson', label:'Bài học tổng', type:'textarea', voice:true,
+   hint:'rút gọn thành nguyên tắc dùng được cho lần sau'},
+  {k:'kind',   label:'Loại', type:'select', opts:Object.entries(JOURNEY_KIND)}
+];
+function addJourney(kind){
+  const k = JOURNEY_KIND[kind] ? kind : 'hoc';
+  openForm({title:k === 'loi' ? 'Ghi một lỗi lầm' : 'Ghi một bài học',
+    fields:journeyFields(k),
+    values:{kind:k, date:today(), areaId:S.area === 'all' ? '' : S.area},
+    onSave(v){
+      db.journey.push(stamp(Object.assign({kind:k, story:'', who:'', root:'', fix:'', lesson:''}, v)));
+      save(); S.view = 'journey'; S.journeytab = 'all'; render();
+      toast('Đã ghi vào hành trình');
+    }});
+}
+function editJourney(id){
+  const o = db.journey.find(x => x.id === id); if (!o) return;
+  openForm({title:'Sửa mục hành trình', fields:journeyFields(o.kind), values:o,
+    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px"
+      data-act="delJourney" data-id="${id}">Xoá mục này</button>`,
+    onSave(v){ Object.assign(o, v); stamp(o); save(); render(); }});
+}
+function delJourney(id){
+  const o = db.journey.find(x => x.id === id); if (!o) return;
+  confirmBox('Xoá "' + (o.title || 'mục này') + '"?', () => {
+    o.deleted = true; stamp(o); save(); closeModal(); render(); toast('Đã xoá');
+  });
+}
+
 /* ---------------- bản đang chạy so với bản trên máy chủ ----------------
    Hai câu hỏi khác nhau mà nhìn bề ngoài giống hệt: "Hostinger kéo code mới
    về chưa?" và "máy mình còn giữ bản cũ à?". Hỏi thẳng file state.js trên
@@ -1516,6 +1570,7 @@ document.addEventListener('click', e => {
       else if (S.view === 'work') addTask();
       else if (S.view === 'ideas') addIdea();
       else if (S.view === 'daily') addRem();
+      else if (S.view === 'journey') addJourney('hoc');
       else if (S.view === 'board') addCard('idea');
       else quickAdd();
       break;
@@ -1653,6 +1708,7 @@ document.addEventListener('click', e => {
         S.ideatab = i2 && (i2.status === 'done' || i2.status === 'drop') ? 'kho' : 'live';
         render(); editIdea(id); break; }
       else if (k === 'card'){ S.view = 'board'; render(); openCard(id); break; }
+      else if (k === 'journey'){ S.view = 'journey'; S.journeytab = 'all'; render(); editJourney(id); break; }
       else if (k === 'occasion'){ S.view = 'occasions'; }
       render(); break;
     }
@@ -1726,6 +1782,10 @@ document.addEventListener('click', e => {
     case 'slotTask': slotTask(id, el.dataset.at); break;
     case 'pushTask': pushTask(id); break;
     case 'buildAgain': buildCheck(); render(); break;
+    case 'journeytab': S.journeytab = id; render(); break;
+    case 'addJourney': addJourney(id); break;
+    case 'editJourney': editJourney(id); break;
+    case 'delJourney': delJourney(id); break;
     case 'feedPick':  feedPick(); break;
     case 'feedPaste': feedPasteBox(); break;
     case 'feedSpec':  feedSpecBox(); break;

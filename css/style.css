@@ -465,6 +465,23 @@ body.locked .app,body.locked .fab{display:none}
 .chk .cb.ro{display:inline-flex;align-items:center;justify-content:center;border:0;
   background:none;cursor:default}
 .chk .cb.ro i{display:block;width:10px;height:10px;border-radius:3px;background:var(--warn)}
+/* ---------- hành trình phát triển ---------- */
+.jcard{border-left:3px solid var(--line)}
+.jcard.loi{border-left-color:var(--bad)}
+.jcard.hoc{border-left-color:var(--ok)}
+.jt{font-weight:700;font-size:15.5px;line-height:1.4;cursor:pointer}
+/* Bài học là thứ đáng đọc lại — cho nó một khung riêng, đừng để lẫn vào diễn biến */
+.jless{margin-top:10px;padding:10px 12px;border-radius:10px;line-height:1.6;
+  background:color-mix(in srgb,var(--ok) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--ok) 26%,transparent);white-space:pre-wrap}
+.jless .lb{display:block;font-size:11px;font-weight:800;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--ok);margin-bottom:4px}
+.jdet{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+.jr{display:flex;gap:9px;font-size:13px;line-height:1.55}
+.jr .k{flex:none;width:98px;color:var(--tx3);font-weight:650}
+.jr .v{color:var(--tx2);white-space:pre-wrap;min-width:0}
+@media(max-width:420px){ .jr{flex-direction:column;gap:1px} .jr .k{width:auto} }
+
 /* Ô tích chỉ để xem — cột không phải hôm nay thì không bấm được */
 .cb.mute{opacity:.4;cursor:default}
 /* Hàng trong tab Cả tuần đã tick xong: mờ và gạch, khớp với khối trên trục */

@@ -322,6 +322,16 @@ Một chiều và chỉ đọc: khối lịch ngoài **không kéo được, kh�
 | `items[].date` | một trong hai | việc một lần, dạng `YYYY-MM-DD` |
 | `items[].mins` | không | dài bao lâu; thiếu thì tạm tính 15 phút |
 
+#### Bản sao lưu của app Nhật ký giao dịch
+
+App đó không có nút xuất riêng lịch, chỉ có nút **sao lưu toàn bộ**. Nhập thẳng file sao lưu đó cũng được: app nhận ra và tự rút lịch từ năm chỗ sinh ra mốc giờ trong file — lịch **dời SL**, lịch **kiểm tra setup**, nhóm **symbol theo dõi**, **nhắc điền nốt lệnh**, **tổng kết tuần**, cùng những **nhắc nhở riêng** đang bật gửi Telegram. Số phút lấy theo `taskDurations` của bên đó, kể cả số phút đặt riêng cho từng lịch.
+
+Chỉ đọc tên, giờ, thứ và số phút. Lệnh, vốn, bài học — và nhất là **mã bot Telegram** nằm trong file — không được đụng tới và không vào cơ sở dữ liệu của app này.
+
+> ⚠️ File sao lưu đó **có chứa mã bot Telegram và ID group** dưới dạng chữ thường. Đừng gửi nguyên file cho ai; nếu đã lỡ gửi thì vào **@BotFather → /revoke** để đổi mã.
+
+Một điểm không đoán được: bên kia còn tự tắt mốc dời SL khi tài khoản không có lệnh nào đang mở. Ở đây không biết chuyện đó nên mốc vẫn hiện — thà thấy thừa còn hơn tưởng mình rảnh rồi nhận thêm việc.
+
 Trên là dạng chuẩn, nhưng **app đọc rộng tay** — bên kia không viết riêng cho mình và mình cũng không sửa được file của nó, nên bắt bẻ từng chữ thì file nào cũng hỏng:
 
 * Danh sách mục có thể là mảng trần ở gốc, hoặc nằm dưới `items`, `tasks`, `slots`, `timeline`, `events`, `schedule`, `list`, `rows`, `data`.
@@ -330,6 +340,7 @@ Trên là dạng chuẩn, nhưng **app đọc rộng tay** — bên kia không v
 * Thứ viết kiểu nào cũng nhận: `1`, `"T2"`, `"Mon"`, `"Monday"`, `"daily"` (cả tuần), `"weekday"` (T2–T6).
 * Thời lượng viết `"30p"` hay `"30 phút"` cũng ra 30.
 * `day` thì app tự đoán: `"2026-08-22"` là ngày, `"T3"` là thứ.
+* Một mục mang cả mảng `hours` thay vì một `time` thì được tách thành nhiều mốc.
 
 **Nhập lại cùng một `feed` là thay hẳn bản cũ** — bên kia cứ xuất trọn bộ mỗi lần, không cần tính xem cái gì đã đổi. Nếu `feed` để trống thì mã được lấy từ `name`, nên **giữ `name` cố định** là đủ.
 
@@ -382,6 +393,31 @@ Ba nút đó cũng nằm ngay trên thẻ ý tưởng trong app, ở mục **C�
 Sửa ý tưởng đang có hẹn thì ô này hiện sẵn *"Giữ ngày 18/11/2026"* — đổi tên hay sửa nội dung sẽ không vô tình đặt lại ngày hẹn.
 
 **Giờ hỏi** mặc định là 9h sáng, đổi trong Cài đặt → Telegram → *Giờ hỏi lại ý tưởng* (đặt `-1` để tắt hẳn). Ý tưởng trễ hẹn mấy hôm vẫn được hỏi chứ không bị bỏ qua như lời nhắc theo giờ — câu hỏi "làm hay bỏ" thì muộn vài hôm vẫn còn nguyên giá trị.
+
+### Hành trình phát triển
+
+Nhật ký bài học. Hai loại ghi, cùng kết ở một chỗ.
+
+**⚠ Lỗi lầm** — sáu ô, đi từ chuyện đã xảy ra tới thứ rút ra được:
+
+| Ô | Để làm gì |
+|---|---|
+| Lỗi lầm hôm đó | một câu gọi tên chuyện đã hỏng |
+| Mô tả sự việc | diễn biến |
+| Người ảnh hưởng | ai chịu hậu quả — khách, nhân viên, đối tác |
+| Vấn đề cốt lõi | không phải *ai làm sai*, mà *vì sao chuyện này xảy ra được* |
+| Cách khắc phục | chữa lần này, và chặn lần sau |
+| Bài học rút ra | câu để đọc lại sau nửa năm |
+
+**💡 Bài học** — gọn hơn, cho những ngày không hỏng gì mà vẫn học được điều gì đó: tên, kinh nghiệm hôm nay, và bài học tổng.
+
+Trên thẻ, **bài học nằm trên cùng** trong khung riêng, diễn biến xếp dưới. Sáu tháng sau mở lại, thứ bạn cần là câu kết luận chứ không phải diễn biến — để diễn biến lên đầu thì lần nào ôn lại cũng phải đọc hết mới tới chỗ đáng đọc.
+
+Thẻ lỗi lầm có vạch đỏ bên trái, bài học vạch xanh. Danh sách gom theo tháng, mới nhất lên trước. Ba tab **Tất cả · Lỗi lầm · Bài học**, và lọc được theo mảng việc như mọi màn khác.
+
+Đổi loại về sau vẫn được — ô *Loại* nằm cuối biểu mẫu. Dữ liệu của những ô không hiện ở loại kia **không bị mất**, nên đổi qua đổi lại không mất gì.
+
+Tìm kiếm đọc cả sáu ô, nên gõ *"kho"* hay *"hứa ngày giao"* đều ra đúng mục.
 
 ### Giao việc
 Bốn cột: **Lên ý tưởng → Đã giao việc → Đang làm → Hoàn thành**. Mỗi thẻ có nút chuyển cột ngay trên thẻ. Dưới bảng là tiến độ theo từng người.
