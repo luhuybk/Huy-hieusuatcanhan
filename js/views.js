@@ -1186,6 +1186,7 @@ function tlRange(items, wd){
 }
 function tlColor(x){
   if (!x.on) return 'var(--line)';
+  if (x.kind === 'feed') return x.color || 'var(--warn)';
   const a = areaOf(x.areaId);
   return a ? a.color : 'var(--acc)';
 }
@@ -1199,7 +1200,8 @@ function tlBar(items, clash, wd){
   return `<div class="tlbar-wrap">
     <div class="tlbar">${items.map(x => {
       const c = tlColor(x);
-      return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''}" title="${esc(tlLabel(x))}"
+      return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''} ${
+        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''}" title="${esc(tlLabel(x))}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
     }).join('')}</div>
@@ -1227,13 +1229,17 @@ function tlTrack(items, clash, wd){
     }">${min2hhmm(m)}</span>`).join('') + `</div>`;
   h += items.map(x => {
     const c = tlColor(x);
-    return `<div class="tlrow ${x.on ? '' : 'off'}">
+    /* Lịch nhập từ app khác không kéo được: bên kia mới là chủ của nó, kéo
+       ở đây thì lần nhập sau là mất sạch. Bỏ luôn data-tlblk cho chắc. */
+    const fixed = x.kind === 'feed';
+    return `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
       <div class="tlgrid">${hours.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join('')}</div>
-      <div class="tlblk ${clash.has(x.id) ? 'cl' : ''}" data-tlblk="${x.id}"
+      <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''}"
+        ${fixed ? '' : `data-tlblk="${x.id}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
-        <span class="gr">⠿</span>
+        <span class="gr">${fixed ? '🔒' : '⠿'}</span>
         <span class="tllbl">${esc(tlLabel(x))}</span>
       </div>
     </div>`;
@@ -1255,10 +1261,15 @@ function chkState(x, nowMin){
 }
 function chkRow(o){
   const st = o.state;
-  return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''}">
-    <button class="cb ${o.done ? 'on' : ''}" data-act="${o.tick}" data-id="${o.id}"
-      title="${o.done ? 'Bỏ đánh dấu' : 'Đánh dấu xong'}">✓</button>
-    <div class="grow" data-act="${o.open}" data-id="${o.id}">
+  /* Hàng không tick được (lịch nhập từ app khác) thì thay nút bằng một dấu
+     màu — ô vuông trống trông y hệt ô chưa tích, bấm mãi không ăn. */
+  const box = o.tick
+    ? `<button class="cb ${o.done ? 'on' : ''}" data-act="${o.tick}" data-id="${o.id}"
+        title="${o.done ? 'Bỏ đánh dấu' : 'Đánh dấu xong'}">✓</button>`
+    : (o.box || `<span class="cb ro"><i></i></span>`);
+  return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''} ${o.tick ? '' : 'ro'}">
+    ${box}
+    <div class="grow" ${o.open ? `data-act="${o.open}" data-id="${o.id}"` : ''}>
       <div class="row">
         <span class="tm">${esc(o.time)}</span>
         ${o.dot}
@@ -1277,8 +1288,20 @@ function chkHead(done, total){
   </div>`;
 }
 
+/* Hàng của lịch nhập từ app khác: chỉ đọc, mang màu của nguồn. */
+function feedRow(x, cl, nowMin){
+  return chkRow({
+    id:x.id, tick:'', open:'', done:false, time:min2hhmm(x.start),
+    box:`<span class="cb ro" title="Lịch của app khác — tick bên đó"><i
+      style="background:${esc(x.color)}"></i></span>`,
+    dot:'', title:x.title, state:chkState(x, nowMin),
+    sub:`${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · từ <b>${esc(x.src)}</b>${
+      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}`
+  });
+}
 function dailyRow(x, clash, nowMin){
   const cl = clash.has(x.id);
+  if (x.kind === 'feed') return feedRow(x, cl, nowMin);
   if (x.kind === 'task') return taskDayRow(x, cl, nowMin);
   const r = x.r, chuoi = remStreak(r);
   return chkRow({
@@ -1399,8 +1422,11 @@ function dailyToday(A){
 
   const load = dayLoad(items), clash = dayClash(items);
   const nowD = new Date(), nowMin = nowD.getHours() * 60 + nowD.getMinutes();
-  const total = items.length + un.length;
-  const done  = items.filter(x => x.done).length + un.filter(taskDoneToday).length;
+  /* Lịch nhập từ app khác không tick được ở đây, nên không đưa vào tử số
+     lẫn mẫu số — không thì thanh tiến độ chẳng bao giờ đầy. */
+  const mine  = items.filter(x => x.kind !== 'feed');
+  const total = mine.length + un.length;
+  const done  = mine.filter(x => x.done).length + un.filter(taskDoneToday).length;
 
   let h = secHd('☑ ' + WDAY_NAME[wd] + ' — ' + load.count + ' việc · ' + fmtDur(load.mins));
   h += `<div class="dim" style="margin:-4px 0 12px;line-height:1.6">
@@ -1498,8 +1524,9 @@ function dailyWeek(A){
       thứ khác. Việc lẻ (nét đứt) thì giờ là của riêng nó.</div>`;
     h += gapBlock(sel.items, clash, '', sel.wd);
     h += tlTrack(sel.items, clash, sel.wd);
-    h += sel.items.map(x => x.kind === 'task' ? taskWeekRow(x, clash, past)
-                                              : dailyEditRow(x, clash)).join('');
+    h += sel.items.map(x => x.kind === 'feed' ? feedRow(x, clash.has(x.id), 0)
+                          : x.kind === 'task' ? taskWeekRow(x, clash, past)
+                          : dailyEditRow(x, clash)).join('');
   } else {
     h += gapBlock(sel.items, clash, '', sel.wd);
   }
@@ -1520,6 +1547,17 @@ function dailyWeek(A){
   return h + `<div style="height:56px"></div>`;   /* nút tròn khỏi đè lên hàng cuối */
 }
 
+/* Nguồn lâu chưa nhập lại thì nói ra. Con số "trống 3h" dựng trên lịch của
+   mười ngày trước còn tệ hơn là không có con số nào. */
+function feedNote(){
+  const st = feedStale();
+  if (!st.length) return '';
+  return `<div class="dim" data-act="nav" data-id="settings"
+    style="margin:0 0 12px;line-height:1.6;color:var(--warn);cursor:pointer">
+    ${st.map(x => esc(x.name) + ' nhập lần cuối ' + esc(fmtDate(String(x.at).slice(0,10)))).join(' · ')}
+    — bên đó đổi lịch thì mấy con số dưới đây đã sai. Nhập lại trong Cài đặt.</div>`;
+}
+
 function vDaily(){
   const A = S.area;
   const all = byArea(reminders(), A);
@@ -1531,12 +1569,14 @@ function vDaily(){
   /* Số trên tab Hôm nay đếm đúng thứ đang hiện: những việc chưa tick, cả
      hằng ngày lẫn việc lẻ. Tick xong mà con số không giảm thì nó chỉ là
      con số trang trí. */
-  const left = ti.filter(x => !x.done).length + un.filter(t => !taskDoneToday(t)).length;
+  const left = ti.filter(x => !x.done && x.kind !== 'feed').length
+             + un.filter(t => !taskDoneToday(t)).length;
   let h = `<div class="tabs">` + DAILY_TABS.map(([id, label]) =>
     `<button class="tab ${S.dailytab === id ? 'on' : ''}" data-act="dailytab" data-id="${id}">${label}${
       id === 'today' ? `<span class="n">${left}</span>`
     : id === 'all'   ? `<span class="n">${all.length}</span>` : ''}</button>`).join('') + `</div>`;
 
+  h += feedNote();
   if (S.dailytab === 'week') return h + dailyWeek(A);
   if (S.dailytab === 'all'){
     const list = all.slice().sort((a, b) =>
@@ -1545,6 +1585,57 @@ function vDaily(){
              + list.map(remItem).join('');
   }
   return h + dailyToday(A);
+}
+
+/* Nhập lịch từ app khác. Một chiều và bằng file: app bên kia xuất ra, mình
+   nhập vào. Không gọi thẳng máy chủ bên đó — làm vậy là phải mang khoá của
+   nó sang máy chủ này, và phải viết lại luật suy ra mốc việc lần thứ hai. */
+const FEED_SAMPLE = `{
+  "feed": "nkgd",
+  "name": "Nhật ký giao dịch",
+  "color": "#d4a24e",
+  "items": [
+    { "title": "Kiểm tra setup", "time": "09:00", "mins": 30, "days": [1,2,3,4,5] },
+    { "title": "Dời SL",         "time": "21:00", "mins": 5,  "days": [1,2,3,4,5] },
+    { "title": "Tổng kết tuần",  "time": "20:00", "mins": 45, "date": "2026-08-22" }
+  ]
+}`;
+function feedBlock(){
+  const src = feedSources();
+  return `
+  ${secHd('Lịch từ app khác')}
+  <div class="card">
+    <div class="dim" style="margin-bottom:14px;line-height:1.65">
+      Nhập một file JSON do app khác xuất ra — ví dụ lịch kiểm tra setup bên
+      nhật ký giao dịch. Những mốc đó sẽ nằm trên trục cùng việc của mình và
+      <b>tính vào Kín / Trống</b>, nên nhìn một chỗ là biết cả ngày.
+      Chỉ đọc: muốn sửa thì sửa bên kia rồi nhập lại.
+      <b>Nhập lại là thay hẳn</b> bản cũ của cùng nguồn.
+    </div>
+    ${src.length ? src.map(x => {
+      const d = dayDiff(String(x.at || '').slice(0,10));
+      const cu = d !== null && d <= -FEED_STALE_DAYS;
+      /* Xếp hai dòng chứ không một: tên nguồn, số mốc và ngày nhập nhét chung
+         một hàng là tên bị cắt cụt ở khổ 375px. */
+      return `<div class="feedrow">
+        <span class="sw" style="background:${esc(x.color || 'var(--warn)')}"></span>
+        <div class="grow" style="min-width:0">
+          <div class="ell"><b>${esc(x.name)}</b></div>
+          <div class="dim" style="margin-top:2px">${x.n} mốc · <span style="${
+            cu ? 'color:var(--warn)' : ''}">${
+            x.at ? esc(String(x.at).slice(0,10) === today() ? 'nhập hôm nay'
+                   : 'nhập ' + fmtDate(String(x.at).slice(0,10))) : 'không rõ ngày nhập'}</span></div>
+        </div>
+        <button class="iconbtn sm" data-act="dropFeed" data-id="${esc(x.src)}" title="Bỏ lịch này">✕</button>
+      </div>`; }).join('')
+      : `<div class="dim">Chưa nhập lịch nào.</div>`}
+    <input type="file" id="feedfile" accept=".json,application/json" style="display:none">
+    <div class="btns" style="margin-top:12px">
+      <button class="btn sm grow pri" data-act="feedPick">Chọn file JSON</button>
+      <button class="btn sm grow" data-act="feedPaste">Dán nội dung</button>
+      <button class="btn sm" data-act="feedSpec" title="Gửi mẫu này cho app bên kia">Mẫu file</button>
+    </div>
+  </div>`;
 }
 
 function tgBlock(){
@@ -1708,6 +1799,8 @@ function vSettings(){
       <button class="btn sm grow" data-act="workAll">Đặt cả tuần theo T2</button>
     </div>
   </div>
+
+  ${feedBlock()}
 
   ${Server.available() ? tgBlock() : ''}
 

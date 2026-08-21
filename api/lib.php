@@ -321,6 +321,21 @@ function todaySlots(): array {
     $out[] = ['start' => $st, 'mins' => taskMinutes($t), 'title' => (string)($t['title'] ?? ''),
               'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
   }
+  /* Lịch nhập từ app khác cũng chiếm giờ thật. Không kể vào đây thì con số
+     "trống" trong tin Telegram sẽ rộng hơn con số trong app, và mình sẽ tin
+     con số nào tiện hơn. Nó không tick được nên luôn coi là chưa xong. */
+  foreach (itemsOf('feeds') as $f) {
+    $date = (string)($f['date'] ?? '');
+    $days = array_map('intval', (array)($f['days'] ?? []));
+    if ($date !== '' ? substr($date, 0, 10) !== $today : !in_array($wday, $days, true)) continue;
+    $st = hhmmMin((string)($f['time'] ?? ''));
+    if ($st === null) continue;
+    $title = (string)($f['title'] ?? '');
+    if ($title === '') continue;
+    $out[] = ['start' => $st, 'mins' => remMinutes($f), 'title' => $title,
+              'done' => false, 'est' => true,
+              'feed' => (string)($f['srcName'] ?? $f['src'] ?? '')];
+  }
   usort($out, fn($a, $b) => $a['start'] <=> $b['start']);
   return $out;
 }

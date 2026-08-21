@@ -891,6 +891,73 @@ function slotTask(id, at){
   toast(t.title + ' → ' + at + (Server.available() ? ' · Telegram sẽ nhắc đúng giờ này' : ''));
 }
 
+/* ---------------- lịch nhập từ app khác ---------------- */
+/* Một chiều, bằng file. Lỗi phải nói ra bằng tiếng người và nói rõ mục nào
+   hỏng, vì file do app khác sinh ra — mình không sửa được ở đây, chỉ có thể
+   nhắn lại cho bên kia. */
+function feedApply(text){
+  let p;
+  try { p = parseFeed(text); }
+  catch(e){ toast('Không nhập được — ' + e.message); return; }
+  const n = importFeed(p);
+  render();
+  toast('Đã nhập ' + n + ' mốc từ ' + p.name +
+        (p.skipped ? ' · bỏ qua ' + p.skipped + ' mục thiếu dữ liệu' : ''));
+  if (Server.available()) Sync.run(true);
+}
+function feedPick(){
+  const el = $('#feedfile'); if (!el) return;
+  el.onchange = () => {
+    const f = el.files && el.files[0];
+    el.onchange = null;
+    if (!f) return;
+    if (f.size > 512 * 1024){ toast('File hơn 512KB — chắc không phải file lịch.'); el.value = ''; return; }
+    const r = new FileReader();
+    r.onload  = () => { feedApply(String(r.result || '')); el.value = ''; };
+    r.onerror = () => { toast('Không đọc được file.'); el.value = ''; };
+    r.readAsText(f);
+  };
+  el.click();
+}
+function feedPasteBox(){
+  openForm({title:'Dán nội dung file lịch', submit:'Nhập',
+    top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.65">
+      Mở file JSON bên kia, chép toàn bộ rồi dán vào đây. Dùng khi không tiện
+      tải file về máy.</div>`,
+    fields:[{k:'json', label:'Nội dung JSON', type:'textarea',
+             ph:'{ "feed": "nkgd", "items": [ … ] }'}],
+    onSave: v => feedApply(v.json)});
+}
+function feedSpecBox(){
+  $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
+    <h2>Mẫu file lịch</h2>
+    <div class="dim" style="line-height:1.65;margin-bottom:12px">
+      Gửi mẫu này cho app bên kia. <b>feed</b> là tên mã cố định của nguồn —
+      nhập lại cùng mã là thay hẳn bản cũ, nên bên đó cứ xuất trọn bộ mỗi lần.
+      Mỗi mục cần <b>title</b>, <b>time</b> (24 giờ), và <b>days</b>
+      (0 = CN … 6 = T7) cho việc lặp theo thứ, hoặc <b>date</b> (YYYY-MM-DD)
+      cho việc một lần. Thiếu <b>mins</b> thì tạm tính 15 phút.
+    </div>
+    <pre class="code">${esc(FEED_SAMPLE)}</pre>
+    <div class="btns" style="margin-top:12px">
+      <button class="btn pri grow" id="feedcopy">Chép mẫu</button>
+      <button class="btn" data-close>Đóng</button>
+    </div></div></div>`;
+  $('#feedcopy').onclick = () => {
+    if (!navigator.clipboard) { toast('Máy không cho chép tự động — bôi đen rồi chép tay'); return; }
+    navigator.clipboard.writeText(FEED_SAMPLE)
+      .then(() => toast('Đã chép mẫu'), () => toast('Không chép được — bôi đen rồi chép tay'));
+  };
+}
+function dropFeedAsk(src){
+  const s = feedSources().find(x => x.src === src);
+  confirmBox('Bỏ lịch "' + (s ? s.name : src) + '"?', () => {
+    const n = dropFeed(src); render();
+    toast('Đã bỏ ' + n + ' mốc' + (Server.available() ? '' : ''));
+    if (Server.available()) Sync.run(true);
+  }, 'Bỏ');
+}
+
 /* ---------------- Telegram ---------------- */
 /* Cấu hình nằm ở máy chủ chứ không phải trong máy này: mã bot là thứ ai
    cầm được cũng nhắn được vào group của bạn, nên không để nó đi lung tung. */
@@ -1622,6 +1689,10 @@ document.addEventListener('click', e => {
     case 'workAll':  workAllLikeMonday(); break;
     case 'slotTask': slotTask(id, el.dataset.at); break;
     case 'pushTask': pushTask(id); break;
+    case 'feedPick':  feedPick(); break;
+    case 'feedPaste': feedPasteBox(); break;
+    case 'feedSpec':  feedSpecBox(); break;
+    case 'dropFeed':  dropFeedAsk(id); break;
     case 'saveHour':
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;

@@ -203,12 +203,12 @@ function toast(msg){
 /* ---------------- kho dữ liệu ---------------- */
 const KEY = 'lifehub.v2';
 const OLD  = 'lifehub.v1';
-const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders'];
+const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds'];
 
 function blank(){
   return {
     people:[], gifts:[], tasks:[], ideas:[], cards:[], staff:[], areas:[], occasions:[], inbox:[],
-    reminders:[],
+    reminders:[], feeds:[],
     settings:{
       theme:'dark',
       notifyHour:8,
@@ -325,6 +325,18 @@ function ensure(){
                            if(c.remindAt===undefined) c.remindAt='';
                            if(c.snoozeUntil===undefined) c.snoozeUntil='';
                            if(c.remindBefore===undefined) c.remindBefore=0; });
+  /* Lịch nhập từ app khác. Dữ liệu do bên ngoài đưa vào nên không tin gì cả:
+     thiếu giờ hay thiếu ngày thì bỏ hẳn, chứ để lọt vào thì trục vẽ ra NaN. */
+  db.feeds.forEach(f => { if(typeof f.src!=='string') f.src='';
+                          if(typeof f.srcName!=='string') f.srcName = f.src || 'Lịch ngoài';
+                          if(typeof f.title!=='string') f.title='';
+                          if(typeof f.time!=='string') f.time='';
+                          if(!Array.isArray(f.days)) f.days=[];
+                          if(typeof f.date!=='string') f.date='';
+                          if(typeof f.color!=='string') f.color='';
+                          if(typeof f.importedAt!=='string') f.importedAt='';
+                          f.mins = cleanMins(f.mins, 15);
+                          if (!f.title || hhmm2min(f.time) === null || (!f.date && !f.days.length)) f.deleted = true; });
   if (!db.settings.workspace) db.settings.workspace = '';
   /* cửa sổ làm việc — mốc để tính khoảng trống trong ngày */
   if (!db.settings.workFrom) db.settings.workFrom = WORK_FROM_DEF;
@@ -712,7 +724,108 @@ function dayAll(wd, areaId){
     const s = taskSlot(t, dstr);
     if (s.start !== null) out.push(s);              /* chưa xếp giờ → xuống danh sách riêng */
   });
+  /* Lịch nhập từ app khác chỉ hiện khi đang xem tất cả các mảng: nó không
+     thuộc mảng nào của mình nên lọc theo mảng thì nó biến mất mà không rõ
+     vì sao. */
+  if (areaId === undefined || areaId === 'all') feedDay(wd, dstr).forEach(x => out.push(x));
   return out.sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
+}
+
+/* ============================================================
+   LỊCH NHẬP TỪ APP KHÁC
+   Bên kia xuất ra một file JSON, mình nhập vào đây. Một chiều: app này
+   không sửa, không tick, chỉ vẽ ra để biết khung giờ đó đã có người ngồi.
+   Đọc một danh sách phẳng thay vì gọi thẳng máy chủ bên kia, vì luật suy ra
+   mốc việc phải nằm đúng một chỗ — hai bản cùng một luật thì sớm muộn lệch.
+   ============================================================ */
+const FEED_MAX = 400;
+const FEED_STALE_DAYS = 10;
+function feeds(){ return alive(db.feeds); }
+const isHex = v => /^#[0-9a-fA-F]{3,8}$/.test(String(v == null ? '' : v));
+
+/* Đọc file và báo lỗi bằng tiếng người: "sai định dạng" thì không ai biết
+   phải sửa gì, còn "thiếu mảng items" thì gửi lại cho bên kia là xong. */
+function parseFeed(raw){
+  let j = raw;
+  if (typeof raw === 'string'){
+    try { j = JSON.parse(raw); }
+    catch(e){ throw new Error('File không phải JSON đọc được: ' + e.message); }
+  }
+  if (!j || typeof j !== 'object' || Array.isArray(j))
+    throw new Error('File phải là một object JSON có "feed" và "items".');
+  const src = String(j.feed || j.src || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  if (!src) throw new Error('Thiếu trường "feed" — tên mã của app xuất file, ví dụ "nkgd".');
+  if (!Array.isArray(j.items)) throw new Error('Thiếu mảng "items".');
+  if (j.items.length > FEED_MAX)
+    throw new Error('File có ' + j.items.length + ' mục, quá mức ' + FEED_MAX + ' — chắc có gì đó không ổn bên kia.');
+  const name  = String(j.name || src).trim().slice(0, 40) || src;
+  const color = isHex(j.color) ? String(j.color) : '';
+  const at = nowStamp();
+  const out = []; let bad = 0;
+  j.items.forEach((x, i) => {
+    if (!x || typeof x !== 'object'){ bad++; return; }
+    const title = String(x.title || '').trim().slice(0, 80);
+    const time  = String(x.time  || '').trim();
+    if (!title || hhmm2min(time) === null){ bad++; return; }
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || '')) ? String(x.date) : '';
+    const days = Array.isArray(x.days)
+      ? x.days.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : [];
+    if (!date && !days.length){ bad++; return; }   /* không biết ngày nào thì vẽ vào đâu */
+    out.push({id:'feed_' + src + '_' + i, src, srcName:name,
+              color: isHex(x.color) ? String(x.color) : color,
+              title, time, mins:cleanMins(x.mins, 15), days, date,
+              importedAt:at, deleted:false});
+  });
+  if (!out.length)
+    throw new Error('Không có mục nào dùng được' +
+      (bad ? ' — cả ' + bad + ' mục đều thiếu tên, giờ, hoặc ngày.' : '.'));
+  return {src, name, items:out, skipped:bad};
+}
+/* Bản nhập mới thay hẳn bản cũ của cùng nguồn. Giữ lại mục cũ thì lịch đã
+   bỏ bên kia vẫn nằm đây mãi, và mình sẽ tránh một khung giờ không còn ai. */
+function importFeed(parsed){
+  const keep = new Set(parsed.items.map(x => x.id));
+  db.feeds.forEach(f => {
+    if (f.src === parsed.src && !f.deleted && !keep.has(f.id)){ f.deleted = true; stamp(f); }
+  });
+  parsed.items.forEach(x => {
+    const cur = db.feeds.find(f => f.id === x.id);
+    if (cur) stamp(Object.assign(cur, x, {deleted:false}));
+    else db.feeds.push(stamp(x));
+  });
+  save();
+  return parsed.items.length;
+}
+function dropFeed(src){
+  let n = 0;
+  db.feeds.forEach(f => { if (f.src === src && !f.deleted){ f.deleted = true; stamp(f); n++; } });
+  save();
+  return n;
+}
+function feedSources(){
+  const m = {};
+  feeds().forEach(f => {
+    const s = m[f.src] || (m[f.src] = {src:f.src, name:f.srcName, color:f.color, n:0, at:f.importedAt});
+    s.n++;
+    if (String(f.importedAt) > String(s.at)) s.at = f.importedAt;
+  });
+  return Object.values(m).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+/* Nguồn lâu chưa nhập lại. Thà nói mình không chắc còn hơn báo một con số
+   sai mà trông như thật. */
+function feedStale(){
+  return feedSources().filter(s => {
+    const d = dayDiff(String(s.at || '').slice(0, 10));
+    return d !== null && d <= -FEED_STALE_DAYS;
+  });
+}
+function feedDay(wd, dstr){
+  return feeds()
+    .filter(f => f.date ? f.date === dstr : (f.days || []).map(Number).includes(Number(wd)))
+    .map(f => ({kind:'feed', id:'f_' + f.id, f, start:hhmm2min(f.time), mins:cleanMins(f.mins, 15),
+                on:true, title:f.title, areaId:'', done:false,
+                color:f.color || 'var(--warn)', src:f.srcName}))
+    .filter(x => x.start !== null);
 }
 /* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
    thật, nên vẫn phải kể ra kèm tổng ước tính. */

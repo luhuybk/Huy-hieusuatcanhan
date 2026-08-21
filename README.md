@@ -276,6 +276,46 @@ Còn trống 2h40 tới 24:00.
 
 **Tick xong hết thì không gửi gì.** Tin nhắc mà ngày nào cũng có, kể cả ngày bạn làm trọn vẹn, thì chỉ vài hôm là bị tắt. Dòng cuối tính từ *bây giờ* tới hết cửa sổ và đã trừ phần việc đã xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. Ngày nghỉ thì bỏ dòng đó đi.
 
+#### Lịch từ app khác
+
+App khác của bạn (nhật ký giao dịch chẳng hạn) cũng có lịch cố định trong ngày: kiểm tra setup, dời SL, tổng kết tuần. Hai trục nằm hai nơi thì chẳng trục nào nói đúng được ngày của bạn.
+
+**Cài đặt → Lịch từ app khác** nhận một file JSON do bên kia xuất ra. Những mốc đó lên trục cùng việc của mình, mang màu riêng, viền chấm chấm, và **tính vào Kín / Trống** — kể cả trong bản tóm tắt Telegram, để hai chỗ không bao giờ báo hai con số khác nhau.
+
+Một chiều và chỉ đọc: khối lịch ngoài **không kéo được, không tick được** (biểu tượng 🔒). Bên kia mới là chủ của nó — sửa ở đây thì lần nhập sau là mất sạch. Muốn đổi thì đổi bên đó rồi nhập lại.
+
+Định dạng file:
+
+```json
+{
+  "feed": "nkgd",
+  "name": "Nhật ký giao dịch",
+  "color": "#d4a24e",
+  "items": [
+    { "title": "Kiểm tra setup", "time": "09:00", "mins": 30, "days": [1,2,3,4,5] },
+    { "title": "Dời SL",         "time": "21:00", "mins": 5,  "days": [1,2,3,4,5] },
+    { "title": "Tổng kết tuần",  "time": "20:00", "mins": 45, "date": "2026-08-22" }
+  ]
+}
+```
+
+| Trường | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `feed` | có | tên mã cố định của nguồn, chỉ chữ thường/số/`-`/`_` |
+| `name` | không | tên hiển thị; thiếu thì lấy `feed` |
+| `color` | không | mã màu `#rrggbb` cho cả nguồn; mỗi mục cũng đặt riêng được |
+| `items[].title` | có | tên việc |
+| `items[].time` | có | giờ bắt đầu, 24 giờ, dạng `HH:MM` |
+| `items[].days` | một trong hai | thứ lặp lại — `0` = CN, `1` = T2 … `6` = T7 |
+| `items[].date` | một trong hai | việc một lần, dạng `YYYY-MM-DD` |
+| `items[].mins` | không | dài bao lâu; thiếu thì tạm tính 15 phút |
+
+**Nhập lại cùng một `feed` là thay hẳn bản cũ** — bên kia cứ xuất trọn bộ mỗi lần, không cần tính xem cái gì đã đổi. Mục nào thiếu tên, thiếu giờ, hoặc không có `days` lẫn `date` thì bị bỏ và app báo lại đã bỏ bao nhiêu mục, chứ không lặng lẽ nuốt.
+
+Nguồn nào **quá 10 ngày** chưa nhập lại thì màn Việc hằng ngày hiện một dòng cam nhắc: bên đó đổi lịch mà mình không biết thì con số "còn trống" đang nói dối.
+
+Không có nút **Chọn file** trên máy bạn thì dùng **Dán nội dung** — chép nguyên văn file JSON vào một ô là được. Nút **Mẫu file** cho ra đúng khối trên để gửi cho app bên kia.
+
 ### Ý tưởng
 
 Màn riêng ở thanh bên — **💡 Ý tưởng** — chứ không nằm sau một tab của Công việc. Ý tưởng là chỗ nghĩ dài hạn, phải mở được bằng một cú bấm.

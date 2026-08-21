@@ -454,6 +454,22 @@ body.locked .app,body.locked .fab{display:none}
 /* việc lẻ trên trục hôm nay: nét đứt cho khác việc hằng ngày */
 .rem.tsk{border-style:dashed}
 .tlbar i.tsk,.tlblk.tsk{border-style:dashed}
+/* Xong rồi thì mờ đi ngay trên trục — liếc một cái là thấy phần còn lại của ngày */
+.tlbar i.dn{opacity:.3}
+.tlrow.dn{opacity:.45}
+.tlblk.dn .tllbl{text-decoration:line-through}
+/* Lịch nhập từ app khác: chấm chấm, không kéo được */
+.tlbar i.fd,.tlblk.fd{border-style:dotted}
+.tlblk.fd{cursor:default}
+.chk .cb.ro{display:inline-flex;align-items:center;justify-content:center;border:0;
+  background:none;cursor:default}
+.chk .cb.ro i{display:block;width:10px;height:10px;border-radius:3px;background:var(--warn)}
+.feedrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.feedrow:last-of-type{border-bottom:0}
+.feedrow .sw{width:11px;height:11px;border-radius:3px;flex:none}
+.chk.ro{border-style:dotted}
+pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px;
+  overflow-x:auto;font-size:12px;line-height:1.55;white-space:pre;margin:0}
 /* khoảng trống trong ngày */
 .gaps{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
 .gap{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;

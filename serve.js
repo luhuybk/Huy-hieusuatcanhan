@@ -123,6 +123,16 @@ function todaySlots(atMs){
     out.push({start:st, mins:taskMinutes(t), title:t.title || '',
               done:taskDoneTodayJs(t, today), est:Math.round(Number(t.mins)) > 0});
   }
+  /* lịch nhập từ app khác — cũng chiếm giờ thật, và không tick được */
+  for (const f of itemsOf('feeds')){
+    const date = String(f.date || '');
+    const days = (f.days || []).map(Number);
+    if (date ? date.slice(0,10) !== today : !days.includes(wday)) continue;
+    const st = hhmmMin(f.time); if (st === null) continue;
+    if (!f.title) continue;
+    out.push({start:st, mins:remMinutes(f), title:f.title,
+              done:false, est:true, feed:String(f.srcName || f.src || '')});
+  }
   return out.sort((a,b) => a.start - b.start);
 }
 function slotClashes(items){
