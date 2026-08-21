@@ -205,7 +205,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-21.9';
+const APP_BUILD = '2026-08-21.10';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -355,6 +355,12 @@ function ensure(){
   /* Hành trình phát triển. Hai loại ghi: lỗi lầm và bài học. Loại lạ thì
      đưa về "bài học" — mất một cái nhãn còn hơn mất cả bản ghi. */
   db.journey.forEach(o => { if (!JOURNEY_KIND[o.kind]) o.kind = 'hoc';
+    /* gốc vấn đề: một nhãn ngắn để nhận ra chuyện cũ lặp lại */
+    if (typeof o.cause !== 'string') o.cause = '';
+    o.cause = o.cause.trim().slice(0, 32);
+    /* người trong danh bạ chịu ảnh hưởng — ô "who" vẫn giữ cho ai không có trong danh bạ */
+    if (!Array.isArray(o.whoIds)) o.whoIds = [];
+    o.whoIds = o.whoIds.filter(id => typeof id === 'string');
                             if (typeof o.date !== 'string' || o.date.length < 10) o.date = today();
                             ['title','story','who','root','fix','lesson','areaId']
                               .forEach(k => { if (typeof o[k] !== 'string') o[k] = ''; }); });
@@ -487,6 +493,19 @@ function careColor(s){ return s >= 60 ? 'var(--ok)' : s >= 30 ? 'var(--warn)' : 
 
 /* việc cần chú ý hôm nay, dùng cho badge + thông báo */
 function dueTasks(){ return tasks().filter(t => !t.done && t.due && dayDiff(t.due) <= 0); }
+
+/* ---- việc đang bị né ----
+   Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa — nó là
+   việc mình không muốn làm, và mỗi ngày nó lại chiếm một dòng trong danh
+   sách để mình lướt qua. Gom riêng ra và bắt chọn một trong ba đường:
+   chia nhỏ, giao cho ai, hay bỏ hẳn. Cảnh báo suông thì dời tiếp thôi. */
+const PUSH_LIMIT = 3;
+function duckedTasks(areaId){
+  return byArea(tasks(), areaId === undefined ? 'all' : areaId)
+    .filter(t => !t.done && (t.pushes || 0) >= PUSH_LIMIT)
+    .sort((a, b) => (b.pushes || 0) - (a.pushes || 0)
+                 || String(a.due || '').localeCompare(String(b.due || '')));
+}
 
 /* ---- những chỗ còn thiếu ----
    Chỉ nêu thứ mà thiếu nó thì app KHÔNG LÀM ĐƯỢC việc gì cho mình: không
@@ -1121,17 +1140,55 @@ function dailyLeft(){
    chỗ — dòng bài học — vì đó mới là thứ đáng đọc lại sau nửa năm.
    ============================================================ */
 const JOURNEY_KIND = {loi:'Lỗi lầm', hoc:'Bài học'};
+/* Gợi ý sẵn cho ô "gốc vấn đề". Không bắt buộc chọn trong danh sách này —
+   gõ chữ khác cũng được, và chữ đã gõ sẽ tự vào danh sách gợi ý lần sau.
+   Cố ý viết ở ngôi mình, không phải ngôi kể tội người khác. */
+const CAUSE_HINTS = ['cầu toàn', 'nóng vội', 'không hỏi lại', 'chủ quan',
+  'thiếu chuẩn bị', 'ôm đồm', 'nể nang', 'thiếu thông tin', 'quên',
+  'nói không rõ ý', 'không đặt giới hạn', 'để cảm xúc dẫn'];
 const JOURNEY_ICON = {loi:'⚠', hoc:'💡'};
 function journeys(){ return alive(db.journey); }
 /* Mới nhất lên trước. Cùng ngày thì cái vừa sửa lên trên, để vừa ghi xong
    là thấy ngay chứ không phải đi tìm. */
-function journeyList(areaId, kind){
+function journeyList(areaId, kind, cause){
   return byArea(journeys(), areaId === undefined ? 'all' : areaId)
     .filter(o => !kind || kind === 'all' || o.kind === kind)
+    .filter(o => !cause || (o.cause || '').trim() === cause)
     .sort((a, b) => String(b.date).localeCompare(String(a.date))
                  || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 /* Gom theo tháng để cuộn xuống còn biết mình đang ở đâu */
+/* Mọi gốc đang dùng, kèm số lần — nhiều nhất lên trước. Đây là thứ biến
+   cuốn nhật ký thành cái gương: một chuyện là chuyện, ba chuyện cùng gốc
+   là tính cách. */
+function causeStats(areaId){
+  const m = new Map();
+  byArea(journeys(), areaId === undefined ? 'all' : areaId).forEach(o => {
+    const c = (o.cause || '').trim();
+    if (c) m.set(c, (m.get(c) || 0) + 1);
+  });
+  return [...m.entries()].map(([cause, n]) => ({cause, n}))
+    .sort((a, b) => b.n - a.n || a.cause.localeCompare(b.cause));
+}
+/* Danh sách gợi ý cho ô nhập: gốc đã dùng lên trước, rồi tới gợi ý sẵn. */
+function causeOptions(){
+  const used = causeStats('all').map(x => x.cause);
+  return used.concat(CAUSE_HINTS.filter(c => !used.includes(c)));
+}
+/* Mục này là lần thứ mấy của cùng một gốc, tính theo thứ tự ngày. */
+function causeNth(o){
+  const c = (o.cause || '').trim();
+  if (!c) return 0;
+  const same = journeys().filter(x => (x.cause || '').trim() === c)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return same.findIndex(x => x.id === o.id) + 1;
+}
+/* Hành trình có nhắc tới một người — dùng ở trang của người đó. */
+function journeyOfPerson(pid){
+  return journeys().filter(o => (o.whoIds || []).includes(pid))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 function journeyMonths(list){
   const out = [];
   list.forEach(o => {

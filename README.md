@@ -156,11 +156,26 @@ Màn hình mở ra nhiều nhất trong ngày, nên hình dạng của hôm nay 
 |---|---|
 | **Hôm nay** | *Giờ này nên làm gì?* — trục thu nhỏ, số việc, cửa sổ làm việc, đã kín bao nhiêu, việc nào đã qua giờ mà chưa tích, và ba mốc sắp tới |
 | **Chưa xếp giờ** | *Việc nào chưa có chỗ trong ngày?* — kèm nút **Xếp vào HH:MM** nhét thẳng vào khoảng trống gần nhất còn đủ chỗ |
+| **Đang bị né** | *Việc nào mình đang tránh?* — những việc đã bấm **→ Mai** từ ba lần trở lên |
 | **Cần bổ sung** | *Chỗ nào còn thiếu khiến app chưa giúp được gì?* — bấm vào là mở đúng ô cần điền |
 
 Khối **Hôm nay** cố ý **không** chép cả mục Hằng ngày sang. Ở đây chỉ để nhìn và quyết định; sửa giờ, đổi số phút, tick từng dòng thì bấm **Hằng ngày →**. Hai bản sao của cùng một danh sách trên hai màn hình là hai chỗ để lệch nhau.
 
 Con số **trống** ở đây tính **từ bây giờ** tới hết cửa sổ, không phải cả ngày. 22 giờ tối mà app báo *"còn trống 14h25"* thì đúng về số học nhưng vô dụng — chỗ trống hồi 9 giờ sáng đâu còn nhét được gì. Con số trống của cả ngày, cùng danh sách từng khoảng hở, nằm trong mục Hằng ngày.
+
+#### Đang bị né — ba đường ra, không có đường thứ tư
+
+Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa: đó là việc bạn không muốn làm, và mỗi ngày nó lại chiếm một dòng để bạn lướt qua. App đã đếm *"đã dời N lần"* từ trước, nhưng đếm xong thì bạn vẫn chỉ có mỗi nút **→ Mai**. Giờ có ba nút thật:
+
+| Nút | Làm gì |
+|---|---|
+| **✂ Chia nhỏ** | mở ô nhập *mỗi dòng một việc nhỏ*. Mỗi mẩu thừa hưởng mảng việc của việc cũ, và **lùi hạn dần mỗi mẩu một ngày** — dồn hết vào một ngày thì mai lại là một ngày quá tải nữa. Việc cũ được thay bằng những mẩu này, mỗi mẩu đếm lại từ 0 lần dời, và mang ghi chú *"Tách ra từ: …"* |
+| **→ Giao cho ai** | chuyển hẳn thành **thẻ việc đã giao** trong mục Công việc, giữ nguyên tên, mảng việc và hạn. Vẫn theo dõi được, chỉ là không còn nằm trong ngày của bạn |
+| **Bỏ hẳn** | hỏi lại một câu rồi xoá. Không làm cũng là một quyết định |
+
+Cả ba đều **kết thúc việc cũ**. Để nó nằm lại thì hôm sau nó lại xuất hiện y nguyên, và cái nút bạn vừa bấm chẳng có nghĩa gì. Cố ý **không** có nút thứ tư tên là *"để đó"* — cái đó bấm bằng cách không làm gì cả.
+
+Khối này cũng vào **tổng kết tuần Telegram** (🔁 *Đang bị né*), tách riêng khỏi khối ⚠️ *Đang trễ*: trễ là chưa kịp làm, né là chuyện khác, và cách xử hai thứ đó khác nhau.
 
 **Cần bổ sung** chỉ nêu thứ mà thiếu nó thì app *không làm được việc gì*: việc chưa có hạn (sẽ không bao giờ nổi lên), việc đến hạn mà chưa ước tính số phút (không xếp vào chỗ trống được), việc hằng ngày đang bật mà chưa chọn thứ hay chưa đặt giờ (không hiện ở ngày nào cả), việc chưa gán mảng. Ô trống nào không cản trở gì thì kệ nó — nhắc mọi ô trống thì chỉ vài hôm là bạn ngó lơ cả khối.
 
@@ -461,6 +476,16 @@ Nhật ký bài học. Hai loại ghi, cùng kết ở một chỗ.
 | Bài học rút ra | câu để đọc lại sau nửa năm |
 
 **💡 Bài học** — gọn hơn, cho những ngày không hỏng gì mà vẫn học được điều gì đó: tên, kinh nghiệm hôm nay, và bài học tổng.
+
+#### Gốc vấn đề — thứ biến cuốn nhật ký thành cái gương
+
+Mỗi mục có thêm ô **Gốc vấn đề**: một nhãn ngắn như `cầu toàn`, `nóng vội`, `không hỏi lại`. Gõ tự do, có gợi ý sẵn, và **gốc bạn đã dùng sẽ tự vào danh sách gợi ý lần sau** — dùng select thì mỗi lần gặp một gốc chưa có tên là phải đi sửa code, mà gốc thì mỗi người mỗi khác.
+
+Cái nhãn đó để làm một việc: gom lại. Đọc từng mục riêng lẻ thì mục nào cũng có vẻ là chuyện riêng của hôm đó. Gom theo gốc mới thấy cùng một chuyện đang quay lại lần thứ ba. Đầu mục Hành trình có khối **Gốc lặp lại** liệt kê mọi gốc đã gặp **từ 2 lần trở lên** (gốc nào cũng đúng một lần thì chẳng nói lên điều gì) — bấm vào một nhãn là lọc còn đúng những mục cùng gốc. Trên thẻ, nhãn ghi luôn *lần thứ mấy*, và từ 3 lần trở lên nó chuyển sang màu đỏ.
+
+#### Nối với danh bạ
+
+Ô **Ảnh hưởng tới** vẫn là chữ tự do (khách, đối tác, ai cũng ghi được). Bên dưới có thêm ô chọn **người trong danh bạ**. Chọn ai thì trang của người đó hiện khối **Hành trình liên quan** — mở trang một người là thấy luôn những chuyện bạn đã ghi có dính tới họ, thứ mà lúc chuẩn bị gặp lại rất cần nhớ. Hai nửa của app (quan hệ và nhật ký bài học) vốn chạy song song; đây là chỗ nối chúng lại.
 
 Thẻ trong danh sách chỉ giữ **tên chuyện và bài học** — hai thứ đọc lướt được. Diễn biến đầy đủ nằm sau một lần chạm (**Xem đầy đủ · N phần**), mở ra một khung *chỉ đọc*, có nút ✎ Sửa nếu muốn sửa thật. Mười lăm mục mà mục nào cũng trải hết bốn đoạn thì cuộn cả buổi không hết, mà chín trên mười lần mở mục này ra là để ôn lại bài học chứ không phải đọc lại diễn biến. Mục nào chưa ghi diễn biến thì không có dòng *Xem đầy đủ* — thẻ đã hiện đủ rồi.
 

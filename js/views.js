@@ -179,6 +179,43 @@ function dashUnsched(A){
   return h;
 }
 
+/* Việc đã dời từ ba lần trở lên. Đặt ngay dưới "Chưa xếp giờ" vì nó chính
+   là chỗ mấy việc kia sẽ trôi tới nếu cứ bấm "→ Mai" mãi. Ba nút, không có
+   nút thứ tư nào tên là "để đó" — cái đó bấm bằng cách không làm gì cả. */
+function dashDucked(A){
+  const list = duckedTasks(A);
+  if (!list.length) return '';
+  let h = secHd('Đang bị né — ' + list.length + ' việc');
+  h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
+    Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa.
+    Chọn một trong ba đường — <b>bấm "→ Mai" lần thứ ${PUSH_LIMIT + 1}</b> thì
+    ngày mai vẫn đúng dòng này thôi.</div>`;
+  h += list.slice(0, 5).map(t => {
+    const tre = -dayDiff(t.due);
+    return `<div class="card duck" style="margin-bottom:10px">
+      <div class="row">
+        <div class="grow ell" style="font-weight:650" data-act="editTask" data-id="${t.id}">
+          ${areaDot(t.areaId)} ${esc(t.title || 'Việc chưa đặt tên')}</div>
+        <span class="chip bad">đã dời ${t.pushes} lần</span>
+      </div>
+      <div class="dim" style="margin-top:6px">${
+        t.due ? (tre > 0 ? 'trễ ' + tre + ' ngày · hạn ' + fmtDate(t.due) : 'hạn ' + fmtDate(t.due))
+              : 'chưa có hạn'}${t.pushedAt ? ' · dời lần cuối ' + fmtDate(t.pushedAt) : ''}</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn sm grow pri" data-act="splitTask" data-id="${t.id}"
+          title="Cắt thành mấy mẩu làm được trong một lần ngồi">✂ Chia nhỏ</button>
+        <button class="btn sm grow" data-act="handOffTask" data-id="${t.id}"
+          title="Chuyển thành thẻ việc đã giao">→ Giao cho ai</button>
+        <button class="btn sm dngr" data-act="dropTask" data-id="${t.id}"
+          title="Không làm cũng là một quyết định">Bỏ hẳn</button>
+      </div>
+    </div>`;
+  }).join('');
+  if (list.length > 5)
+    h += `<div class="dim" style="margin-top:4px">+${list.length - 5} việc nữa cùng cảnh</div>`;
+  return h;
+}
+
 /* Chỗ còn thiếu thông tin. Bấm vào là mở đúng form để điền nốt. */
 function dashFill(A){
   const g = needFill(A);
@@ -229,6 +266,7 @@ function vDash(){
   h += feedNote();
   h += dashToday(A);
   h += dashUnsched(A);
+  h += dashDucked(A);
   h += dashFill(A);
 
   /* gợi ý chạm nhẹ — chống vô tâm */
@@ -421,6 +459,22 @@ function vPerson(){
           <button class="iconbtn" data-act="giftMenu" data-id="${g.id}">⋯</button>
         </div></div>`;
     }).join('');
+  }
+
+  /* Nửa quan hệ và nửa nhật ký bài học vốn chạy song song. Chỗ này nối chúng
+     lại: mở trang một người là thấy luôn những chuyện mình đã ghi có dính tới
+     họ — thứ mà lúc chuẩn bị gặp lại rất cần nhớ. */
+  const jn = journeyOfPerson(p.id);
+  if (jn.length){
+    h += secHd('Hành trình liên quan (' + jn.length + ')',
+      `<button data-act="nav" data-id="journey">Mở hành trình</button>`);
+    h += jn.slice(0, 5).map(o => `<div class="item" data-act="viewJourney" data-id="${o.id}">
+      <div class="grow" style="min-width:0">
+        <div class="t ell">${JOURNEY_ICON[o.kind]} ${esc(o.title || '(chưa đặt tên)')}</div>
+        <div class="s ell">${esc(fmtDate(o.date))}${o.lesson ? ' · ' + esc(o.lesson) : ''}</div>
+      </div>
+      ${o.cause ? `<span class="chip warn">⟲ ${esc(o.cause)}</span>` : ''}</div>`).join('');
+    if (jn.length > 5) h += `<div class="dim" style="margin-top:6px">+${jn.length - 5} mục nữa</div>`;
   }
 
   /* nhật ký gặp gỡ */
@@ -1802,6 +1856,27 @@ const J_DETAIL = [['story','Sự việc'], ['who','Ảnh hưởng tới'],
                   ['root','Vấn đề cốt lõi'], ['fix','Cách khắc phục']];
 const jDetailN = o => J_DETAIL.filter(([k]) => o[k]).length;
 
+/* Nhãn gốc, kèm "lần thứ N" khi đã lặp. Con số đó mới là thứ đáng nhìn:
+   một chuyện là chuyện, ba chuyện cùng gốc là tính cách. */
+function causeChip(o, clickable){
+  const c = (o.cause || '').trim();
+  if (!c) return '';
+  const nth = causeNth(o), n = causeStats('all').find(x => x.cause === c);
+  const many = n && n.n >= 3;
+  return `<span class="chip ${many ? 'bad' : 'warn'}"${
+    clickable ? ` data-act="journeyCause" data-id="${esc(c)}" style="cursor:pointer"` : ''
+  } title="Gốc vấn đề${n && n.n > 1 ? ` — đã gặp ${n.n} lần` : ''}">⟲ ${esc(c)}${
+    nth > 1 ? ` · lần ${nth}` : ''}</span>`;
+}
+/* Người trong danh bạ — bấm là sang thẳng trang của họ */
+function whoChips(o){
+  return (o.whoIds || []).map(id => {
+    const p = people().find(x => x.id === id);
+    return p ? `<span class="chip" data-act="person" data-id="${p.id}" style="cursor:pointer"
+      title="Mở trang của ${esc(p.name)}">${esc(p.name)}</span>` : '';
+  }).join('');
+}
+
 /* Thẻ trong danh sách chỉ giữ hai thứ đọc lướt được: tên chuyện, và câu kết
    luận rút ra. Diễn biến đầy đủ nằm sau một lần chạm — mười lăm mục mà mục
    nào cũng trải hết bốn đoạn thì cuộn cả buổi không hết, mà chín trên mười
@@ -1818,6 +1893,8 @@ function journeyCard(o){
       <button class="iconbtn sm" data-act="editJourney" data-id="${o.id}" title="Sửa">✎</button>
     </div>
     <div class="jt" data-act="viewJourney" data-id="${o.id}">${esc(o.title || '(chưa đặt tên)')}</div>
+    ${o.cause || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+      ${causeChip(o, true)}${whoChips(o)}</div>` : ''}
     ${o.lesson ? `<div class="jless" data-act="viewJourney" data-id="${o.id}"><span class="lb">Bài học</span>${
       esc(o.lesson)}</div>` : ''}
     ${n ? `<div class="row jmore" data-act="viewJourney" data-id="${o.id}">
@@ -1839,6 +1916,8 @@ function journeyView(o){
       ${a ? `<span class="chip"><span class="sw" style="background:${esc(a.color)}"></span>${esc(a.name)}</span>` : ''}
     </div>
     <h2 style="margin-bottom:12px">${esc(o.title || '(chưa đặt tên)')}</h2>
+    ${o.cause || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      ${causeChip(o, false)}${whoChips(o)}</div>` : ''}
     ${o.lesson ? `<div class="jless"><span class="lb">Bài học</span>${esc(o.lesson)}</div>` : ''}
     ${detail ? `<div class="jdet">${detail}</div>`
              : `<div class="dim" style="margin-top:12px">Chưa ghi diễn biến, chỉ có bài học.</div>`}
@@ -1859,7 +1938,7 @@ function vJourney(){
       <button class="btn" data-act="addJourney" data-id="hoc">💡 Ghi bài học</button>
     </div></div>`;
 
-  const list = journeyList(A, S.journeytab);
+  const list = journeyList(A, S.journeytab, S.journeyCause);
   const n = k => all.filter(o => k === 'all' || o.kind === k).length;
   let h = `<div class="tabs">` + [['all','Tất cả'],['loi','Lỗi lầm'],['hoc','Bài học']].map(([id, lb]) =>
     `<button class="tab ${S.journeytab === id ? 'on' : ''}" data-act="journeytab" data-id="${id}">${
@@ -1870,7 +1949,31 @@ function vJourney(){
     <button class="btn sm grow" data-act="addJourney" data-id="hoc">💡 Ghi bài học</button>
   </div>`;
 
-  if (!list.length) return h + `<div class="empty" style="padding:22px">Chưa có mục nào loại này.</div>`;
+  /* Gốc lặp lại. Đây là lý do cuốn nhật ký đáng ghi: từng mục riêng lẻ thì
+     mục nào cũng có vẻ là chuyện riêng của hôm đó, gom lại theo gốc mới thấy
+     cùng một chuyện đang quay lại lần thứ ba. Chỉ hiện gốc đã gặp từ 2 lần —
+     danh sách mà gốc nào cũng đúng một lần thì chẳng nói lên điều gì. */
+  const rep2 = causeStats(A).filter(x => x.n >= 2);
+  if (rep2.length || S.journeyCause){
+    h += secHd('Gốc lặp lại', S.journeyCause
+      ? `<button data-act="journeyCause" data-id="${esc(S.journeyCause)}">Bỏ lọc ✕</button>` : '');
+    h += `<div class="card" style="margin-bottom:14px">
+      <div class="dim" style="margin-bottom:10px;line-height:1.6">
+        Một chuyện là chuyện. Ba chuyện cùng một gốc là tính cách — mà tính cách
+        thì phải chặn từ gốc, chữa từng chuyện không xuể.</div>
+      <div class="row" style="gap:7px;flex-wrap:wrap">
+        ${rep2.length ? rep2.map(x => `<span class="chip ${x.n >= 3 ? 'bad' : 'warn'}${
+          S.journeyCause === x.cause ? ' on' : ''}"
+          data-act="journeyCause" data-id="${esc(x.cause)}" style="cursor:pointer"
+          >⟲ ${esc(x.cause)} · ${x.n}</span>`).join('')
+          : `<span class="dim">Chưa gốc nào lặp lại.</span>`}
+      </div>
+    </div>`;
+  }
+
+  if (!list.length) return h + `<div class="empty" style="padding:22px">${
+    S.journeyCause ? 'Không có mục nào thuộc gốc "' + esc(S.journeyCause) + '" trong tab này.'
+                   : 'Chưa có mục nào loại này.'}</div>`;
   journeyMonths(list).forEach(g => {
     h += secHd(monthName(g.m) + ' — ' + g.items.length + ' mục');
     h += g.items.map(journeyCard).join('');

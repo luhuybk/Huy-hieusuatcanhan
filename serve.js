@@ -413,6 +413,16 @@ function buildWeekly(atMs){
     if (lateTasks.length > 6) lines.push(`   … và ${lateTasks.length - 6} việc nữa`);
   }
 
+  /* Việc đã dời từ ba lần trở lên — đang né, khác với đang trễ. */
+  const ducked = itemsOf('tasks').filter(t => !t.done && (t.pushes || 0) >= 3)
+    .sort((a, b) => (b.pushes || 0) - (a.pushes || 0));
+  if (ducked.length){
+    sep();
+    lines.push(`🔁 Đang bị né — chia nhỏ, giao đi, hay bỏ hẳn? (${ducked.length})`);
+    ducked.slice(0,5).forEach(t => lines.push('   • ' + t.title + ' — đã dời ' + (t.pushes||0) + ' lần'));
+    if (ducked.length > 5) lines.push(`   … và ${ducked.length - 5} việc nữa`);
+  }
+
   const forgotten = [];
   for (const p of itemsOf('people')){
     const gap = p.lastContact ? Math.round((new Date(today+'T00:00:00') - new Date(String(p.lastContact)+'T00:00:00')) / 86400000) : 9999;

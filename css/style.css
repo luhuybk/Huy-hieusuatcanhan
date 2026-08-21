@@ -481,6 +481,10 @@ body.locked .app,body.locked .fab{display:none}
 .jr .k{flex:none;width:98px;color:var(--tx3);font-weight:650}
 .jr .v{color:var(--tx2);white-space:pre-wrap;min-width:0}
 @media(max-width:420px){ .jr{flex-direction:column;gap:1px} .jr .k{width:auto} }
+/* Chip đang được chọn làm bộ lọc — viền đậm lên cho biết nó đang ăn */
+.chip.on{outline:2px solid currentColor;outline-offset:-2px;font-weight:800}
+/* Thẻ việc đang bị né: viền đỏ bên trái, giống thẻ lỗi lầm bên hành trình */
+.duck{border-left:3px solid var(--bad)}
 /* Dòng "Xem đầy đủ ›" ở đáy thẻ — vùng chạm rộng nguyên hàng, và nói trước
    là bên trong còn mấy phần, để biết có đáng mở ra hay không */
 .jmore{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);

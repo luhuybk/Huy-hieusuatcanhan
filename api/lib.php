@@ -696,6 +696,21 @@ function buildWeekly(): array {
     if (count($lateTasks) > 6) $lines[] = '   … và ' . (count($lateTasks) - 6) . ' việc nữa';
   }
 
+  /* Việc đã dời từ ba lần trở lên. Tách khỏi khối "đang trễ" ở trên: trễ là
+     chưa kịp làm, còn dời ba lần là đang né — và cách xử hai thứ đó khác nhau. */
+  $ducked = [];
+  foreach (itemsOf('tasks') as $t)
+    if (empty($t['done']) && (int)($t['pushes'] ?? 0) >= 3) $ducked[] = $t;
+  if ($ducked) {
+    usort($ducked, fn($a, $b) => (int)($b['pushes'] ?? 0) <=> (int)($a['pushes'] ?? 0));
+    $sep();
+    $lines[] = '🔁 <b>Đang bị né — chia nhỏ, giao đi, hay bỏ hẳn? (' . count($ducked) . ')</b>';
+    foreach (array_slice($ducked, 0, 5) as $t)
+      $lines[] = '   • ' . tgEsc(cutTitle($t['title'] ?? ''))
+               . ' — <i>đã dời ' . (int)($t['pushes'] ?? 0) . ' lần</i>';
+    if (count($ducked) > 5) $lines[] = '   … và ' . (count($ducked) - 5) . ' việc nữa';
+  }
+
   /* người lâu chưa hỏi thăm, theo mức thân sơ riêng của từng người */
   $forgotten = [];
   foreach (itemsOf('people') as $p) {

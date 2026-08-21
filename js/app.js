@@ -4,7 +4,7 @@
 "use strict";
 
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
-            dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all',
+            dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -91,7 +91,7 @@ function setSide(open){
 /* ---------------- biểu mẫu ---------------- */
 function closeModal(){ Voice.stop(); $('#modals').innerHTML = ''; }
 
-function openForm({title, fields, values = {}, submit = 'Lưu', onSave, extra, top}){
+function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate, extra, top}){
   const html = fields.map(f => {
     const v = values[f.k] != null ? values[f.k] : (f.def != null ? f.def : '');
     let inp;
@@ -115,6 +115,14 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, extra, t
       inp = `<div class="pick" id="f_${f.k}">` + (opts.length
         ? opts.map(o => `<button type="button" data-pk="${esc(o[0])}" class="${sel.includes(o[0])?'on':''}">${esc(o[1])}</button>`).join('')
         : `<span class="dim">Chưa có mục nào để chọn.</span>`) + `</div>`;
+    }
+    else if (f.list && f.list.length){
+      /* Gõ tự do vẫn được — danh sách chỉ để gợi ý. Dùng select thì mỗi lần
+         gặp một gốc chưa có tên là phải đi sửa code, mà gốc thì mỗi người
+         mỗi khác. */
+      inp = `<input id="f_${f.k}" type="text" list="dl_${f.k}" autocomplete="off"
+        placeholder="${esc(f.ph||'')}" value="${esc(v)}"><datalist id="dl_${f.k}">` +
+        f.list.map(o => `<option value="${esc(o)}"></option>`).join('') + `</datalist>`;
     }
     else                            inp = `<input id="f_${f.k}" type="text" placeholder="${esc(f.ph||'')}" value="${esc(v)}">`;
     const mic = f.voice && Voice.supported()
@@ -166,6 +174,13 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, extra, t
     }
     if (fields[0] && !out[fields[0].k] && fields[0].req !== false){
       toast('Cần nhập ' + fields[0].label.toLowerCase()); return;
+    }
+    /* Kiểm trước khi đóng. Kiểm bên trong onSave thì form đã đóng mất rồi —
+       báo lỗi xong người ta phải gõ lại từ đầu, và đó là lỗi của mình chứ
+       không phải của người ta. */
+    if (validate){
+      const err = validate(out);
+      if (err){ toast(err); return; }
     }
     closeModal(); onSave(out);
   });
@@ -908,11 +923,15 @@ const journeyFields = kind => kind === 'loi' ? [
   {k:'areaId', label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
   {k:'story',  label:'Mô tả sự việc', type:'textarea', voice:true, ph:'chuyện đã diễn ra thế nào'},
   {k:'who',    label:'Người ảnh hưởng', voice:true, ph:'khách, nhân viên, đối tác… ai chịu hậu quả'},
+  {k:'whoIds', label:'…trong đó ai có trong danh bạ', type:'people',
+   hint:'chọn ai thì trang của người đó hiện luôn chuyện này'},
   {k:'root',   label:'Vấn đề cốt lõi', type:'textarea', voice:true,
    hint:'không phải "ai làm sai", mà "vì sao chuyện này xảy ra được"'},
   {k:'fix',    label:'Cách khắc phục', type:'textarea', voice:true, ph:'chữa lần này, và chặn lần sau'},
   {k:'lesson', label:'Bài học rút ra', type:'textarea', voice:true,
    hint:'câu này là thứ sáu tháng nữa mình đọc lại — viết cho mình lúc đó hiểu'},
+  {k:'cause',  label:'Gốc vấn đề', list:causeOptions(), ph:'cầu toàn, nóng vội, không hỏi lại…',
+   hint:'một nhãn ngắn thôi. Ba chuyện cùng một gốc thì đó không còn là chuyện, mà là tính cách'},
   {k:'kind',   label:'Loại', type:'select', opts:Object.entries(JOURNEY_KIND)}
 ] : [
   {k:'title',  label:'Hôm nay học được gì', voice:true, ph:'một câu gọn'},
@@ -922,6 +941,8 @@ const journeyFields = kind => kind === 'loi' ? [
    ph:'chuyện gì dẫn tới điều này'},
   {k:'lesson', label:'Bài học tổng', type:'textarea', voice:true,
    hint:'rút gọn thành nguyên tắc dùng được cho lần sau'},
+  {k:'whoIds', label:'Liên quan tới ai trong danh bạ', type:'people'},
+  {k:'cause',  label:'Gốc vấn đề', list:causeOptions(), ph:'để trống cũng được'},
   {k:'kind',   label:'Loại', type:'select', opts:Object.entries(JOURNEY_KIND)}
 ];
 function addJourney(kind){
@@ -930,11 +951,89 @@ function addJourney(kind){
     fields:journeyFields(k),
     values:{kind:k, date:today(), areaId:S.area === 'all' ? '' : S.area},
     onSave(v){
-      db.journey.push(stamp(Object.assign({kind:k, story:'', who:'', root:'', fix:'', lesson:''}, v)));
+      db.journey.push(stamp(Object.assign(
+        {kind:k, story:'', who:'', root:'', fix:'', lesson:'', cause:'', whoIds:[]}, v)));
       save(); S.view = 'journey'; S.journeytab = 'all'; render();
       toast('Đã ghi vào hành trình');
     }});
 }
+/* ---------------- ba lối thoát cho việc đang bị né ----------------
+   Một việc dời tới lần thứ ba thì bấm "→ Mai" lần thứ tư cũng chẳng giải
+   quyết gì. Ba đường ra khỏi vòng đó, và cả ba đều KẾT THÚC việc cũ — để
+   nó nằm lại thì hôm sau nó lại xuất hiện y nguyên. */
+
+/* Dán từ chỗ khác vào thì hay dính sẵn dấu đầu dòng — cắt đi cho gọn. */
+const splitLines = v => String(v || '').split('\n')
+  .map(x => x.replace(/^[\s•\-*.]+/, '').trim()).filter(Boolean);
+
+/* Chia nhỏ: việc to quá nên mãi không bắt đầu được. Cắt thành mấy mẩu làm
+   được trong một lần ngồi, mỗi mẩu thừa hưởng mảng việc và hạn của việc cũ. */
+function splitTask(id){
+  const t = db.tasks.find(x => x.id === id); if (!t) return;
+  openForm({title:'Chia nhỏ: ' + (t.title || 'việc này'),
+    top:`<div class="dim" style="margin:-6px 0 14px;line-height:1.65">
+      Đã dời <b>${t.pushes || 0} lần</b> — thường là vì nó to quá nên chẳng
+      biết bắt đầu từ đâu. Cắt thành mấy mẩu <b>làm xong trong một lần ngồi</b>.
+      Việc cũ sẽ được thay bằng những mẩu này.</div>`,
+    fields:[{k:'lines', label:'Mỗi dòng một việc nhỏ', type:'textarea', voice:true,
+             ph:'Gọi hỏi báo giá\nSoạn bản nháp\nGửi cho anh Nam duyệt'},
+            {k:'due', label:'Hạn cho mẩu đầu tiên', type:'date', half:true}],
+    values:{due: today()},
+    submit:'Chia nhỏ',
+    validate: v => splitLines(v.lines).length < 2
+      ? 'Cần ít nhất hai mẩu — một mẩu thì có khác gì việc cũ' : '',
+    onSave(v){
+      const parts = splitLines(v.lines);
+      /* Mẩu đầu nhận hạn mình chọn, mấy mẩu sau lùi dần mỗi mẩu một ngày —
+         dồn hết vào một ngày thì mai lại là một ngày quá tải nữa. */
+      parts.forEach((title, i) => {
+        db.tasks.push(stamp({title, due:addDays(v.due || today(), i), areaId:t.areaId || '',
+          prio:t.prio || 'mid', mins:0, remindAt:'', done:false, streak:0, bestStreak:0,
+          doneLog:[], createdAt:today(), pushes:0, pushedAt:'', prevPushes:0,
+          note:'Tách ra từ: ' + (t.title || '')}));
+      });
+      t.deleted = true; stamp(t); save(); render();
+      toast('Đã tách thành ' + parts.length + ' việc nhỏ');
+    }});
+}
+
+/* Giao cho ai: việc không phải của mình, hoặc không nên là của mình.
+   Chuyển hẳn sang bảng thẻ việc để còn theo dõi được người ta làm tới đâu. */
+function handOffTask(id){
+  const t = db.tasks.find(x => x.id === id); if (!t) return;
+  const names = [...new Set([...staff().map(s => s.name),
+                             ...cards().map(c => c.assignee).filter(Boolean)])];
+  openForm({title:'Giao việc: ' + (t.title || ''),
+    top:`<div class="dim" style="margin:-6px 0 14px;line-height:1.65">
+      Việc này sẽ rời danh sách của mình và thành một <b>thẻ việc đã giao</b>
+      trong mục Công việc — vẫn theo dõi được, chỉ là không còn nằm trong
+      ngày của mình nữa.</div>`,
+    fields:[{k:'assignee', label:'Giao cho', list:names, ph:'tên người nhận'},
+            {k:'due', label:'Hạn chót', type:'date', half:true},
+            {k:'desc', label:'Dặn thêm', type:'textarea', voice:true}],
+    values:{due: String(t.due || '').slice(0,10) || today(), desc:''},
+    submit:'Giao đi',
+    onSave(v){
+      db.cards.push(stamp(normalizeCard({
+        title:t.title || 'Việc được giao', assignee:v.assignee || '', col:'assigned',
+        areaId:t.areaId || '', due:v.due || '', remindAt:'', remindBefore:0,
+        prio:t.prio || 'mid', progress:0, extra:'', extraPay:0, extraPaidDate:'',
+        desc:v.desc || '', checklist:[], createdAt:today()})));
+      t.deleted = true; stamp(t); save(); render();
+      toast('Đã giao cho ' + (v.assignee || 'người nhận') + ' · xem trong Công việc');
+    }});
+}
+
+/* Bỏ hẳn: đường ra tử tế nhất trong ba đường, và hay đúng nhất. */
+function dropTask(id){
+  const t = db.tasks.find(x => x.id === id); if (!t) return;
+  confirmBox('Bỏ hẳn "' + (t.title || 'việc này') + '"? Đã dời ' + (t.pushes || 0) +
+             ' lần rồi — không làm cũng là một quyết định.', () => {
+    t.deleted = true; stamp(t); save(); closeModal(); render();
+    toast('Đã bỏ · nhẹ được một dòng');
+  });
+}
+
 /* Xem nhanh trước, sửa sau. Mở thẳng form sửa mỗi lần chỉ muốn đọc lại thì
    sớm muộn cũng có lần gõ nhầm vào đúng cái mình đang muốn giữ nguyên. */
 function viewJourney(id){
@@ -1829,6 +1928,10 @@ document.addEventListener('click', e => {
       hardReset, 'Gỡ sạch & tải lại'); break;
     case 'journeytab': S.journeytab = id; render(); break;
     case 'addJourney': addJourney(id); break;
+    case 'splitTask':   splitTask(id); break;
+    case 'handOffTask': handOffTask(id); break;
+    case 'dropTask':    dropTask(id); break;
+    case 'journeyCause': S.journeyCause = (S.journeyCause === id ? '' : id); render(); break;
     case 'viewJourney': viewJourney(id); break;
     case 'editJourney': editJourney(id); break;
     case 'delJourney': delJourney(id); break;
