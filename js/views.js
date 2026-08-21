@@ -1313,16 +1313,29 @@ function dailyRow(x, clash, nowMin){
       r.enabled ? '' : ' · đang tắt'}`
   });
 }
+/* Ô tích ngay trong tab Cả tuần, để tick cho nhanh mà không phải nhảy tab.
+   Chỉ cột hôm nay mới bấm được: "xong" là chuyện của một ngày cụ thể, tick
+   hộ ngày mai thì chẳng biết ghi vào đâu. Ngày khác vẫn hiện đúng trạng
+   thái của ngày đó, chỉ là không bấm được. */
+function weekCb(live, done, act, id){
+  return live
+    ? `<button class="cb ${done ? 'on' : ''}" data-act="${act}" data-id="${id}"
+        title="${done ? 'Bỏ đánh dấu' : 'Đánh dấu xong'}">✓</button>`
+    : `<span class="cb mute ${done ? 'on' : ''}" title="Chỉ tick được ở cột hôm nay">✓</span>`;
+}
+
 /* Hàng trong tab Cả tuần: sửa thẳng giờ và số phút. Kéo khối cho nhanh, gõ
    ô này khi cần đúng phút — trên điện thoại kéo trúng 5 phút là chuyện khó.
    Xếp hai dòng chứ không một: tên việc, ô giờ và ô phút nhét chung một hàng
    là tên bị cắt cụt còn chữ "phút" chui xuống dưới nút tròn ở khổ 375px. */
-function dailyEditRow(x, clash){
+function dailyEditRow(x, clash, live){
   const r = x.r, cl = clash.has(x.id);
-  return `<div class="rem two ${r.enabled ? '' : 'off'}">
+  return `<div class="rem two ${r.enabled ? '' : 'off'} ${x.done ? 'done' : ''}">
     <div class="row">
+      ${weekCb(live, x.done, 'remDone', r.id)}
       <div class="nm ell grow" data-act="editRem" data-id="${r.id}">${areaDot(r.areaId)} ${esc(x.title)}</div>
       ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
+      ${x.done ? `<span class="chip ok">xong${x.doneTime ? ' ' + esc(x.doneTime) : ''}</span>` : ''}
       ${r.enabled ? '' : `<span class="chip">đang tắt</span>`}
     </div>
     <div class="row" style="margin-top:9px;gap:8px">
@@ -1371,12 +1384,15 @@ function slotBtn(t, at, need){
     : `<button class="btn sm pri" data-act="slotTask" data-id="${t.id}"
          data-at="${min2hhmm(at)}">→ Xếp vào ${min2hhmm(at)}</button>`;
 }
-/* dstr = ngày đang xem, để dòng hạn nói đúng "hạn hôm nay" hay "trễ 2 ngày" */
-function unschedRow(t, slot, dstr){
+/* dstr = ngày đang xem, để dòng hạn nói đúng "hạn hôm nay" hay "trễ 2 ngày".
+   live = false thì ô tích chỉ để xem, giống hàng bên trên. */
+function unschedRow(t, slot, dstr, live){
   const d0 = dstr === undefined ? today() : dstr;
   const tre = -dayDiff(t.due), est = taskEst(t), xong = taskDoneOn(t, d0), doi = pushInfo(t);
+  const ro = live === false;
   return chkRow({
-    id:t.id, tick:'toggleTask', open:'editTask', done:xong, dash:true,
+    id:t.id, tick:ro ? '' : 'toggleTask', open:'editTask', done:xong, dash:true,
+    box:ro ? `<span class="cb mute ${xong ? 'on' : ''}" title="Chỉ tick được ở cột hôm nay">✓</span>` : '',
     time:'--:--', dot:areaDot(t.areaId), title:t.title,
     state:chkState({done:xong, doneTime:doneHhmm(t.doneTime, d0), mins:taskMins(t),
                     est, start:null}, 0),
@@ -1460,13 +1476,15 @@ function dailyToday(A){
 /* Việc lẻ trong tab Cả tuần. Giống hàng việc hằng ngày ở chỗ sửa thẳng giờ
    và số phút, khác ở chỗ giờ này là của riêng nó — sửa không đụng ngày khác.
    Nét đứt và chữ "việc lẻ" để phân biệt ngay khi liếc. */
-function taskWeekRow(x, clash, past){
+function taskWeekRow(x, clash, past, live){
   const t = x.t, cl = clash.has(x.id), tre = x.late ? -dayDiff(t.due) : 0, doi = pushInfo(t);
-  return `<div class="rem two tsk ${x.done ? 'off' : ''}">
+  return `<div class="rem two tsk ${x.done ? 'done' : ''}">
     <div class="row">
+      ${weekCb(live, x.done, 'toggleTask', t.id)}
       <div class="nm ell grow" data-act="editTask" data-id="${t.id}">${areaDot(t.areaId)} ${esc(x.title)}</div>
       ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
-      ${x.done ? `<span class="chip ok">xong</span>` : `<span class="chip">việc lẻ</span>`}
+      ${x.done ? `<span class="chip ok">xong${x.doneTime ? ' ' + esc(x.doneTime) : ''}</span>`
+               : `<span class="chip">việc lẻ</span>`}
     </div>
     <div class="row" style="margin-top:9px;gap:8px">
       <input class="tlin" type="time" value="${esc(min2hhmm(x.start))}" data-tlt="t_${t.id}"
@@ -1524,9 +1542,10 @@ function dailyWeek(A){
       thứ khác. Việc lẻ (nét đứt) thì giờ là của riêng nó.</div>`;
     h += gapBlock(sel.items, clash, '', sel.wd);
     h += tlTrack(sel.items, clash, sel.wd);
+    const live = dstr === t0;
     h += sel.items.map(x => x.kind === 'feed' ? feedRow(x, clash.has(x.id), 0)
-                          : x.kind === 'task' ? taskWeekRow(x, clash, past)
-                          : dailyEditRow(x, clash)).join('');
+                          : x.kind === 'task' ? taskWeekRow(x, clash, past, live)
+                          : dailyEditRow(x, clash, live)).join('');
   } else {
     h += gapBlock(sel.items, clash, '', sel.wd);
   }
@@ -1538,10 +1557,11 @@ function dailyWeek(A){
        việc kế tiếp không nhận đúng cái giờ đó lần nữa. */
     const plan = sel.items.slice();
     h += sel.un.map(t => {
-      if (past || taskDoneOn(t, dstr)) return unschedRow(t, '', dstr);
+      const live = dstr === t0;
+      if (past || taskDoneOn(t, dstr)) return unschedRow(t, '', dstr, live);
       const need = taskMins(t), at = nextFreeSlot(plan, need, sel.wd);
       if (at !== null) plan.push({id:'plan_' + t.id, start:at, mins:need, on:true});
-      return unschedRow(t, slotBtn(t, at, need), dstr);
+      return unschedRow(t, slotBtn(t, at, need), dstr, live);
     }).join('');
   }
   return h + `<div style="height:56px"></div>`;   /* nút tròn khỏi đè lên hàng cuối */

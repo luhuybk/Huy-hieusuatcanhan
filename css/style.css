@@ -464,6 +464,11 @@ body.locked .app,body.locked .fab{display:none}
 .chk .cb.ro{display:inline-flex;align-items:center;justify-content:center;border:0;
   background:none;cursor:default}
 .chk .cb.ro i{display:block;width:10px;height:10px;border-radius:3px;background:var(--warn)}
+/* Ô tích chỉ để xem — cột không phải hôm nay thì không bấm được */
+.cb.mute{opacity:.4;cursor:default}
+/* Hàng trong tab Cả tuần đã tick xong: mờ và gạch, khớp với khối trên trục */
+.rem.done{opacity:.55}
+.rem.done .nm{text-decoration:line-through}
 .feedrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .feedrow:last-of-type{border-bottom:0}
 .feedrow .sw{width:11px;height:11px;border-radius:3px;flex:none}

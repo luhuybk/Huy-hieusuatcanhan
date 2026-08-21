@@ -743,43 +743,116 @@ const FEED_STALE_DAYS = 10;
 function feeds(){ return alive(db.feeds); }
 const isHex = v => /^#[0-9a-fA-F]{3,8}$/.test(String(v == null ? '' : v));
 
-/* Đọc file và báo lỗi bằng tiếng người: "sai định dạng" thì không ai biết
-   phải sửa gì, còn "thiếu mảng items" thì gửi lại cho bên kia là xong. */
+/* Đọc file cho rộng tay. App bên kia không viết riêng cho mình, và mình
+   không sửa được file của nó — nên chấp nhận nhiều cách gọi tên cho cùng một
+   thứ, thay vì bắt bên kia sửa đúng từng chữ. Chỗ nào thật sự không đoán
+   được thì mới báo, và báo kèm những trường file đang có để còn nhắn lại. */
+const FEED_LISTS = ['items','tasks','slots','timeline','events','schedule','list','rows','data'];
+const FEED_WD = {
+  '0':0,'cn':0,'sun':0,'sunday':0,'chunhat':0,
+  '1':1,'t2':1,'mon':1,'monday':1,
+  '2':2,'t3':2,'tue':2,'tues':2,'tuesday':2,
+  '3':3,'t4':3,'wed':3,'wednesday':3,
+  '4':4,'t5':4,'thu':4,'thur':4,'thurs':4,'thursday':4,
+  '5':5,'t6':5,'fri':5,'friday':5,
+  '6':6,'t7':6,'sat':6,'saturday':6
+};
+const FEED_EVERY = ['daily','everyday','every day','hangngay','hằngngày','all','mỗingày','moingay'];
+const FEED_WORK  = ['weekday','weekdays','ngaylamviec','ngàylàmviệc','t2-t6'];
+function feedKey(x){ return String(x == null ? '' : x).trim().toLowerCase().replace(/[\s.]/g, ''); }
+function feedSlug(v){
+  return String(v == null ? '' : v).trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+}
+/* Nhận "09:00", "9:00", "9h30", "0900", "9", "9:00 PM" — cùng một giờ mà
+   mỗi app viết một kiểu, bắt bẻ ở đây thì file nào cũng hỏng. */
+function feedTime(v){
+  let s = String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, '');
+  const pm = /pm$/.test(s), am = /am$/.test(s);
+  s = s.replace(/[ap]m$/, '').replace(/[hg]/g, ':').replace(/:$/, ':00');
+  if (/^\d{3,4}$/.test(s)) s = s.slice(0, -2) + ':' + s.slice(-2);
+  if (/^\d{1,2}$/.test(s)) s += ':00';
+  const m = /^(\d{1,2}):(\d{1,2})$/.exec(s);
+  if (!m) return null;
+  let h = +m[1];
+  const mi = +m[2];
+  if (pm && h < 12) h += 12;
+  if (am && h === 12) h = 0;
+  if (h > 23 || mi > 59) return null;
+  return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+}
+function feedDays(v){
+  const raw = Array.isArray(v) ? v : (v === undefined || v === null || v === '' ? [] : [v]);
+  const out = [];
+  raw.forEach(x => {
+    if (typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= 6){ out.push(x); return; }
+    const k = feedKey(x).replace(/^thứ|^thu(?=\d)/, 't');
+    if (FEED_EVERY.includes(k)){ out.push(0,1,2,3,4,5,6); return; }
+    if (FEED_WORK.includes(k)){ out.push(1,2,3,4,5); return; }
+    if (FEED_WD[k] !== undefined) out.push(FEED_WD[k]);
+  });
+  return Array.from(new Set(out)).sort();
+}
+function feedNum(v){
+  const m = /-?\d+(\.\d+)?/.exec(String(v == null ? '' : v));
+  return m ? Number(m[0]) : null;
+}
+const pick = (o, keys) => { for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]; return ''; };
+
 function parseFeed(raw){
   let j = raw;
   if (typeof raw === 'string'){
     try { j = JSON.parse(raw); }
     catch(e){ throw new Error('File không phải JSON đọc được: ' + e.message); }
   }
-  if (!j || typeof j !== 'object' || Array.isArray(j))
-    throw new Error('File phải là một object JSON có "feed" và "items".');
-  const src = String(j.feed || j.src || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (!src) throw new Error('Thiếu trường "feed" — tên mã của app xuất file, ví dụ "nkgd".');
-  if (!Array.isArray(j.items)) throw new Error('Thiếu mảng "items".');
-  if (j.items.length > FEED_MAX)
-    throw new Error('File có ' + j.items.length + ' mục, quá mức ' + FEED_MAX + ' — chắc có gì đó không ổn bên kia.');
-  const name  = String(j.name || src).trim().slice(0, 40) || src;
-  const color = isHex(j.color) ? String(j.color) : '';
+  if (!j || typeof j !== 'object') throw new Error('File rỗng hoặc không phải JSON.');
+
+  /* Danh sách mục có thể nằm ngay ở gốc, hoặc dưới một trong mấy tên quen thuộc */
+  let list = Array.isArray(j) ? j : null;
+  if (!list) for (const k of FEED_LISTS) if (Array.isArray(j[k])){ list = j[k]; break; }
+  if (!list){
+    const keys = Object.keys(j).slice(0, 10);
+    throw new Error('Không thấy danh sách mục nào. File đang có: ' +
+      (keys.length ? keys.join(', ') : '(rỗng)') +
+      ' — cần một mảng tên "items" (hoặc tasks, slots, timeline, events).');
+  }
+  if (list.length > FEED_MAX)
+    throw new Error('File có ' + list.length + ' mục, quá mức ' + FEED_MAX + ' — chắc có gì đó không ổn bên kia.');
+
+  const head  = Array.isArray(j) ? {} : j;
+  const name  = String(pick(head, ['name','title','app','label','feed','src']) || 'Lịch ngoài').trim().slice(0, 40);
+  /* Mã nguồn dùng để nhận ra "vẫn là lịch đó" khi nhập lại. Bên kia không
+     đặt thì lấy từ tên — miễn là lần sau vẫn ra đúng mã đó. */
+  const src   = feedSlug(pick(head, ['feed','src','id','source','app','key','slug']) || name) || 'ngoai';
+  const color = isHex(pick(head, ['color','colour'])) ? String(pick(head, ['color','colour'])) : '';
   const at = nowStamp();
-  const out = []; let bad = 0;
-  j.items.forEach((x, i) => {
-    if (!x || typeof x !== 'object'){ bad++; return; }
-    const title = String(x.title || '').trim().slice(0, 80);
-    const time  = String(x.time  || '').trim();
-    if (!title || hhmm2min(time) === null){ bad++; return; }
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || '')) ? String(x.date) : '';
-    const days = Array.isArray(x.days)
-      ? x.days.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : [];
-    if (!date && !days.length){ bad++; return; }   /* không biết ngày nào thì vẽ vào đâu */
+  const out = []; let bad = 0, why = '';
+  list.forEach((x, i) => {
+    const note = m => { bad++; if (!why) why = 'mục ' + (i + 1) + ' ' + m; };
+    if (!x || typeof x !== 'object'){ note('không phải một object'); return; }
+    const title = String(pick(x, ['title','name','label','text','task']) || '').trim().slice(0, 80);
+    if (!title){ note('thiếu tên'); return; }
+    const time = feedTime(pick(x, ['time','hour','start','at','from','startTime']));
+    if (time === null){ note('không đọc được giờ (' + title + ')'); return; }
+    const rawDate = String(pick(x, ['date','on']) || '');
+    let date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : '';
+    let days = feedDays(pick(x, ['days','weekdays','dow','repeat']));
+    /* "day" nhập nhằng: có thể là ngày cụ thể, có thể là thứ */
+    if (!date && !days.length && x.day !== undefined){
+      const d = String(x.day);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) date = d; else days = feedDays(x.day);
+    }
+    if (!date && !days.length){ note('không có ngày lẫn thứ (' + title + ')'); return; }
+    const mins = feedNum(pick(x, ['mins','minutes','duration','len','length','dur']));
     out.push({id:'feed_' + src + '_' + i, src, srcName:name,
-              color: isHex(x.color) ? String(x.color) : color,
-              title, time, mins:cleanMins(x.mins, 15), days, date,
+              color: isHex(pick(x, ['color','colour'])) ? String(pick(x, ['color','colour'])) : color,
+              title, time, mins:cleanMins(mins, 15), days, date,
               importedAt:at, deleted:false});
   });
   if (!out.length)
-    throw new Error('Không có mục nào dùng được' +
-      (bad ? ' — cả ' + bad + ' mục đều thiếu tên, giờ, hoặc ngày.' : '.'));
-  return {src, name, items:out, skipped:bad};
+    throw new Error('Không có mục nào dùng được — ' + (why || 'danh sách rỗng') + '.');
+  return {src, name, items:out, skipped:bad, why};
 }
 /* Bản nhập mới thay hẳn bản cũ của cùng nguồn. Giữ lại mục cũ thì lịch đã
    bỏ bên kia vẫn nằm đây mãi, và mình sẽ tránh một khung giờ không còn ai. */

@@ -902,7 +902,7 @@ function feedApply(text){
   const n = importFeed(p);
   render();
   toast('Đã nhập ' + n + ' mốc từ ' + p.name +
-        (p.skipped ? ' · bỏ qua ' + p.skipped + ' mục thiếu dữ liệu' : ''));
+        (p.skipped ? ' · bỏ qua ' + p.skipped + ' mục — ' + p.why : ''));
   if (Server.available()) Sync.run(true);
 }
 function feedPick(){
@@ -937,6 +937,15 @@ function feedSpecBox(){
       Mỗi mục cần <b>title</b>, <b>time</b> (24 giờ), và <b>days</b>
       (0 = CN … 6 = T7) cho việc lặp theo thứ, hoặc <b>date</b> (YYYY-MM-DD)
       cho việc một lần. Thiếu <b>mins</b> thì tạm tính 15 phút.
+    </div>
+    <div class="dim" style="line-height:1.65;margin-bottom:12px">
+      Đó là dạng chuẩn, nhưng app đọc rộng tay: danh sách có thể là mảng trần
+      hoặc nằm dưới <b>items / tasks / slots / timeline / events</b>; tên việc
+      nhận cả <b>name</b>, giờ nhận cả <b>hour / start</b>, thời lượng nhận cả
+      <b>minutes / duration</b>. Giờ viết <b>9</b>, <b>9h30</b>, <b>0900</b>,
+      <b>9:00 PM</b> đều được; thứ viết <b>1</b>, <b>"T2"</b>, <b>"Mon"</b>,
+      <b>"daily"</b>, <b>"weekday"</b> cũng vậy. Thiếu <b>feed</b> thì mã lấy
+      từ <b>name</b> — giữ <b>name</b> cố định là nhập lại vẫn thay đúng bản cũ.
     </div>
     <pre class="code">${esc(FEED_SAMPLE)}</pre>
     <div class="btns" style="margin-top:12px">

@@ -200,6 +200,8 @@ Chọn một ngày rồi kéo khối trên trục, hoặc sửa thẳng ô giờ
 * **Việc hằng ngày** chỉ có *một* giờ dùng chung cho mọi thứ nó đang bật — dời ở T4 là dời luôn cho T2 và T6.
 * **Việc lẻ** (hàng nét đứt, gắn nhãn *việc lẻ*) thì giờ là của riêng nó, dời chỉ ảnh hưởng chính nó.
 
+Mỗi hàng có **ô tích** ngay đầu dòng để tick cho nhanh mà không phải nhảy tab. Chỉ **cột hôm nay** mới bấm được — "xong" là chuyện của một ngày cụ thể, tick hộ ngày mai thì chẳng biết ghi vào đâu; cột khác vẫn hiện đúng trạng thái của ngày đó, chỉ là mờ và không bấm được. Tick xong thì hàng **mờ và gạch ngang**, đúng như khối của nó trên trục.
+
 Mục **Chưa xếp giờ** cũng có ở đây, và nút **→ Xếp vào** tính theo cửa sổ của đúng ngày đang xem: hôm nay thì chỉ nhận chỗ trống từ bây giờ trở đi, ngày mai trở đi thì lấy trọn cửa sổ, ngày đã qua thì thôi không đề nghị nữa.
 
 #### Dời sang mai
@@ -301,7 +303,7 @@ Một chiều và chỉ đọc: khối lịch ngoài **không kéo được, kh�
 
 | Trường | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `feed` | có | tên mã cố định của nguồn, chỉ chữ thường/số/`-`/`_` |
+| `feed` | không | tên mã cố định của nguồn; thiếu thì app tự lấy từ `name` |
 | `name` | không | tên hiển thị; thiếu thì lấy `feed` |
 | `color` | không | mã màu `#rrggbb` cho cả nguồn; mỗi mục cũng đặt riêng được |
 | `items[].title` | có | tên việc |
@@ -310,7 +312,18 @@ Một chiều và chỉ đọc: khối lịch ngoài **không kéo được, kh�
 | `items[].date` | một trong hai | việc một lần, dạng `YYYY-MM-DD` |
 | `items[].mins` | không | dài bao lâu; thiếu thì tạm tính 15 phút |
 
-**Nhập lại cùng một `feed` là thay hẳn bản cũ** — bên kia cứ xuất trọn bộ mỗi lần, không cần tính xem cái gì đã đổi. Mục nào thiếu tên, thiếu giờ, hoặc không có `days` lẫn `date` thì bị bỏ và app báo lại đã bỏ bao nhiêu mục, chứ không lặng lẽ nuốt.
+Trên là dạng chuẩn, nhưng **app đọc rộng tay** — bên kia không viết riêng cho mình và mình cũng không sửa được file của nó, nên bắt bẻ từng chữ thì file nào cũng hỏng:
+
+* Danh sách mục có thể là mảng trần ở gốc, hoặc nằm dưới `items`, `tasks`, `slots`, `timeline`, `events`, `schedule`, `list`, `rows`, `data`.
+* Tên việc: `title`, `name`, `label`, `text`, `task`. Giờ: `time`, `hour`, `start`, `at`, `from`. Thời lượng: `mins`, `minutes`, `duration`, `len`, `dur`. Thứ: `days`, `weekdays`, `dow`, `repeat`.
+* Giờ viết kiểu nào cũng nhận: `09:00`, `9:00`, `9h30`, `0900`, `9`, `9:00 PM`, hay số `930`.
+* Thứ viết kiểu nào cũng nhận: `1`, `"T2"`, `"Mon"`, `"Monday"`, `"daily"` (cả tuần), `"weekday"` (T2–T6).
+* Thời lượng viết `"30p"` hay `"30 phút"` cũng ra 30.
+* `day` thì app tự đoán: `"2026-08-22"` là ngày, `"T3"` là thứ.
+
+**Nhập lại cùng một `feed` là thay hẳn bản cũ** — bên kia cứ xuất trọn bộ mỗi lần, không cần tính xem cái gì đã đổi. Nếu `feed` để trống thì mã được lấy từ `name`, nên **giữ `name` cố định** là đủ.
+
+Mục nào thiếu tên, thiếu giờ, hoặc không có `days` lẫn `date` thì bị bỏ, và app nói rõ **mục thứ mấy hỏng vì sao** chứ không lặng lẽ nuốt. Không thấy danh sách mục nào thì app kể ra những trường file đang có, để gửi lại cho bên kia là biết ngay phải sửa gì.
 
 Nguồn nào **quá 10 ngày** chưa nhập lại thì màn Việc hằng ngày hiện một dòng cam nhắc: bên đó đổi lịch mà mình không biết thì con số "còn trống" đang nói dối.
 
