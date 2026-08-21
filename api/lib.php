@@ -994,8 +994,12 @@ function runSchedule(bool $dry = false): array {
   if ($eh !== null && (int)$eh >= 0 && (int)date('G', $now) >= (int)$eh
       && !alreadySent('endday:' . $today)) {
     $slots = todaySlots();
+    /* Lịch của app khác thì bỏ ra khỏi danh sách nhắc: nó không tick được ở
+       đây nên nhắc cũng chẳng làm được gì, chỉ tổ đẩy con số "còn N việc"
+       phồng lên. Vẫn giữ trong $slots để nó chiếm giờ ở phần "còn trống" —
+       giờ đó bận thật, chỉ là bận ở app bên kia. */
     $left  = [];
-    foreach ($slots as $x) if (empty($x['done'])) $left[] = $x;
+    foreach ($slots as $x) if (empty($x['done']) && empty($x['feed'])) $left[] = $x;
     $leftUn = [];
     foreach (todayUnsched() as $x) if (empty($x['done'])) $leftUn[] = $x;
 

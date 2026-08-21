@@ -655,7 +655,9 @@ function runSchedule(dry, atMs){
   const eh = +confGet('tg_endday_hour', '22');
   if (eh >= 0 && now.getHours() >= eh && !alreadySent('endday:' + today)){
     const slots = todaySlots(now.getTime());
-    const left = slots.filter(x => !x.done);
+    /* Lịch của app khác thì bỏ ra khỏi danh sách nhắc — không tick được ở đây.
+       Vẫn giữ trong slots để nó chiếm giờ ở phần "còn trống". */
+    const left = slots.filter(x => !x.done && !x.feed);
     const leftUn = todayUnsched(now.getTime()).filter(x => !x.done);
     if (left.length || leftUn.length){
       const w = workWin(), nm = now.getHours()*60 + now.getMinutes();

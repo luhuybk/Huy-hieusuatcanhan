@@ -205,7 +205,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-21.8';
+const APP_BUILD = '2026-08-21.9';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -487,6 +487,37 @@ function careColor(s){ return s >= 60 ? 'var(--ok)' : s >= 30 ? 'var(--warn)' : 
 
 /* việc cần chú ý hôm nay, dùng cho badge + thông báo */
 function dueTasks(){ return tasks().filter(t => !t.done && t.due && dayDiff(t.due) <= 0); }
+
+/* ---- những chỗ còn thiếu ----
+   Chỉ nêu thứ mà thiếu nó thì app KHÔNG LÀM ĐƯỢC việc gì cho mình: không
+   xếp được vào trục, không nhắc được, không lọc được. Ô trống nào không cản
+   trở gì thì kệ nó — nhắc mọi ô trống thì chỉ vài hôm là mình ngó lơ cả khối.
+   Mỗi việc chỉ nêu MỘT chỗ thiếu, cái cản trở nhất, để danh sách còn đọc được. */
+function needFill(areaId){
+  const A = areaId === undefined ? 'all' : areaId;
+  const nArea = areas().length;
+  const out = [];
+  byArea(tasks(), A).forEach(t => {
+    const nm = t.title || 'Việc chưa đặt tên';
+    if (!t.due)
+      out.push({id:t.id, act:'editTask', areaId:t.areaId, title:nm,
+                why:'chưa có hạn — sẽ không bao giờ nổi lên'});
+    else if (dayDiff(t.due) <= 0 && !taskEst(t))
+      out.push({id:t.id, act:'editTask', areaId:t.areaId, title:nm,
+                why:'đến hạn rồi mà chưa ước tính mất bao lâu — chưa xếp vào chỗ trống được'});
+    else if (nArea > 1 && !t.areaId)
+      out.push({id:t.id, act:'editTask', areaId:'', title:nm, why:'chưa gán mảng việc'});
+  });
+  byArea(reminders(), A).forEach(r => {
+    if (r.enabled && !(r.days || []).length)
+      out.push({id:r.id, act:'editRem', areaId:r.areaId, title:r.title || 'Việc hằng ngày',
+                why:'đang bật mà chưa chọn thứ nào — không hiện ở ngày nào cả'});
+    else if (r.enabled && hhmm2min(r.time) === null)
+      out.push({id:r.id, act:'editRem', areaId:r.areaId, title:r.title || 'Việc hằng ngày',
+                why:'chưa đặt giờ — không lên được trục'});
+  });
+  return out;
+}
 function lateCards(){ return cards().filter(c => c.col !== 'done' && c.due && dayDiff(c.due) < 0); }
 function staleP(){
   return people().map(p => ({p, over: (p.lastContact ? -dayDiff(p.lastContact) : 999) - TIERS[p.tier].ping}))
@@ -1036,6 +1067,20 @@ function busyMins(items, wd){
 function freeMins(items, wd){
   const w = workWindow(wd);
   return w.off ? 0 : Math.max(0, (w.to - w.from) - busyMins(items, wd));
+}
+/* Trống TỪ BÂY GIỜ tới hết cửa sổ. Khác freeMins ở chỗ nó không tính phần
+   ngày đã trôi qua — 22 giờ tối mà app báo "còn trống 14h25" thì con số đó
+   đúng về mặt số học nhưng vô dụng: chỗ trống hồi 9 giờ sáng đâu còn nhét
+   được gì nữa. Chỉ dùng cho hôm nay. */
+function freeAhead(items){
+  const w = workWindow(new Date().getDay());
+  if (w.off) return 0;
+  const d = new Date(), nm = d.getHours() * 60 + d.getMinutes();
+  const from = Math.max(nm, w.from);
+  if (w.to <= from) return 0;
+  const busy = busySpans(items).reduce((n, sp) =>
+    n + Math.max(0, Math.min(sp[1], w.to) - Math.max(sp[0], from)), 0);
+  return Math.max(0, (w.to - from) - busy);
 }
 /* Việc rơi ra ngoài cửa sổ — vẫn hiện, nhưng phải nói ra chứ đừng lặng lẽ
    bỏ nó khỏi mọi con số. Ngày nghỉ thì mọi việc đều nằm ngoài. */

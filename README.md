@@ -149,7 +149,22 @@ Riêng `api/config.php` (mã mật khẩu) và `api/data/` (cơ sở dữ liệu
 ## Các màn hình
 
 ### Tổng quan
-Việc đến hạn, việc giao đang trễ, sinh nhật sắp tới, ân tình chưa trả — và mục **“Hôm nay nên hỏi thăm ai”** gợi ý ba người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
+
+Màn hình mở ra nhiều nhất trong ngày, nên hình dạng của hôm nay nằm ngay đây chứ không bắt đi tìm. Ba khối đầu trả lời ba câu, theo đúng thứ tự bạn hỏi:
+
+| Khối | Trả lời câu |
+|---|---|
+| **Hôm nay** | *Giờ này nên làm gì?* — trục thu nhỏ, số việc, cửa sổ làm việc, đã kín bao nhiêu, việc nào đã qua giờ mà chưa tích, và ba mốc sắp tới |
+| **Chưa xếp giờ** | *Việc nào chưa có chỗ trong ngày?* — kèm nút **Xếp vào HH:MM** nhét thẳng vào khoảng trống gần nhất còn đủ chỗ |
+| **Cần bổ sung** | *Chỗ nào còn thiếu khiến app chưa giúp được gì?* — bấm vào là mở đúng ô cần điền |
+
+Khối **Hôm nay** cố ý **không** chép cả mục Hằng ngày sang. Ở đây chỉ để nhìn và quyết định; sửa giờ, đổi số phút, tick từng dòng thì bấm **Hằng ngày →**. Hai bản sao của cùng một danh sách trên hai màn hình là hai chỗ để lệch nhau.
+
+Con số **trống** ở đây tính **từ bây giờ** tới hết cửa sổ, không phải cả ngày. 22 giờ tối mà app báo *"còn trống 14h25"* thì đúng về số học nhưng vô dụng — chỗ trống hồi 9 giờ sáng đâu còn nhét được gì. Con số trống của cả ngày, cùng danh sách từng khoảng hở, nằm trong mục Hằng ngày.
+
+**Cần bổ sung** chỉ nêu thứ mà thiếu nó thì app *không làm được việc gì*: việc chưa có hạn (sẽ không bao giờ nổi lên), việc đến hạn mà chưa ước tính số phút (không xếp vào chỗ trống được), việc hằng ngày đang bật mà chưa chọn thứ hay chưa đặt giờ (không hiện ở ngày nào cả), việc chưa gán mảng. Ô trống nào không cản trở gì thì kệ nó — nhắc mọi ô trống thì chỉ vài hôm là bạn ngó lơ cả khối.
+
+Dưới ba khối đó là phần cũ: việc đã giao đang trễ, dịp và sinh nhật sắp tới, ân tình chưa trả, và mục **“Hôm nay nên hỏi thăm ai”** gợi ý ba người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
 
 ### Quan hệ — năm module S / S2 / A / B / C
 Cuộn một mạch từ trên xuống, mỗi nhóm là một khối riêng có tiêu đề và đường ngăn, người bên trong hiển thị dạng **thẻ**.
@@ -310,6 +325,8 @@ Cột *quá giờ* trong app chỉ thấy khi bạn mở app. Nên đúng **22:0
 Còn trống 2h40 tới 24:00.
 ```
 
+**Lịch từ app khác không nằm trong danh sách này.** Nó không tick được ở đây nên nhắc cũng chẳng làm được gì, chỉ tổ đẩy con số *"còn N việc"* phồng lên. Nhưng nó vẫn chiếm giờ ở dòng *Còn trống* — giờ đó bận thật, chỉ là bận ở app bên kia.
+
 **Tick xong hết thì không gửi gì.** Tin nhắc mà ngày nào cũng có, kể cả ngày bạn làm trọn vẹn, thì chỉ vài hôm là bị tắt. Dòng cuối tính từ *bây giờ* tới hết cửa sổ và đã trừ phần việc đã xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. Ngày nghỉ thì bỏ dòng đó đi.
 
 #### Lịch từ app khác
@@ -445,7 +462,7 @@ Nhật ký bài học. Hai loại ghi, cùng kết ở một chỗ.
 
 **💡 Bài học** — gọn hơn, cho những ngày không hỏng gì mà vẫn học được điều gì đó: tên, kinh nghiệm hôm nay, và bài học tổng.
 
-Trên thẻ, **bài học nằm trên cùng** trong khung riêng, diễn biến xếp dưới. Sáu tháng sau mở lại, thứ bạn cần là câu kết luận chứ không phải diễn biến — để diễn biến lên đầu thì lần nào ôn lại cũng phải đọc hết mới tới chỗ đáng đọc.
+Thẻ trong danh sách chỉ giữ **tên chuyện và bài học** — hai thứ đọc lướt được. Diễn biến đầy đủ nằm sau một lần chạm (**Xem đầy đủ · N phần**), mở ra một khung *chỉ đọc*, có nút ✎ Sửa nếu muốn sửa thật. Mười lăm mục mà mục nào cũng trải hết bốn đoạn thì cuộn cả buổi không hết, mà chín trên mười lần mở mục này ra là để ôn lại bài học chứ không phải đọc lại diễn biến. Mục nào chưa ghi diễn biến thì không có dòng *Xem đầy đủ* — thẻ đã hiện đủ rồi.
 
 Thẻ lỗi lầm có vạch đỏ bên trái, bài học vạch xanh. Danh sách gom theo tháng, mới nhất lên trước. Ba tab **Tất cả · Lỗi lầm · Bài học**, và lọc được theo mảng việc như mọi màn khác.
 

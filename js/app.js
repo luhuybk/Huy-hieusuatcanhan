@@ -935,6 +935,12 @@ function addJourney(kind){
       toast('Đã ghi vào hành trình');
     }});
 }
+/* Xem nhanh trước, sửa sau. Mở thẳng form sửa mỗi lần chỉ muốn đọc lại thì
+   sớm muộn cũng có lần gõ nhầm vào đúng cái mình đang muốn giữ nguyên. */
+function viewJourney(id){
+  const o = db.journey.find(x => x.id === id); if (!o) return;
+  $('#modals').innerHTML = journeyView(o);
+}
 function editJourney(id){
   const o = db.journey.find(x => x.id === id); if (!o) return;
   openForm({title:'Sửa mục hành trình', fields:journeyFields(o.kind), values:o,
@@ -1745,7 +1751,7 @@ document.addEventListener('click', e => {
         S.ideatab = i2 && (i2.status === 'done' || i2.status === 'drop') ? 'kho' : 'live';
         render(); editIdea(id); break; }
       else if (k === 'card'){ S.view = 'board'; render(); openCard(id); break; }
-      else if (k === 'journey'){ S.view = 'journey'; S.journeytab = 'all'; render(); editJourney(id); break; }
+      else if (k === 'journey'){ S.view = 'journey'; S.journeytab = 'all'; render(); viewJourney(id); break; }
       else if (k === 'occasion'){ S.view = 'occasions'; }
       render(); break;
     }
@@ -1823,6 +1829,7 @@ document.addEventListener('click', e => {
       hardReset, 'Gỡ sạch & tải lại'); break;
     case 'journeytab': S.journeytab = id; render(); break;
     case 'addJourney': addJourney(id); break;
+    case 'viewJourney': viewJourney(id); break;
     case 'editJourney': editJourney(id); break;
     case 'delJourney': delJourney(id); break;
     case 'feedPick':  feedPick(); break;

@@ -481,6 +481,12 @@ body.locked .app,body.locked .fab{display:none}
 .jr .k{flex:none;width:98px;color:var(--tx3);font-weight:650}
 .jr .v{color:var(--tx2);white-space:pre-wrap;min-width:0}
 @media(max-width:420px){ .jr{flex-direction:column;gap:1px} .jr .k{width:auto} }
+/* Dòng "Xem đầy đủ ›" ở đáy thẻ — vùng chạm rộng nguyên hàng, và nói trước
+   là bên trong còn mấy phần, để biết có đáng mở ra hay không */
+.jmore{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);
+  cursor:pointer;font-size:12.5px}
+.jmore:hover .dim{color:var(--tx2)}
+.jless{cursor:pointer}
 
 /* Ô tích chỉ để xem — cột không phải hôm nay thì không bấm được */
 .cb.mute{opacity:.4;cursor:default}
