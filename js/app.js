@@ -955,9 +955,22 @@ function delJourney(id){
    máy chủ rồi so dấu bản là tách được hai chuyện đó ra.
    Phải no-store kèm tham số ngẫu nhiên: chính bộ nhớ đệm là thứ đang soi,
    hỏi qua nó thì bao giờ cũng ra "giống nhau". */
-let BUILD = null, buildAsked = false;
+/* a có mới hơn b không. Phải tách đôi mà so: phần ngày so bằng chữ thì đúng
+   (YYYY-MM-DD vốn xếp sẵn), nhưng phần lần-trong-ngày phải so bằng số —
+   để nguyên thì "2026-08-21.10" lại bị coi là cũ hơn "2026-08-21.7". */
+function buildNewer(a, b){
+  const cut = v => {
+    const s = String(v || ''), i = s.indexOf('.');
+    return i < 0 ? [s, 0] : [s.slice(0, i), Number(s.slice(i + 1)) || 0];
+  };
+  const [da, na] = cut(a), [dbb, nb] = cut(b);
+  return da !== dbb ? da > dbb : na > nb;
+}
+
+let BUILD = null, buildAsked = false, buildAt = 0;
 function buildCheck(){
   buildAsked = true;
+  buildAt = Date.now();
   BUILD = {busy:true};
   return fetch('js/state.js?v=' + Date.now(), {cache:'no-store'})
     .then(r => {
@@ -969,7 +982,14 @@ function buildCheck(){
       });
     })
     .catch(e => { BUILD = {err: e.message || String(e)}; })
-    .then(() => { if (S.view === 'settings') render(); });
+    .then(() => {
+      /* Chỉ mời tải lại khi máy chủ có bản MỚI HƠN bản đang chạy. So bằng
+         chữ là đủ vì dạng ngày.lần luôn tăng dần. Trước đây lời mời dựa vào
+         "tệp có khác byte nào không", nên app đang chạy đúng bản mới nhất
+         vẫn bị nhắc — nhắc xong tải lại thì tụt về bản cũ. */
+      if (BUILD && BUILD.srv && buildNewer(BUILD.srv, APP_BUILD)) updateBar(BUILD.srv);
+      if (S.view === 'settings') render();
+    });
 }
 
 /* ---------------- lịch nhập từ app khác ---------------- */
@@ -2034,17 +2054,16 @@ function applyTheme(){
 /* Thanh mời tải lại khi máy chủ đã có bản mới. Chỉ hiện một lần,
    và không tự tải lại — đang gõ dở mà trang nhảy thì rất khó chịu. */
 let _updateShown = false;
-function updateBar(){
+function updateBar(srv){
   if (_updateShown) return;
   _updateShown = true;
   const el = document.createElement('div');
   el.className = 'updbar';
-  el.innerHTML = `<span>Đã có bản mới của app.</span>
+  el.innerHTML = `<span>Đã có bản mới${srv ? ' (' + esc(srv) + ')' : ''} của app.</span>
     <button class="btn sm pri" data-act="doRefresh">Tải lại</button>
     <button class="iconbtn" data-act="hideUpd" title="Để sau">✕</button>`;
   document.body.appendChild(el);
 }
-window.updateBar = updateBar;
 
 /* Cảnh báo app đang chạy mà không có máy chủ đăng nhập. Cố tình khó bỏ qua:
    nếu bạn tưởng dữ liệu đang được bảo vệ mà thật ra không, đó là chuyện lớn. */
@@ -2093,11 +2112,20 @@ function hardReset(){
   setTimeout(go, 2500);   /* vài trình duyệt treo ở unregister — đừng kẹt luôn ở đây */
 }
 function doRefresh(){
-  /* bảo service worker bỏ bộ nhớ đệm rồi mới tải lại, nếu không
-     lần tải kế tiếp vẫn có thể lấy đúng bản cũ đang lưu */
+  /* Bảo service worker bỏ bộ nhớ đệm, và ĐỢI NÓ BÁO XONG rồi mới tải lại.
+     Bản trước chỉ đợi bừa 220ms: điện thoại dọn chậm hơn chừng đó là lần
+     tải kế tiếp vẫn gặp nguyên bộ đệm cũ — bấm "Tải lại" xong lại rơi về
+     đúng bản cũ vừa thoát ra. */
   const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
-  if (sw) sw.postMessage({type:'lifehub-refresh'});
-  setTimeout(() => location.reload(), 220);
+  if (!sw){ location.reload(); return; }
+  let went = false;
+  const go = () => { if (went) return; went = true; location.reload(); };
+  try {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = go;
+    sw.postMessage({type:'lifehub-refresh'}, [ch.port2]);
+  } catch(_){ sw.postMessage({type:'lifehub-refresh'}); }
+  setTimeout(go, 3000);   /* service worker im lặng thì cũng đừng kẹt ở đây */
 }
 
 /* Nếu dữ liệu hỏng tới mức không vẽ được, đừng để lại trang trắng —
@@ -2134,10 +2162,15 @@ function boot(){
        lần. Mặc định trình duyệt được phép giữ nó tới 24 tiếng, nghĩa là bản
        service worker cũ có thể cầm trịch cả ngày sau khi đã deploy. */
     navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).catch(() => {});
-    /* Tin báo có bản mới có thể đã tới TRƯỚC khi file này chạy — thẻ script
-       trong <head> bắt sẵn và để lại cờ ở đây. */
-    if (window.__lhUpdate) updateBar();
   }
+  /* Lúc mở app thì code vừa lấy thẳng từ máy chủ nên chắc chắn là mới nhất —
+     không cần hỏi gì. Chỉ cần để ý trường hợp app mở suốt cả ngày trên điện
+     thoại rồi mình đẩy bản mới lên: quay lại app là hỏi máy chủ một lần,
+     thưa thôi, mười phút một lần là đủ. */
+  buildAt = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - buildAt > 600000) buildCheck();
+  });
 
   /* Có thư mục api/ trên máy chủ thì phải đăng nhập mới vào được.
      Không có (mở bằng file, hay bản gộp một tệp) thì chạy như cũ. */

@@ -36,14 +36,14 @@ Trong hPanel → **Git**, trỏ tới repo này và nhánh `main`, đường d�
 
 Không cần chạy lệnh gì trước khi push. Sửa code → commit → push → xong.
 
-Một việc duy nhất phải nhớ khi sửa code: **đổi `APP_BUILD` ở đầu `js/state.js`** (dạng `ngày.lần-trong-ngày`, ví dụ `2026-08-21.4`). Không có bước dựng nên không ai đổi hộ được, và **Cài đặt → Phiên bản** dựa vào số này để trả lời câu "web đã cập nhật chưa".
+Một việc duy nhất phải nhớ khi sửa code: **đổi `APP_BUILD` ở đầu `js/state.js`** (dạng `ngày.lần-trong-ngày`, ví dụ `2026-08-21.4`). Không có bước dựng nên không ai đổi hộ được, và **Cài đặt → Phiên bản** dựa vào số này để trả lời câu "web đã cập nhật chưa". Phần ngày so bằng chữ, phần lần-trong-ngày so bằng số — nên `.10` mới hơn `.7`, đúng như mong đợi.
 
 ### Web như chưa đổi gì — xem ở đâu
 
 Vào **Cài đặt → Phiên bản**. Nó nói bản đang chạy, rồi hỏi thẳng file `js/state.js` trên máy chủ (bỏ qua mọi bộ nhớ đệm) để so:
 
 * **Máy chủ cũng đang ở bản này** — code đã lên, kèm giờ file được sửa trên máy chủ.
-* **Máy chủ đã có bản mới hơn** — máy này còn giữ bản cũ. Bấm **Tải lại ngay**: nó xoá bộ nhớ đệm của service worker rồi mới tải lại.
+* **Máy chủ đã có bản mới hơn** — máy này còn giữ bản cũ. Bấm **Tải lại ngay**: nó bảo service worker xoá bộ nhớ đệm, **đợi báo xong** rồi mới tải lại.
 * **Máy chủ vẫn ở bản cũ** (số nhỏ hơn cái bạn vừa push) — Hostinger chưa kéo code về. Vào hPanel → Git → **Deploy**. Hostinger chỉ tự kéo khi webhook đã gắn bên GitHub.
 
 Dưới đó còn một dòng cho biết **có service worker đang phục vụ trang này hay không**. Đây là chỗ giải thích hiện tượng khó chịu nhất: *cửa sổ ẩn danh vào được bản mới, cửa sổ thường thì kẹt ở bản cũ*. Ẩn danh khởi đầu với đệm rỗng nên nó luôn thấy bản mới; cửa sổ thường thì một service worker đời cũ vẫn đang cầm trịch, và nó không tự chết chỉ vì bạn bấm F5.
@@ -78,13 +78,23 @@ Dù để ở đâu, vẫn nên thỉnh thoảng bấm **Xuất sao lưu** trong
 
 ### Cập nhật code mới có tới người dùng không?
 
-Có, và đây là chỗ trước đây bị hỏng. Ba lớp cùng lo việc này:
+Có. Luật rất đơn giản, và cố tình đơn giản:
 
 - `.htaccess` bắt `html`/`css`/`js` **luôn hỏi lại máy chủ**. Nội dung không đổi thì máy chủ trả 304 rỗng, gần như không tốn gì.
-- Service worker dùng bản đã lưu để mở nhanh, đồng thời tải lại ngầm để so. Tệp nhỏ nên nó so cả nội dung chứ không chỉ dựa vào ETag.
-- Thấy khác là hiện thanh **"Đã có bản mới của app · Tải lại"** ở cuối màn hình. Bấm là xoá bộ nhớ đệm rồi nạp lại sạch. Không tự tải lại — đang gõ dở mà trang nhảy thì rất khó chịu.
+- Service worker **hỏi máy chủ trước** với code của app (`html`, `css`, `js`). Mất mạng mới lấy bản đã lưu. Nghĩa là mở app ra lúc nào cũng là code mới nhất.
+- Ảnh, icon, manifest thì ngược lại: lấy bản đã lưu cho nhanh, làm mới ngầm phía sau. Mấy tệp này gần như không đổi nên chậm một nhịp cũng không sao.
+- App mở suốt cả ngày trên điện thoại rồi mình đẩy bản mới lên? Quay lại app là nó hỏi máy chủ một lần (thưa thôi, mười phút một lần), thấy `APP_BUILD` mới hơn thì hiện thanh **"Đã có bản mới (…) của app · Tải lại"**. Không tự tải lại — đang gõ dở mà trang nhảy thì rất khó chịu.
 
-Nếu vì lý do gì đó vẫn kẹt ở bản cũ: mở app, Cài đặt → Đăng xuất, rồi xoá dữ liệu duyệt web của riêng trang đó. Cách này gỡ luôn service worker cũ.
+#### Vì sao bản trước hay "tải lại xong lại về bản cũ"
+
+Service worker đời trước làm ngược: code cũng lấy từ bộ nhớ đệm trước. Vào app là chạy code của **lần trước**, tải bản mới về để dành cho lần sau, rồi mời tải lại — mà lần tải lại đó lại rơi đúng vào bản đang nằm trong đệm. Mở ra thấy bản mới, bấm Tải lại, quay về bản cũ.
+
+Hai chỗ nữa cùng góp phần, đã sửa luôn:
+
+- Bấm **Tải lại** chỉ đợi bừa 220ms cho service worker dọn đệm. Điện thoại dọn chậm hơn chừng đó là hỏng. Giờ trang **đợi service worker báo đã xoá xong** mới tải lại (quá 3 giây không thấy trả lời thì vẫn tải lại, không kẹt).
+- Lời mời tải lại trước đây dựa vào "tệp có khác byte nào không", nên app **đang chạy đúng bản mới nhất vẫn bị nhắc**. Giờ chỉ nhắc khi `APP_BUILD` trên máy chủ thật sự mới hơn bản đang chạy.
+
+Nếu vì lý do gì đó vẫn kẹt ở bản cũ: Cài đặt → Phiên bản → **Gỡ sạch & tải lại**.
 
 ### Riêng tư
 

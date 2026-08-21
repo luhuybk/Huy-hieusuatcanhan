@@ -2,12 +2,23 @@
    Service worker — cài như app, chạy offline, hiện thông báo.
    Chỉ hoạt động qua http/https (không chạy với file://).
 
-   Không còn bước dựng nên tên tệp không kèm mã phiên bản nữa.
-   Vì vậy cách làm ở đây là "dùng bản đã lưu trước, kiểm bản mới sau":
-   trang mở ra tức thì từ bộ nhớ đệm, đồng thời tải lại ngầm để so.
-   Thấy khác là báo cho trang biết để mời bạn tải lại.
+   Luật ở đây rất đơn giản, và cố tình đơn giản:
+
+   · Code của app (html, css, js) → HỎI MÁY CHỦ TRƯỚC. Mất mạng mới
+     lấy bản đã lưu. Nghĩa là mở app ra lúc nào cũng là code mới nhất,
+     và bấm tải lại thì không đời nào tụt về bản cũ được.
+   · Ảnh, icon, manifest → lấy bản đã lưu cho nhanh, tải mới ngầm phía sau.
+     Mấy tệp này gần như không bao giờ đổi nên chậm một nhịp cũng không sao.
+
+   Bản trước làm ngược lại: code cũng lấy từ bộ nhớ đệm trước. Vào app là
+   chạy code của lần trước, tải bản mới về để dành cho lần sau, rồi mời
+   bạn tải lại — mà lần tải lại đó lại rơi đúng vào bản đang nằm trong đệm.
+   Mở ra thấy bản mới, bấm "Tải lại", quay về bản cũ. Đúng như đã gặp.
    ============================================================ */
-const CACHE = 'lifehub';
+
+/* Đổi tên là cả kho đệm cũ bị dọn sạch ở bước activate — cách chắc chắn
+   nhất để những tệp kẹt lại từ bản trước biến mất hẳn khỏi máy. */
+const CACHE = 'lifehub-2';
 
 const ASSETS = [
   './', './index.html', './css/style.css',
@@ -34,46 +45,45 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-/* Dấu nhận biết một tệp có đổi nội dung hay không, lấy từ đầu phản hồi */
-function tagOf(res){
-  if (!res) return '';
-  const h = res.headers;
-  return h.get('etag') || h.get('last-modified') || h.get('content-length') || '';
-}
-/* So bản cũ với bản mới. Ưu tiên ETag cho nhanh, nhưng không phải máy chủ
-   nào cũng gửi (và vài dịch vụ trung gian còn cắt mất) — thiếu thì so thẳng
-   nội dung. Các tệp ở đây đều nhỏ nên so nội dung không tốn gì đáng kể. */
-async function hasChanged(hit, res){
-  if (!hit) return false;
-  const a = tagOf(hit), b = tagOf(res);
-  if (a && b) return a !== b;
-  try { return (await hit.clone().text()) !== (await res.clone().text()); }
-  catch(_){ return false; }
-}
-async function tellClients(msg){
-  const list = await self.clients.matchAll({type:'window'});
-  list.forEach(c => c.postMessage(msg));
+/* Code của app — thứ phải luôn mới. Mọi thứ còn lại coi là tài nguyên tĩnh. */
+const isCode = p => p === '/' || p.endsWith('/') ||
+  /\.(html|css|js|webmanifest)$/.test(p);
+
+/* Hỏi thẳng máy chủ, đừng lấy từ bộ nhớ đệm HTTP của trình duyệt: không có
+   chỗ này thì hai lớp đệm chồng lên nhau và cả hai cùng giữ bản cũ.
+   no-cache chứ không phải reload — vẫn hỏi lại mỗi lần, nhưng nội dung không
+   đổi thì máy chủ trả 304 rỗng, không tải lại cả tệp. */
+const ask = url => fetch(url, {cache:'no-cache', credentials:'same-origin'});
+
+function keep(req, res){
+  if (!res || !res.ok || res.status !== 200) return;
+  const c = res.clone();
+  caches.open(CACHE).then(k => k.put(req, c)).catch(() => {});
 }
 
-/* Tải bản mới về, lưu lại, và báo cho trang nếu nội dung đã khác. */
-async function fetchAndUpdate(req){
+/* Máy chủ trước, bộ nhớ đệm chỉ để dành cho lúc mất mạng. */
+async function netFirst(req){
+  try {
+    const res = await ask(req.url);
+    keep(req, res);
+    return res;
+  } catch(_){
+    const nav = req.mode === 'navigate';
+    const hit = await caches.match(req, {ignoreSearch: nav});
+    if (hit) return hit;
+    if (nav){
+      const idx = await caches.match('./index.html');
+      if (idx) return idx;
+    }
+    return Response.error();
+  }
+}
+
+/* Tài nguyên tĩnh: đưa bản đã lưu ra ngay, đồng thời làm mới cho lần sau. */
+async function fetchAndStore(req){
   let res;
-  /* Hỏi thẳng máy chủ, đừng lấy từ bộ nhớ đệm HTTP của trình duyệt. Không có
-     chỗ này thì hai lớp đệm chồng lên nhau: trình duyệt đưa bản cũ cho service
-     worker, service worker đem bản cũ so với bản cũ rồi kết luận "không có gì
-     mới" — app kẹt ở bản cũ mà chẳng ai báo. Cửa sổ ẩn danh không dính vì nó
-     bắt đầu với đệm rỗng, nên nhìn vào tưởng máy chủ có vấn đề.
-     no-cache chứ không phải reload: vẫn hỏi lại mỗi lần, nhưng nội dung không
-     đổi thì máy chủ trả 304 rỗng, không tải lại cả tệp. */
-  try { res = await fetch(req.url, {cache:'no-cache', credentials:'same-origin'}); }
-  catch(_){ return null; }
-  if (!res || !res.ok || res.status !== 200) return res || null;
-
-  const cache = await caches.open(CACHE);
-  const hit = await cache.match(req);
-  const changed = await hasChanged(hit, res);
-  await cache.put(req, res.clone()).catch(() => {});
-  if (changed) await tellClients({type:'lifehub-update'});
+  try { res = await ask(req.url); } catch(_){ return null; }
+  keep(req, res);
   return res;
 }
 
@@ -87,45 +97,37 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.includes('/api/')) return;
 
-  /* Trang chính: ưu tiên mạng để vào là thấy bản mới nhất,
-     mất mạng thì lấy bản đã lưu. */
-  if (req.mode === 'navigate'){
-    e.respondWith(
-      fetch(req)
-        .then(res => {
-          const c = res.clone();
-          caches.open(CACHE).then(k => k.put(req, c)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
-    );
-    return;
-  }
-
   /* Có tham số trên URL nghĩa là bên gọi cố tình muốn hỏi thẳng máy chủ —
      Cài đặt → Phiên bản làm đúng vậy để soi chính bộ nhớ đệm này. Cho đi
      thẳng, đừng đệm: mỗi lần hỏi lại là một khoá mới, đệm lại thì mỗi lần
-     mở Cài đặt là kho phình thêm một bản state.js nữa. */
-  if (url.search) return;
+     mở Cài đặt là kho phình thêm một bản state.js nữa.
+     Trừ lúc mở trang: ?fresh=… của "Gỡ sạch & tải lại" vẫn là một lần vào
+     app bình thường, và nó vẫn cần lối lui khi mất mạng. */
+  if (url.search && req.mode !== 'navigate') return;
 
-  /* Dùng bản đã lưu trước cho nhanh, tải bản mới ngầm ở phía sau.
+  if (req.mode === 'navigate' || isCode(url.pathname)){
+    e.respondWith(netFirst(req));
+    return;
+  }
 
-     waitUntil phải gọi ĐỒNG BỘ ngay đây. Không có nó, trình duyệt coi
-     như xong việc ngay khi trả bản cũ và có quyền dừng service worker
-     giữa chừng — bản mới không bao giờ được lưu, app cứ hiện mãi giao
-     diện cũ dù máy chủ đã có code mới. */
-  const fresh = fetchAndUpdate(req);
+  /* waitUntil phải gọi ĐỒNG BỘ ngay đây. Không có nó, trình duyệt coi như
+     xong việc ngay khi trả bản cũ và có quyền dừng service worker giữa
+     chừng — bản mới không bao giờ được lưu. */
+  const fresh = fetchAndStore(req);
   e.waitUntil(fresh);
   e.respondWith(
     caches.match(req).then(hit => hit || fresh.then(r => r || Response.error()))
   );
 });
 
-/* Trang bấm "tải lại ngay" → bỏ hết bộ nhớ đệm rồi nhận lại từ máy chủ */
+/* Trang bấm "tải lại ngay" → bỏ hết bộ nhớ đệm, rồi BÁO LẠI cho trang.
+   Phải báo lại: trước đây trang chỉ đợi bừa một phần năm giây rồi tải lại,
+   máy chậm hơn chừng đó là lần tải kế tiếp vẫn gặp nguyên bộ đệm cũ. */
 self.addEventListener('message', e => {
-  if (e.data && e.data.type === 'lifehub-refresh'){
-    e.waitUntil(caches.delete(CACHE).then(() => self.skipWaiting()));
-  }
+  const d = e.data;
+  if (!d || d.type !== 'lifehub-refresh') return;
+  const reply = () => { const p = e.ports && e.ports[0]; if (p) p.postMessage({ok:true}); };
+  e.waitUntil(caches.delete(CACHE).then(reply, reply).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('notificationclick', e => {
