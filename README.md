@@ -46,6 +46,12 @@ Vào **Cài đặt → Phiên bản**. Nó nói bản đang chạy, rồi hỏi 
 * **Máy chủ đã có bản mới hơn** — máy này còn giữ bản cũ. Bấm **Tải lại ngay**: nó xoá bộ nhớ đệm của service worker rồi mới tải lại.
 * **Máy chủ vẫn ở bản cũ** (số nhỏ hơn cái bạn vừa push) — Hostinger chưa kéo code về. Vào hPanel → Git → **Deploy**. Hostinger chỉ tự kéo khi webhook đã gắn bên GitHub.
 
+Dưới đó còn một dòng cho biết **có service worker đang phục vụ trang này hay không**. Đây là chỗ giải thích hiện tượng khó chịu nhất: *cửa sổ ẩn danh vào được bản mới, cửa sổ thường thì kẹt ở bản cũ*. Ẩn danh khởi đầu với đệm rỗng nên nó luôn thấy bản mới; cửa sổ thường thì một service worker đời cũ vẫn đang cầm trịch, và nó không tự chết chỉ vì bạn bấm F5.
+
+Nút **Gỡ sạch & tải lại** xử đúng chuyện đó: gỡ hẳn service worker, xoá mọi bộ nhớ đệm, rồi nạp lại từ máy chủ kèm một tham số lạ để qua luôn cả đệm HTTP. Dữ liệu không mất — nó nằm trên máy chủ, và bản trong máy cũng không bị đụng tới.
+
+Nếu bản đang kẹt cũ tới mức chưa có khối này (trước `2026-08-21.4`) thì phải làm tay: Chrome → bấm biểu tượng bên trái thanh địa chỉ → **Cookie và dữ liệu trang** → **Xoá dữ liệu** → tải lại. Trên điện thoại: Cài đặt trình duyệt → Cài đặt trang → tìm tên miền → Xoá dữ liệu.
+
 ### Ba điều phải nhớ
 
 1. **Bật SSL** trong hPanel. Không có `https` thì trình duyệt chặn cài app, chặn thông báo, chặn micro, và cookie đăng nhập cũng không gửi đi được.
@@ -349,6 +355,16 @@ Mục nào thiếu tên, thiếu giờ, hoặc không có `days` lẫn `date` th
 Nguồn nào **quá 10 ngày** chưa nhập lại thì màn Việc hằng ngày hiện một dòng cam nhắc: bên đó đổi lịch mà mình không biết thì con số "còn trống" đang nói dối.
 
 Không có nút **Chọn file** trên máy bạn thì dùng **Dán nội dung** — chép nguyên văn file JSON vào một ô là được. Nút **Mẫu file** cho ra đúng khối trên để gửi cho app bên kia.
+
+#### Lịch đổi liên tục thì thay thế nào
+
+Mỗi nguồn đã nhập có ba nút:
+
+* **⟳ Thay** — chọn file mới, mốc cũ của nguồn đó bị bỏ hết. Khác với **+ Thêm lịch** ở chỗ: nếu file mới mang **mã nguồn khác** (bên kia đổi tên, hay đổi từ bản sao lưu sang bản xuất riêng) thì mã cũ cũng bị dọn luôn, không để lại một lịch ma trên trục. Không phải xoá trước rồi nhập lại.
+* **⌨** — cùng việc đó nhưng dán nội dung thay vì chọn file, tiện trên điện thoại.
+* **✕** — bỏ hẳn nguồn này.
+
+Từ hai nguồn trở lên thì có thêm nút **Xoá hết**.
 
 ### Ý tưởng
 

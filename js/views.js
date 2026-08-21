@@ -1647,15 +1647,24 @@ function feedBlock(){
             x.at ? esc(String(x.at).slice(0,10) === today() ? 'nhập hôm nay'
                    : 'nhập ' + fmtDate(String(x.at).slice(0,10))) : 'không rõ ngày nhập'}</span></div>
         </div>
+        <button class="btn sm" data-act="feedSwap" data-id="${esc(x.src)}"
+          title="Chọn file mới — lịch cũ của nguồn này bị bỏ hẳn">⟳ Thay</button>
+        <button class="iconbtn sm" data-act="feedSwapPaste" data-id="${esc(x.src)}"
+          title="Thay bằng nội dung dán tay">⌨</button>
         <button class="iconbtn sm" data-act="dropFeed" data-id="${esc(x.src)}" title="Bỏ lịch này">✕</button>
       </div>`; }).join('')
       : `<div class="dim">Chưa nhập lịch nào.</div>`}
     <input type="file" id="feedfile" accept=".json,application/json" style="display:none">
     <div class="btns" style="margin-top:12px">
-      <button class="btn sm grow pri" data-act="feedPick">Chọn file JSON</button>
+      <button class="btn sm grow pri" data-act="feedPick">${src.length ? '+ Thêm lịch' : 'Chọn file JSON'}</button>
       <button class="btn sm grow" data-act="feedPaste">Dán nội dung</button>
       <button class="btn sm" data-act="feedSpec" title="Gửi mẫu này cho app bên kia">Mẫu file</button>
+      ${src.length > 1 ? `<button class="btn sm dngr" data-act="dropAllFeeds">Xoá hết</button>` : ''}
     </div>
+    ${src.length ? `<div class="dim" style="margin-top:12px;line-height:1.65">
+      Lịch bên kia đổi thì bấm <b>⟳ Thay</b> ở đúng dòng đó rồi chọn file mới —
+      mốc cũ bị bỏ hết, kể cả khi file mới mang tên nguồn khác. Không phải xoá
+      trước rồi nhập lại.</div>` : ''}
   </div>`;
 }
 
@@ -1945,6 +1954,15 @@ function vSettings(){
 /* Bản đang chạy là bản nào, và máy chủ đang giữ bản nào. Hai chuyện khác
    nhau: code chưa được kéo về Hostinger, hay máy mình còn giữ bản cũ —
    nhìn bề ngoài giống hệt, mà cách xử lý thì ngược nhau. */
+/* Ai đang phục vụ trang này. Ẩn danh chạy được mà trình duyệt thường thì kẹt
+   — gần như luôn là do dòng này: một service worker đời cũ vẫn đang cầm trịch,
+   còn ẩn danh thì khởi đầu chẳng có gì. */
+function swLine(){
+  if (!('serviceWorker' in navigator)) return 'Trình duyệt này không chạy service worker.';
+  const c = navigator.serviceWorker.controller;
+  return c ? 'Đang có service worker phục vụ trang này.'
+           : 'Không có service worker nào phục vụ trang này — mọi tệp lấy thẳng từ máy chủ.';
+}
 function buildBlock(){
   const b = BUILD;
   let dot = '', line = '', act = '';
@@ -1974,14 +1992,19 @@ function buildBlock(){
       <div class="grow"><b>Đang chạy bản ${esc(APP_BUILD)}</b></div>
     </div>
     <div class="dim" style="line-height:1.65">${line}</div>
+    <div class="dim" style="line-height:1.65;margin-top:4px">${swLine()}</div>
     <div class="btns" style="margin-top:12px">
       ${act}
       <button class="btn sm" data-act="buildAgain">Kiểm lại</button>
+      <button class="btn sm dngr" data-act="hardReset"
+        title="Gỡ service worker, xoá sạch đệm, tải lại từ máy chủ">Gỡ sạch & tải lại</button>
     </div>
     <div class="dim" style="margin-top:12px;line-height:1.65">
       Dùng khi thấy web như chưa đổi gì. Máy chủ ở bản cũ hơn nghĩa là
       Hostinger <b>chưa kéo code về</b> — vào hPanel → Git → Deploy. Máy chủ ở
       bản mới hơn nghĩa là <b>máy này còn giữ bản cũ</b> — bấm Tải lại ngay.
+      Bấm rồi vẫn không đổi thì <b>Gỡ sạch &amp; tải lại</b>: nó gỡ hẳn service
+      worker chứ không chỉ xoá đệm. Dữ liệu không mất — vẫn nằm trên máy chủ.
     </div>
   </div>`;
 }

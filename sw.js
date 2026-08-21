@@ -58,7 +58,15 @@ async function tellClients(msg){
 /* Tải bản mới về, lưu lại, và báo cho trang nếu nội dung đã khác. */
 async function fetchAndUpdate(req){
   let res;
-  try { res = await fetch(req); } catch(_){ return null; }
+  /* Hỏi thẳng máy chủ, đừng lấy từ bộ nhớ đệm HTTP của trình duyệt. Không có
+     chỗ này thì hai lớp đệm chồng lên nhau: trình duyệt đưa bản cũ cho service
+     worker, service worker đem bản cũ so với bản cũ rồi kết luận "không có gì
+     mới" — app kẹt ở bản cũ mà chẳng ai báo. Cửa sổ ẩn danh không dính vì nó
+     bắt đầu với đệm rỗng, nên nhìn vào tưởng máy chủ có vấn đề.
+     no-cache chứ không phải reload: vẫn hỏi lại mỗi lần, nhưng nội dung không
+     đổi thì máy chủ trả 304 rỗng, không tải lại cả tệp. */
+  try { res = await fetch(req.url, {cache:'no-cache', credentials:'same-origin'}); }
+  catch(_){ return null; }
   if (!res || !res.ok || res.status !== 200) return res || null;
 
   const cache = await caches.open(CACHE);

@@ -204,7 +204,7 @@ function toast(msg){
    sửa code — Cài đặt → Phiên bản đối chiếu số này với số trong file trên
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày, so bằng chữ nên tăng dần là đúng. */
-const APP_BUILD = '2026-08-21.5';
+const APP_BUILD = '2026-08-21.6';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){

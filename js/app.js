@@ -976,17 +976,23 @@ function buildCheck(){
 /* Một chiều, bằng file. Lỗi phải nói ra bằng tiếng người và nói rõ mục nào
    hỏng, vì file do app khác sinh ra — mình không sửa được ở đây, chỉ có thể
    nhắn lại cho bên kia. */
-function feedApply(text){
+/* replace = mã nguồn đang muốn thay. Nhập lại cùng mã thì importFeed() đã
+   thay hẳn rồi; nhưng file mới có thể mang mã khác (bên kia đổi tên, hoặc
+   đổi từ bản sao lưu sang bản xuất riêng) — lúc đó mã cũ thành rác nằm lại
+   trên trục. Bấm "Thay" là bấm thay, không phải bấm thêm. */
+function feedApply(text, replace){
   let p;
   try { p = parseFeed(text); }
   catch(e){ toast('Không nhập được — ' + e.message); return; }
   const n = importFeed(p);
+  const gone = (replace && replace !== p.src) ? dropFeed(replace) : 0;
   render();
   toast('Đã nhập ' + n + ' mốc từ ' + p.name +
+        (gone ? ' · bỏ ' + gone + ' mốc của lịch cũ' : '') +
         (p.skipped ? ' · bỏ qua ' + p.skipped + ' mục — ' + p.why : ''));
   if (Server.available()) Sync.run(true);
 }
-function feedPick(){
+function feedPick(replace){
   const el = $('#feedfile'); if (!el) return;
   el.onchange = () => {
     const f = el.files && el.files[0];
@@ -994,20 +1000,31 @@ function feedPick(){
     if (!f) return;
     if (f.size > 512 * 1024){ toast('File hơn 512KB — chắc không phải file lịch.'); el.value = ''; return; }
     const r = new FileReader();
-    r.onload  = () => { feedApply(String(r.result || '')); el.value = ''; };
+    r.onload  = () => { feedApply(String(r.result || ''), replace); el.value = ''; };
     r.onerror = () => { toast('Không đọc được file.'); el.value = ''; };
     r.readAsText(f);
   };
   el.click();
 }
-function feedPasteBox(){
-  openForm({title:'Dán nội dung file lịch', submit:'Nhập',
+/* Xoá hết lịch ngoài trong một lần — lịch đổi liên tục thì dọn sạch rồi nhập
+   lại nhanh hơn là đi bỏ từng nguồn. */
+function dropAllFeeds(){
+  const src = feedSources();
+  if (!src.length) return;
+  confirmBox('Xoá hết ' + src.length + ' lịch ngoài?', () => {
+    let n = 0; src.forEach(x => { n += dropFeed(x.src); });
+    render(); toast('Đã xoá ' + n + ' mốc');
+    if (Server.available()) Sync.run(true);
+  }, 'Xoá hết');
+}
+function feedPasteBox(replace){
+  openForm({title:replace ? 'Dán lịch mới thay cho lịch cũ' : 'Dán nội dung file lịch', submit:'Nhập',
     top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.65">
       Mở file JSON bên kia, chép toàn bộ rồi dán vào đây. Dùng khi không tiện
       tải file về máy.</div>`,
     fields:[{k:'json', label:'Nội dung JSON', type:'textarea',
              ph:'{ "feed": "nkgd", "items": [ … ] }'}],
-    onSave: v => feedApply(v.json)});
+    onSave: v => feedApply(v.json, replace)});
 }
 function feedSpecBox(){
   $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
@@ -1782,12 +1799,17 @@ document.addEventListener('click', e => {
     case 'slotTask': slotTask(id, el.dataset.at); break;
     case 'pushTask': pushTask(id); break;
     case 'buildAgain': buildCheck(); render(); break;
+    case 'hardReset': confirmBox('Gỡ service worker và xoá sạch bộ nhớ đệm, rồi tải lại từ máy chủ?',
+      hardReset, 'Gỡ sạch & tải lại'); break;
     case 'journeytab': S.journeytab = id; render(); break;
     case 'addJourney': addJourney(id); break;
     case 'editJourney': editJourney(id); break;
     case 'delJourney': delJourney(id); break;
     case 'feedPick':  feedPick(); break;
     case 'feedPaste': feedPasteBox(); break;
+    case 'feedSwap':  feedPick(id); break;
+    case 'feedSwapPaste': feedPasteBox(id); break;
+    case 'dropAllFeeds': dropAllFeeds(); break;
     case 'feedSpec':  feedSpecBox(); break;
     case 'dropFeed':  dropFeedAsk(id); break;
     case 'saveHour':
@@ -2052,6 +2074,24 @@ function whyNoServer(){
     <button class="btn full" style="margin-top:14px" data-close>Đóng</button></div></div>`;
 }
 
+/* Gỡ sạch rồi cài lại: bỏ service worker, xoá mọi bộ nhớ đệm, nạp lại từ máy
+   chủ với một tham số lạ để qua luôn cả đệm HTTP. Dùng khi nút "Tải lại"
+   thường không ăn — thủ phạm hay gặp là một service worker đời cũ vẫn đang
+   cầm trịch, và nó không tự chết chỉ vì mình bấm F5.
+   Dữ liệu trong máy không đụng tới; mà dù có mất thì máy chủ vẫn giữ đủ. */
+function hardReset(){
+  let went = false;
+  const go = () => { if (went) return; went = true;
+    location.replace(location.pathname + '?fresh=' + Date.now()); };
+  const jobs = [];
+  if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+    jobs.push(navigator.serviceWorker.getRegistrations()
+      .then(rs => Promise.all(rs.map(r => r.unregister()))).catch(() => {}));
+  if (window.caches)
+    jobs.push(caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))).catch(() => {}));
+  Promise.all(jobs).then(go, go);
+  setTimeout(go, 2500);   /* vài trình duyệt treo ở unregister — đừng kẹt luôn ở đây */
+}
 function doRefresh(){
   /* bảo service worker bỏ bộ nhớ đệm rồi mới tải lại, nếu không
      lần tải kế tiếp vẫn có thể lấy đúng bản cũ đang lưu */
@@ -2078,6 +2118,10 @@ function panic(err){
 function boot(){
   load();
   applyShareLink();
+  /* ?fresh=… là dấu vết của lần gỡ sạch, xong việc rồi thì dọn khỏi thanh địa
+     chỉ — không thì nó theo vào cả dấu trang. */
+  if (/[?&]fresh=/.test(location.search))
+    history.replaceState(null, '', location.pathname + location.hash);
   applyTheme();
   if (db.settings.role === 'staff') S.view = 'board';
   /* mở kèm ?demo để nạp sẵn dữ liệu mẫu (chỉ khi còn trống, không đè dữ liệu thật) */
@@ -2086,7 +2130,10 @@ function boot(){
 
   Sync.onChange(() => renderSide());
   if (location.protocol.startsWith('http') && 'serviceWorker' in navigator){
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    /* updateViaCache:'none' — chính tệp sw.js cũng phải hỏi lại máy chủ mỗi
+       lần. Mặc định trình duyệt được phép giữ nó tới 24 tiếng, nghĩa là bản
+       service worker cũ có thể cầm trịch cả ngày sau khi đã deploy. */
+    navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).catch(() => {});
     /* Tin báo có bản mới có thể đã tới TRƯỚC khi file này chạy — thẻ script
        trong <head> bắt sẵn và để lại cờ ở đây. */
     if (window.__lhUpdate) updateBar();
