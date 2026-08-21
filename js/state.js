@@ -195,16 +195,17 @@ function initials(name){
   if (!w.length) return '?';
   return (w.length > 1 ? w[w.length-2][0] + w[w.length-1][0] : w[0].slice(0,2)).toUpperCase();
 }
-function toast(msg){
+function toast(msg, ms){
   const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
-  document.body.appendChild(t); setTimeout(() => t.remove(), 2100);
+  document.body.appendChild(t); setTimeout(() => t.remove(), ms || 2100);
 }
 
 /* Dấu bản của app. Không có bước dựng nên phải tự tay đổi số này mỗi lần
    sửa code — Cài đặt → Phiên bản đối chiếu số này với số trong file trên
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
-   bản cũ. Dạng: ngày.lần-trong-ngày, so bằng chữ nên tăng dần là đúng. */
-const APP_BUILD = '2026-08-21.7';
+   bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
+   phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
+const APP_BUILD = '2026-08-21.8';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){

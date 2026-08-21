@@ -32,8 +32,13 @@ const ASSETS = [
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
-      /* Một tệp lỗi không được làm hỏng cả lần cài đặt */
-      .then(c => Promise.all(ASSETS.map(a => c.add(a).catch(() => {}))))
+      /* Cố tình KHÔNG dùng cache.add: nó tải bằng đệm HTTP của trình duyệt,
+         nên một bản cũ còn nằm sẵn trong đó có thể bị đóng gói thẳng vào kho
+         dùng-khi-mất-mạng. Hỏi thẳng máy chủ thì kho đó luôn là bản thật.
+         Một tệp lỗi cũng không được làm hỏng cả lần cài đặt. */
+      .then(c => Promise.all(ASSETS.map(a =>
+        ask(a).then(r => (r && r.ok && r.status === 200) ? c.put(a, r) : null)
+              .catch(() => {}))))
       .then(() => self.skipWaiting())
   );
 });

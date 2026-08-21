@@ -2098,18 +2098,71 @@ function whyNoServer(){
    thường không ăn — thủ phạm hay gặp là một service worker đời cũ vẫn đang
    cầm trịch, và nó không tự chết chỉ vì mình bấm F5.
    Dữ liệu trong máy không đụng tới; mà dù có mất thì máy chủ vẫn giữ đủ. */
+/* Đúng những tệp làm nên app. Phải liệt kê tay vì không có bước dựng. */
+const CODE_FILES = [
+  'index.html', 'sw.js', 'css/style.css',
+  'js/state.js', 'js/lunar.js', 'js/voice.js', 'js/api.js',
+  'js/sync.js', 'js/notify.js', 'js/views.js', 'js/app.js'
+];
+
+/* Gỡ sạch rồi cài lại. Ba tầng đệm chứ không phải một, và phải dọn cả ba:
+
+   1. service worker  — gỡ hẳn đăng ký.
+   2. Cache API       — xoá mọi kho.
+   3. đệm HTTP của chính trình duyệt — tầng này mới là tầng hay bị bỏ sót.
+      Thêm "?fresh=…" chỉ làm mới đúng cái TRANG; tám thẻ <script src="js/…">
+      bên trong vẫn xin đúng URL cũ, nên bản cũ nằm trong đệm HTTP vẫn được
+      đưa ra như thường và app tải lại xong vẫn là bản cũ.
+      cache:'reload' bắt tải mới từ máy chủ VÀ ghi đè luôn vào đệm HTTP, nên
+      lần tải trang ngay sau đó chắc chắn nhận code mới.
+
+   Xong việc thì để lại một mẩu ghi chép; lần mở kế tiếp app nói ra đã dọn
+   được những gì — không thì bấm nút mà chẳng biết nó có làm gì hay không.
+   Dữ liệu trong máy không đụng tới; mà dù có mất thì máy chủ vẫn giữ đủ. */
 function hardReset(){
+  const rep = {sw:0, cache:0, file:0, fail:0, skip:[]};
   let went = false;
-  const go = () => { if (went) return; went = true;
-    location.replace(location.pathname + '?fresh=' + Date.now()); };
+  const go = () => {
+    if (went) return; went = true;
+    try { sessionStorage.setItem('lifehub.reset', JSON.stringify(rep)); } catch(_){}
+    location.replace(location.pathname + '?fresh=' + Date.now());
+  };
   const jobs = [];
+
   if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
     jobs.push(navigator.serviceWorker.getRegistrations()
-      .then(rs => Promise.all(rs.map(r => r.unregister()))).catch(() => {}));
+      .then(rs => Promise.all(rs.map(r => r.unregister().then(() => rep.sw++, () => {}))))
+      .catch(() => {}));
+  else rep.skip.push('service worker');
+
   if (window.caches)
-    jobs.push(caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))).catch(() => {}));
+    jobs.push(caches.keys()
+      .then(ks => Promise.all(ks.map(k => caches.delete(k).then(() => rep.cache++, () => {}))))
+      .catch(() => {}));
+  else rep.skip.push('bộ nhớ đệm');
+
+  jobs.push(Promise.all(CODE_FILES.map(u =>
+    fetch(u, {cache:'reload', credentials:'same-origin'})
+      .then(r => { if (r && r.ok) rep.file++; else rep.fail++; }, () => { rep.fail++; }))));
+
   Promise.all(jobs).then(go, go);
-  setTimeout(go, 2500);   /* vài trình duyệt treo ở unregister — đừng kẹt luôn ở đây */
+  setTimeout(go, 6000);   /* vài trình duyệt treo ở unregister — đừng kẹt luôn ở đây */
+}
+
+/* Kể lại lần gỡ sạch vừa rồi, ngay sau khi app mở lại. */
+function resetReport(){
+  let r;
+  try { r = sessionStorage.getItem('lifehub.reset'); sessionStorage.removeItem('lifehub.reset'); }
+  catch(_){ return; }
+  if (!r) return;
+  try { r = JSON.parse(r); } catch(_){ return; }
+  const bit = [];
+  bit.push('gỡ ' + r.sw + ' service worker');
+  bit.push('xoá ' + r.cache + ' bộ nhớ đệm');
+  bit.push('tải mới ' + r.file + '/' + CODE_FILES.length + ' tệp code');
+  if (r.fail) bit.push(r.fail + ' tệp không tải được');
+  if (r.skip && r.skip.length) bit.push('trình duyệt này không có ' + r.skip.join(' và '));
+  toast('Đã dọn sạch · ' + bit.join(' · ') + ' · đang chạy bản ' + APP_BUILD, 7000);
 }
 function doRefresh(){
   /* Bảo service worker bỏ bộ nhớ đệm, và ĐỢI NÓ BÁO XONG rồi mới tải lại.
@@ -2148,8 +2201,10 @@ function boot(){
   applyShareLink();
   /* ?fresh=… là dấu vết của lần gỡ sạch, xong việc rồi thì dọn khỏi thanh địa
      chỉ — không thì nó theo vào cả dấu trang. */
-  if (/[?&]fresh=/.test(location.search))
+  if (/[?&]fresh=/.test(location.search)){
     history.replaceState(null, '', location.pathname + location.hash);
+    setTimeout(resetReport, 900);
+  }
   applyTheme();
   if (db.settings.role === 'staff') S.view = 'board';
   /* mở kèm ?demo để nạp sẵn dữ liệu mẫu (chỉ khi còn trống, không đè dữ liệu thật) */

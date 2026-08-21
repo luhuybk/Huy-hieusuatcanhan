@@ -48,7 +48,15 @@ Vào **Cài đặt → Phiên bản**. Nó nói bản đang chạy, rồi hỏi 
 
 Dưới đó còn một dòng cho biết **có service worker đang phục vụ trang này hay không**. Đây là chỗ giải thích hiện tượng khó chịu nhất: *cửa sổ ẩn danh vào được bản mới, cửa sổ thường thì kẹt ở bản cũ*. Ẩn danh khởi đầu với đệm rỗng nên nó luôn thấy bản mới; cửa sổ thường thì một service worker đời cũ vẫn đang cầm trịch, và nó không tự chết chỉ vì bạn bấm F5.
 
-Nút **Gỡ sạch & tải lại** xử đúng chuyện đó: gỡ hẳn service worker, xoá mọi bộ nhớ đệm, rồi nạp lại từ máy chủ kèm một tham số lạ để qua luôn cả đệm HTTP. Dữ liệu không mất — nó nằm trên máy chủ, và bản trong máy cũng không bị đụng tới.
+Nút **Gỡ sạch & tải lại** dọn cả **ba** tầng đệm, vì đúng là có ba chứ không phải một:
+
+1. **service worker** — gỡ hẳn đăng ký, không chỉ xoá kho của nó.
+2. **Cache API** — xoá mọi kho.
+3. **đệm HTTP của chính trình duyệt** — tầng này hay bị bỏ sót nhất. Thêm `?fresh=…` chỉ làm mới cái *trang*; tám thẻ `<script src="js/…">` bên trong vẫn xin đúng URL cũ, nên bản cũ nằm trong đệm HTTP vẫn được đưa ra như thường — gỡ sạch xong tải lại vẫn ra bản cũ. Nút này tải lại cả 11 tệp code bằng `cache:'reload'`, vừa lấy mới từ máy chủ vừa **ghi đè luôn vào đệm HTTP**, rồi mới nạp lại trang.
+
+Xong việc nó **kể lại đã dọn được gì** ("gỡ 1 service worker · xoá 2 bộ nhớ đệm · tải mới 11/11 tệp code · đang chạy bản …"). Bấm một nút mà không biết nó có làm gì hay không thì không lần ra được lỗi.
+
+Dữ liệu không mất — nó nằm trên máy chủ, và bản trong máy cũng không bị đụng tới.
 
 Nếu bản đang kẹt cũ tới mức chưa có khối này (trước `2026-08-21.4`) thì phải làm tay: Chrome → bấm biểu tượng bên trái thanh địa chỉ → **Cookie và dữ liệu trang** → **Xoá dữ liệu** → tải lại. Trên điện thoại: Cài đặt trình duyệt → Cài đặt trang → tìm tên miền → Xoá dữ liệu.
 
