@@ -405,8 +405,8 @@ body.locked .app,body.locked .fab{display:none}
   background:var(--bg2);border:1px solid var(--line);border-radius:11px;overflow:hidden}
 .tlday.on{border-color:var(--acc);background:var(--bg3)}
 .tlday .d{font-weight:700;font-size:12.5px}
-.tlday .bar{width:100%;height:38px;display:flex;align-items:flex-end;justify-content:center}
-.tlday .bar i{width:13px;min-height:2px;border-radius:3px 3px 0 0;background:var(--acc);display:block}
+.tlday .cbar{width:100%;height:38px;display:flex;align-items:flex-end;justify-content:center}
+.tlday .cbar i{width:13px;min-height:2px;border-radius:3px 3px 0 0;background:var(--acc);display:block}
 .tlday .t{font-size:11.5px;font-weight:650;letter-spacing:-.2px}
 .tlday .c{font-size:10px;color:var(--tx3)}
 .tlday .cl{font-size:10px;color:var(--bad)}
@@ -454,3 +454,25 @@ body.locked .app,body.locked .fab{display:none}
 .gap{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
   background:var(--bg3);border:1px dashed var(--line);font-size:12px;color:var(--tx2)}
 .gap b{color:var(--ok);font-weight:700}
+
+/* ---------- danh sách việc hôm nay: tích ô, xong thì gạch ngang ---------- */
+.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:var(--r);margin-bottom:7px}
+.chk.tsk{border-style:dashed}
+.chk.off{opacity:.48}
+.chk .cb{margin-top:1px}
+.chk .row{gap:8px;align-items:center}
+.chk .tm{flex:none;font-size:13.5px;font-weight:750;letter-spacing:-.2px;
+  font-variant-numeric:tabular-nums}
+.chk .ti{font-weight:650;font-size:14.5px;min-width:0}
+.chk .st{flex:none;font-size:11.5px;color:var(--tx3)}
+.chk .st.ok{color:var(--ok)}
+.chk .st.late{color:var(--bad);font-weight:700}
+.chk .st.now{color:var(--acc);font-weight:700}
+.chk .sb{margin-top:3px;font-size:12px}
+.chk.off .tm,.chk.off .ti{text-decoration:line-through}
+.chkhd{display:flex;align-items:center;gap:10px}
+.chkhd .n{flex:none;font-size:12.5px;font-weight:700;color:var(--tx2);white-space:nowrap}
+.chkhd .pbar{flex:1;height:6px;border-radius:4px;background:var(--bg3);overflow:hidden}
+.chkhd .pbar i{display:block;height:100%;background:var(--ok);border-radius:4px;transition:width .18s}
+.hr{height:1px;background:var(--line);margin:12px 0}

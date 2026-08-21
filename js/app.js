@@ -326,21 +326,36 @@ function editTask(id){
 }
 function toggleTask(id){
   const t = db.tasks.find(x => x.id === id);
+  /* Việc lặp lại tick xong thì hạn nhảy sang kỳ sau chứ không mang cờ done,
+     nên bấm ô tích lần nữa sẽ tick tiếp một kỳ nữa mà mình không hề biết.
+     Bắt riêng trường hợp "kỳ này đã xong hôm nay" để bỏ tick cho tử tế:
+     trả hạn về chỗ cũ (đã cất ở prevDue), gỡ ngày khỏi doneLog, lùi chuỗi. */
+  if (t.repeat && taskDoneToday(t)){
+    const t0 = today();
+    t.doneLog = (t.doneLog || []).filter(d => String(d).slice(0,10) !== t0);
+    if (t.prevDue) { t.due = t.prevDue; t.prevDue = ''; }
+    t.streak = Math.max(0, (t.streak || 0) - 1);   /* kỷ lục thì giữ, đã lập được là đã lập được */
+    t.doneAt = null; t.doneTime = '';
+    stamp(t); save(); render(); toast('Đã bỏ đánh dấu kỳ này');
+    return;
+  }
   /* Xong rồi thì mốc dời nhắc phải bỏ luôn. Việc lặp lại không bao giờ mang
      cờ done, nên mốc cũ còn sót lại là máy chủ vẫn bắn tin "đến giờ dời"
      cho việc mình vừa tick xong. Nút Xong trên Telegram xưa nay đã xoá
      trường này rồi — bên app phải làm y hệt. */
   if (!t.done) t.snoozeUntil = '';
-  if (t.done){ t.done = false; t.doneAt = null; }
+  if (t.done){ t.done = false; t.doneAt = null; t.doneTime = ''; }
   else if (t.repeat){
     const onTime = !t.due || dayDiff(t.due) >= 0;
     t.streak = (onTime ? (t.streak||0) : 0) + 1;
     t.bestStreak = Math.max(t.bestStreak||0, t.streak);
     t.doneLog = (t.doneLog||[]).concat(today()).slice(-80);
-    t.doneAt = today();
+    t.doneAt = today(); t.doneTime = nowStamp();
+    t.prevDue = t.due || today();
     t.due = nextRepeat(t.due || today(), t.repeat);
     toast('Xong kỳ này · lần tới ' + fmtDate(t.due) + (t.streak > 1 ? ` · chuỗi ${t.streak} 🔥` : ''));
-  } else { t.done = true; t.doneAt = today(); t.doneLog = (t.doneLog||[]).concat(today()); }
+  } else { t.done = true; t.doneAt = today(); t.doneTime = nowStamp();
+           t.doneLog = (t.doneLog||[]).concat(today()); }
   stamp(t); save(); render();
 }
 
@@ -774,6 +789,7 @@ function toggleRemDone(id){
   const i = log.indexOf(t);
   if (i >= 0) log.splice(i, 1); else log.push(t);
   r.doneLog = log.slice(-80);
+  r.doneTime = i >= 0 ? '' : nowStamp();
   stamp(r); save(); render();
   const n = remStreak(r);
   toast(i >= 0 ? 'Đã bỏ đánh dấu hôm nay'
@@ -808,13 +824,41 @@ function editRem(id){
     onSave(v){ Object.assign(r, normalizeRem(v)); stamp(r); save(); render(); }});
 }
 
+/* ---------------- cửa sổ làm việc ----------------
+   Mốc này nằm trong settings nên chỉ ở máy này; máy chủ không thấy. Mà bản
+   tóm tắt sáng cũng nói "trống bao nhiêu", nên phải đẩy lên — hai nơi báo
+   hai con số khác nhau cho cùng một ngày thì chẳng tin được cái nào. */
+function pushWorkWindow(){
+  if (!Server.available()) return Promise.resolve();
+  return Server.call('work_save', {from:db.settings.workFrom, to:db.settings.workTo})
+               .catch(() => {});
+}
+function saveWorkWindow(){
+  const f = winMin($('#set_wfrom').value, null);
+  const t = winMin($('#set_wto').value, null);
+  if (f === null || t === null){ toast('Giờ phải viết dạng 08:30 hoặc 24:00'); return; }
+  if (t <= f){ toast('Giờ kết thúc phải sau giờ bắt đầu'); return; }
+  db.settings.workFrom = winText(f);
+  db.settings.workTo   = winText(t);
+  save(); render();
+  pushWorkWindow();
+  toast('Cửa sổ làm việc ' + winText(f) + '–' + winText(t) + ' · dài ' + fmtDur(t - f));
+}
+
 /* ---------------- Telegram ---------------- */
 /* Cấu hình nằm ở máy chủ chứ không phải trong máy này: mã bot là thứ ai
    cầm được cũng nhắn được vào group của bạn, nên không để nó đi lung tung. */
 let TG = null;
 function tgLoad(){
   if (!Server.available()) return Promise.resolve(null);
-  return Server.call('tg_get').then(d => { TG = d; return d; }).catch(() => null);
+  return Server.call('tg_get').then(d => {
+    TG = d;
+    /* Máy chủ đang giữ mốc khác với máy này thì đẩy lên cho khớp — app là
+       nơi đặt, máy chủ chỉ giữ một bản để tính bản tóm tắt sáng. */
+    if (d && (d.workFrom !== db.settings.workFrom || d.workTo !== db.settings.workTo))
+      pushWorkWindow();
+    return d;
+  }).catch(() => null);
 }
 function tgBox(){
   const t = TG || {};
@@ -1506,6 +1550,7 @@ document.addEventListener('click', e => {
       else Notify.request().then(() => render());
       break;
     case 'testNotify': Notify.testFire(); break;
+    case 'saveWork': saveWorkWindow(); break;
     case 'saveHour':
       db.settings.notifyHour = Math.max(0, Math.min(23, +$('#set_hour').value || 8));
       save(); Notify.start(); toast('Đã lưu giờ nhắc'); break;

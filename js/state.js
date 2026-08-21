@@ -277,7 +277,10 @@ function ensure(){
                            if(t.remindBefore===undefined) t.remindBefore=0;
                            /* ước tính làm mất bao lâu, phút; 0 = chưa ước tính, trục
                               thời gian tạm tính 30 phút và ghi rõ là con số đoán */
-                           if(t.mins===undefined) t.mins=0; });
+                           if(t.mins===undefined) t.mins=0;
+                           if(t.doneTime===undefined) t.doneTime='';
+                           /* hạn của kỳ trước, để bỏ tick việc lặp lại thì trả hạn về chỗ cũ */
+                           if(t.prevDue===undefined) t.prevDue=''; });
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
                            /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
                               chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
@@ -298,6 +301,10 @@ function ensure(){
                                  và bắt trùng giờ. Bản cũ chưa có, cho tạm 15 phút. */
                               if(r.mins===undefined) r.mins = 15;
                               if(r.areaId===undefined) r.areaId = '';
+                              /* lần tick gần nhất, "YYYY-MM-DD HH:MM" — chỉ để hiện "xong 09:09".
+                                 Để riêng khỏi doneLog vì doneLog là nguồn tính chuỗi 🔥, đổi
+                                 định dạng của nó là đụng cả luật chuỗi lẫn bên PHP. */
+                              if(r.doneTime===undefined) r.doneTime = '';
                               /* những ngày đã tick xong — nguồn duy nhất để tính chuỗi 🔥 */
                               if(!Array.isArray(r.doneLog)) r.doneLog = []; });
   db.occasions.forEach(o => { if(!Array.isArray(o.personIds)) o.personIds = [];
@@ -315,6 +322,9 @@ function ensure(){
                            if(c.snoozeUntil===undefined) c.snoozeUntil='';
                            if(c.remindBefore===undefined) c.remindBefore=0; });
   if (!db.settings.workspace) db.settings.workspace = '';
+  /* cửa sổ làm việc — mốc để tính khoảng trống trong ngày */
+  if (!db.settings.workFrom) db.settings.workFrom = WORK_FROM_DEF;
+  if (!db.settings.workTo)   db.settings.workTo   = WORK_TO_DEF;
 }
 /* Safari ở chế độ riêng tư, hoặc kho đầy, sẽ ném lỗi ở đây. Không bắt thì
    thao tác đang làm dở sẽ đứng im mà không báo gì. */
@@ -591,6 +601,55 @@ function weekLoad(areaId){
     return {wd, lbl, items, load:dayLoad(items)};
   });
 }
+/* ---- cửa sổ làm việc ----
+   Không có mốc này thì "còn trống bao nhiêu" chỉ tính được phần hở giữa hai
+   việc — app không biết mình thức lúc mấy giờ. Đặt trước 08:30 → 24:00 thì
+   mọi khoảng trống đều đo được, kể cả đầu ngày và cuối ngày. */
+const WORK_FROM_DEF = '08:30', WORK_TO_DEF = '24:00';
+/* Khác hhmm2min ở chỗ nhận cả 24:00 — mốc kết thúc là nửa đêm thì phải viết
+   được là 24:00, chứ 00:00 sẽ thành số 0 và cửa sổ ra âm. */
+function winMin(v, def){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v == null ? '' : v).trim());
+  if (!m) return def;
+  const n = +m[1] * 60 + +m[2];
+  return (+m[2] < 60 && n >= 0 && n <= 1440) ? n : def;
+}
+const winText = m => m >= 1440 ? '24:00' : min2hhmm(m);
+function workWindow(){
+  const f = winMin(db.settings.workFrom, 510);
+  const t = winMin(db.settings.workTo, 1440);
+  /* Đặt ngược hoặc bằng nhau thì quay về mặc định — không thì mọi phép trừ
+     phía sau ra số âm và giao diện vẽ ngược. */
+  return t > f ? {from:f, to:t} : {from:winMin(WORK_FROM_DEF, 510), to:1440};
+}
+
+/* ---- xong hôm nay ----
+   Việc lẻ tick xong thì cờ done bật; việc lặp lại tick xong thì hạn nhảy
+   sang kỳ sau và chỉ có doneLog ghi lại — nên phải dò hai kiểu khác nhau. */
+function taskDoneToday(t){
+  const t0 = today();
+  if (t.repeat) return (t.doneLog || []).some(d => String(d).slice(0,10) === t0);
+  return !!t.done && String(t.doneAt || '').slice(0,10) === t0;
+}
+/* Có mặt trong danh sách hôm nay khi: chưa xong mà đã đến hạn, hoặc vừa tick
+   xong ngay hôm nay. Tick xong mà biến mất luôn thì mình tưởng bấm hụt. */
+function taskOnToday(t){
+  if (taskDoneToday(t)) return true;
+  if (t.done) return false;
+  const due = String(t.due || '').slice(0,10);
+  return due.length === 10 && due <= today();
+}
+/* mốc tick, "YYYY-MM-DD HH:MM" giờ máy */
+function nowStamp(){
+  const d = new Date();
+  return today() + ' ' + min2hhmm(d.getHours() * 60 + d.getMinutes());
+}
+/* "09:09" nếu tick trong hôm nay, còn không thì để trống */
+function doneHhmm(v){
+  const s = String(v == null ? '' : v);
+  return s.slice(0,10) === today() ? s.slice(11,16) : '';
+}
+
 /* ---- hôm nay: gộp cả việc lẻ ----
    Bảy cột của tab Cả tuần là nhịp lặp theo thứ, nên chỉ có việc hằng ngày.
    Còn "hôm nay" là một ngày có thật, nên việc lẻ đến hạn cũng chiếm giờ của
@@ -598,29 +657,27 @@ function weekLoad(areaId){
 function todayItems(areaId){
   const A = areaId === undefined ? 'all' : areaId;
   const t0 = today();
-  const out = dayItems(new Date().getDay(), A).map(x => Object.assign({kind:'rem'}, x));
+  const out = dayItems(new Date().getDay(), A).map(x => Object.assign({kind:'rem'}, x, {
+    done:remDoneToday(x.r), doneTime:doneHhmm(x.r.doneTime)}));
   byArea(tasks(), A).forEach(t => {
-    if (t.done) return;
-    const due = String(t.due || '').slice(0,10);
-    if (due.length !== 10 || due > t0) return;      /* chưa tới hạn thì chưa chiếm giờ hôm nay */
+    if (!taskOnToday(t)) return;                    /* chưa tới hạn thì chưa chiếm giờ hôm nay */
     const start = hhmm2min(t.remindAt);
     if (start === null) return;                     /* chưa xếp giờ → xuống danh sách riêng */
+    const due = String(t.due || '').slice(0,10), xong = taskDoneToday(t);
     /* id có tiền tố để không đụng id của việc hằng ngày khi dò chồng giờ */
     out.push({kind:'task', id:'t_' + t.id, t, start, mins:taskMins(t), on:true,
               title:t.title || 'Việc cần làm', areaId:t.areaId || '',
-              late:due < t0, est:taskEst(t)});
+              late:due < t0, est:taskEst(t),
+              done:xong, doneTime:doneHhmm(t.doneTime)});
   });
   return out.sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
 }
 /* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
    thật, nên vẫn phải kể ra kèm tổng ước tính. */
 function todayUnscheduled(areaId){
-  const t0 = today();
-  return byArea(tasks(), areaId === undefined ? 'all' : areaId).filter(t => {
-    if (t.done) return false;
-    const due = String(t.due || '').slice(0,10);
-    return due.length === 10 && due <= t0 && hhmm2min(t.remindAt) === null;
-  }).sort((a,b) => (a.due || '').localeCompare(b.due || ''));
+  return byArea(tasks(), areaId === undefined ? 'all' : areaId)
+    .filter(t => taskOnToday(t) && hhmm2min(t.remindAt) === null)
+    .sort((a,b) => (a.due || '').localeCompare(b.due || ''));
 }
 
 /* ---- khoảng trống ----
@@ -638,18 +695,38 @@ function busySpans(items){
   }
   return out;
 }
+/* Khoảng hở bên trong cửa sổ làm việc, kể cả đoạn đầu ngày và cuối ngày.
+   Chỉ kể khoảng từ 30 phút trở lên — dưới đó thì không làm được gì. */
 function dayGaps(items, minLen){
-  const b = busySpans(items), min = minLen === undefined ? 30 : minLen;
+  const w = workWindow(), min = minLen === undefined ? 30 : minLen;
+  const b = busySpans(items)
+    .map(sp => [Math.max(sp[0], w.from), Math.min(sp[1], w.to)])
+    .filter(sp => sp[1] > sp[0]);
   const out = [];
-  for (let i = 1; i < b.length; i++){
-    const from = b[i-1][1], to = b[i][0];
-    if (to - from >= min) out.push({from, to, mins:to - from});
+  let cur = w.from;
+  for (const sp of b){
+    if (sp[0] - cur >= min) out.push({from:cur, to:sp[0], mins:sp[0] - cur});
+    cur = Math.max(cur, sp[1]);
   }
+  if (w.to - cur >= min) out.push({from:cur, to:w.to, mins:w.to - cur});
   return out;
 }
-/* Bận thật trên đồng hồ — hai việc chồng nhau chỉ tính một lần, khác với
-   tổng số phút của dayLoad(). */
-const busyMins = items => busySpans(items).reduce((n,s) => n + (s[1] - s[0]), 0);
+/* Bận thật trên đồng hồ, tính trong cửa sổ — hai việc chồng nhau chỉ tính
+   một lần, nên nó nhỏ hơn tổng số phút của dayLoad() khi có việc trùng giờ.
+   Kín + Trống luôn đúng bằng độ dài cửa sổ. */
+function busyMins(items){
+  const w = workWindow();
+  return busySpans(items).reduce((n, sp) =>
+    n + Math.max(0, Math.min(sp[1], w.to) - Math.max(sp[0], w.from)), 0);
+}
+const freeMins = items => { const w = workWindow();
+                            return Math.max(0, (w.to - w.from) - busyMins(items)); };
+/* Việc rơi ra ngoài cửa sổ — vẫn hiện, nhưng phải nói ra chứ đừng lặng lẽ
+   bỏ nó khỏi mọi con số. */
+function outsideWin(items){
+  const w = workWindow();
+  return (items || []).filter(x => x.on && (x.start < w.from || x.start + x.mins > w.to));
+}
 
 /* Còn mấy việc chưa tick hôm nay — con số trên menu */
 function dailyLeft(){

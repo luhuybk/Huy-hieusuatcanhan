@@ -98,6 +98,10 @@ function tgState(): array {
     'escalate'   => (bool)confGet('tg_escalate', ''),
     'webhookOn'  => (bool)confGet('tg_webhook_on', ''),
     'enabled'    => (bool)confGet('tg_enabled', ''),
+    /* Cửa sổ làm việc nằm trong settings của app nên không đi qua đồng bộ.
+       Trả về đây để app biết máy chủ đang dùng mốc nào mà đẩy lên cho khớp. */
+    'workFrom'   => confGet('work_from', '08:30'),
+    'workTo'     => confGet('work_to', '24:00'),
     'cron'       => '/usr/bin/php ' . __DIR__ . '/cron.php',
     'cronUrl'    => $base . '/cron.php?key=' . cronKey()];
 }
@@ -224,6 +228,18 @@ switch ($action) {
   case 'tg_get': {
     requireAuth();
     out(tgState());
+  }
+
+  /* Cửa sổ làm việc — app là nơi đặt, máy chủ chỉ giữ một bản để bản tóm
+     tắt sáng tính "còn trống bao nhiêu" ra đúng con số như trên màn hình. */
+  case 'work_save': {
+    requireAuth();
+    $f = trim((string)($in['from'] ?? ''));
+    $t = trim((string)($in['to'] ?? ''));
+    $ok = preg_match('/^\d{1,2}:\d{2}$/', $f) && preg_match('/^\d{1,2}:\d{2}$/', $t);
+    if ($ok) { confSet('work_from', $f); confSet('work_to', $t); }
+    out(['ok' => (bool)$ok, 'from' => confGet('work_from', '08:30'),
+         'to' => confGet('work_to', '24:00')]);
   }
 
   case 'tg_save': {

@@ -257,6 +257,8 @@ function hhmmMin(string $s): ?int {
   return preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', trim($s), $m)
        ? (int)$m[1] * 60 + (int)$m[2] : null;
 }
+/* Nửa đêm ở mốc kết thúc phải viết 24:00, chứ 00:00 đọc ra như đầu ngày */
+function winText(int $m): string { return $m >= 1440 ? '24:00' : hhmmText($m); }
 function hhmmText(int $m): string {
   $v = max(0, $m);
   return sprintf('%02d:%02d', intdiv($v, 60) % 24, $v % 60);
@@ -310,13 +312,39 @@ function slotBusy(array $items): array {
   }
   return $sp;
 }
+/* Cửa sổ làm việc, "08:30" → 510. 24:00 hợp lệ vì mốc kết thúc có thể là
+   nửa đêm — cùng luật với workWindow() bên app. */
+function winMinutes(string $v, int $def): int {
+  if (!preg_match('/^(\d{1,2}):(\d{2})$/', trim($v), $m)) return $def;
+  $n = (int)$m[1] * 60 + (int)$m[2];
+  return ((int)$m[2] < 60 && $n >= 0 && $n <= 1440) ? $n : $def;
+}
+function workWin(): array {
+  $f = winMinutes((string)confGet('work_from', '08:30'), 510);
+  $t = winMinutes((string)confGet('work_to', '24:00'), 1440);
+  return $t > $f ? ['from' => $f, 'to' => $t] : ['from' => 510, 'to' => 1440];
+}
+/* Khoảng hở bên trong cửa sổ, kể cả đoạn đầu ngày và cuối ngày */
 function slotGaps(array $items, int $min = 30): array {
-  $sp = slotBusy($items); $out = []; $n = count($sp);
-  for ($i = 1; $i < $n; $i++) {
-    $from = $sp[$i-1][1]; $to = $sp[$i][0];
-    if ($to - $from >= $min) $out[] = ['from' => $from, 'to' => $to, 'mins' => $to - $from];
+  $w = workWin();
+  $sp = [];
+  foreach (slotBusy($items) as $x) {
+    $a = max($x[0], $w['from']); $b = min($x[1], $w['to']);
+    if ($b > $a) $sp[] = [$a, $b];
   }
+  $out = []; $cur = $w['from'];
+  foreach ($sp as $x) {
+    if ($x[0] - $cur >= $min) $out[] = ['from' => $cur, 'to' => $x[0], 'mins' => $x[0] - $cur];
+    $cur = max($cur, $x[1]);
+  }
+  if ($w['to'] - $cur >= $min) $out[] = ['from' => $cur, 'to' => $w['to'], 'mins' => $w['to'] - $cur];
   return $out;
+}
+/* Kín trong cửa sổ; Kín + Trống luôn đúng bằng độ dài cửa sổ */
+function slotBusyMins(array $items): int {
+  $w = workWin(); $n = 0;
+  foreach (slotBusy($items) as $x) $n += max(0, min($x[1], $w['to']) - max($x[0], $w['from']));
+  return $n;
 }
 
 function remText(array $r): string {
@@ -366,14 +394,16 @@ function buildDigest(): array {
     $tot = 0; foreach ($slots as $x) $tot += $x['mins'];
     $cl   = slotClashes($slots);
     $gaps = slotGaps($slots);
-    $free = 0; foreach ($gaps as $g) $free += $g['mins'];
-    $line = '🗓 <b>Hôm nay ' . count($slots) . ' việc theo giờ · ' . durText($tot) . '</b>';
+    $w    = workWin();
+    $free = max(0, ($w['to'] - $w['from']) - slotBusyMins($slots));
+    $line = '🗓 <b>Hôm nay ' . count($slots) . ' việc theo giờ · ' . durText($tot) . '</b>'
+          . "\n   Cửa sổ " . winText($w['from']) . '–' . winText($w['to'])
+          . ' · kín ' . durText(slotBusyMins($slots)) . ' · trống ' . durText($free);
     if ($cl) $line .= "\n   ⚠️ <b>" . $cl . ' việc chồng giờ</b>';
-    if ($free) {
+    if ($gaps) {
       $txt = [];
-      foreach (array_slice($gaps, 0, 3) as $g) $txt[] = hhmmText($g['from']) . '–' . hhmmText($g['to']);
-      $line .= "\n   Trống " . durText($free) . ': ' . implode(', ', $txt)
-             . (count($gaps) > 3 ? '…' : '');
+      foreach (array_slice($gaps, 0, 3) as $g) $txt[] = winText($g['from']) . '–' . winText($g['to']);
+      $line .= "\n   Còn rảnh: " . implode(', ', $txt) . (count($gaps) > 3 ? '…' : '');
     }
     $lines[] = $line;
   }

@@ -107,6 +107,9 @@ if (preg_match('#^remdone:(.+)$#', $data, $m)) {
       else {
         $log[] = $today;
         $rem['doneLog']   = array_slice($log, -80);
+        /* giờ tick, để app hiện được "xong 09:09" — bấm ở Telegram hay ở web
+           đều phải ra cùng một dòng */
+        $rem['doneTime']  = $today . ' ' . date('H:i');
         $rem['updatedAt'] = isoNow();
         db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
             ->execute([json_encode($rem, JSON_UNESCAPED_UNICODE), $rem['updatedAt'], 'reminders', $m[1]]);

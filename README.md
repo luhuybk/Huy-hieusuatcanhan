@@ -155,7 +155,7 @@ Ba tab:
 
 | Tab | Cho việc gì |
 |---|---|
-| **Hôm nay** | cả việc hằng ngày lẫn **việc lẻ đến hạn**, xếp theo giờ. Trên đầu là một thanh gọn cho thấy ngày dồn vào khúc nào, kèm dòng **Kín / Trống / ⚠ chồng giờ**. |
+| **Hôm nay** | danh sách tích ô: cả việc hằng ngày lẫn **việc lẻ đến hạn**, xếp theo giờ. Trên đầu là thanh gọn cho thấy ngày dồn vào khúc nào, kèm dòng **Cửa sổ / Kín / Trống / ⚠ chồng giờ** và thanh tiến độ. |
 | **Cả tuần** | bảy cột T2→CN, cột càng cao là ngày càng nặng. Bấm một cột để xem trục thời gian của ngày đó. |
 | **Tất cả** | danh sách phẳng như cũ: bật/tắt, gửi thử ➤, dải bảy ngày gần nhất. |
 
@@ -189,6 +189,24 @@ Việc đến hạn mà **chưa đặt giờ** không lên được trục, nên
 
 Bảy cột của tab **Cả tuần** vẫn chỉ tính việc hằng ngày: đó là nhịp lặp theo thứ, còn việc lẻ gắn với một ngày cụ thể.
 
+#### Tích xong việc
+
+Tab **Hôm nay** là một danh sách tích ô. Ô tích nằm bên trái để bấm được bằng ngón cái; bấm vào tên việc thì mở ra sửa.
+
+```
+[✓]  09:00  Trả lời tin nhắn khách              xong 09:09
+     30p → 09:30 · ⚠ trùng giờ
+
+[ ]  18:30  Tập gym                                    45p
+     45p → 19:15 · 🔥 3
+```
+
+Xong rồi thì hàng **gạch ngang và mờ đi**, vẫn nằm nguyên chỗ cũ chứ không biến mất — biến mất thì mình tưởng bấm hụt. Cột phải cho biết đang ở đâu so với bây giờ: **xong 09:09** · **tới giờ** · **quá giờ** · hoặc thời lượng nếu chưa tới.
+
+**Tích xong là Telegram im.** Việc hằng ngày đã tick thì hôm đó không bắn tin nữa; việc lẻ đã xong cũng vậy. Bấm ✅ dưới tin Telegram hay tích trong app đều ghi vào cùng một chỗ, kể cả giờ tick — nên tích ở đâu thì bên kia cũng thấy "xong 09:09".
+
+Việc **lặp lại** tick xong thì hạn nhảy sang kỳ sau nhưng vẫn nằm lại trong ngày hôm nay với vệt gạch. Bấm ô tích lần nữa là **bỏ tích**: hạn trả về chỗ cũ, chuỗi 🔥 lùi một bước (kỷ lục thì giữ).
+
 #### Kín, trống, và chồng giờ
 
 Ngay dưới thanh ngày có một dòng tổng:
@@ -198,9 +216,18 @@ Kín 2h50    Trống 9h30    ⚠ 2 việc chồng giờ
 [ 10:15 → 14:00  3h45 ]  [ 14:30 → 18:30  4h ]  [ 19:15 → 21:00  1h45 ]
 ```
 
+- Mọi con số đo trong **cửa sổ làm việc** bạn đặt ở Cài đặt (mặc định **08:30 → 24:00**). **Kín + Trống luôn đúng bằng độ dài cửa sổ.**
 - **Kín** đếm theo đồng hồ: hai việc chồng nhau chỉ tính một lần. Nên khi nó **nhỏ hơn** tổng số phút ở dòng tiêu đề, đó chính là dấu hiệu bạn đang nhét hai việc vào cùng một khoảng.
-- **Trống** là các khoảng hở giữa hai việc, chỉ kể khoảng từ **30 phút** trở lên — dưới đó thì không làm được gì.
-- Chỉ tính trong khoảng **từ việc đầu tới việc cuối** trong ngày. Ngoài khoảng đó app không biết bạn thức lúc mấy giờ, đoán bừa còn tệ hơn không nói gì.
+- Các thẻ bên dưới là những khoảng hở từ **30 phút** trở lên — kể cả đoạn đầu ngày (08:30 → việc đầu tiên) và đoạn cuối ngày (việc cuối → 24:00). Dưới 30 phút thì không làm được gì nên không kể ra.
+- Việc rơi **ngoài cửa sổ** vẫn hiện trên trục và được nói ra thành một dòng riêng, chứ không lặng lẽ biến mất khỏi mọi con số.
+
+#### Cửa sổ làm việc
+
+Cài đặt → **Cửa sổ làm việc** → hai ô giờ. Ví dụ *08:30 → 24:00* nghĩa là một ngày làm việc dài 15h30. Mốc kết thúc viết **24:00** nếu làm tới nửa đêm — viết `00:00` sẽ bị hiểu là đầu ngày.
+
+Không có mốc này thì app chỉ đo được phần hở **giữa hai việc**, vì nó không biết bạn thức lúc mấy giờ. Có rồi thì mọi khoảng trống đều đo được, kể cả đầu ngày và cuối ngày.
+
+Mốc này nằm trong cài đặt của máy nên **không** đi qua đồng bộ như các dữ liệu khác. App tự đẩy riêng nó lên máy chủ mỗi lần lưu, để tin Telegram tính ra đúng con số như trên màn hình — hai nơi báo hai con số khác nhau cho cùng một ngày thì chẳng tin được cái nào.
 
 ### Ý tưởng
 
@@ -432,8 +459,9 @@ Bản tóm tắt sáng mở đầu bằng **hình dạng của ngày** — biế
 
 ```
 🗓 Hôm nay 5 việc theo giờ · 3h05
+   Cửa sổ 08:30–24:00 · kín 2h50 · trống 12h40
    ⚠️ 2 việc chồng giờ
-   Trống 9h30: 10:15–14:00, 14:30–18:30, 19:15–21:00
+   Còn rảnh: 08:30–09:00, 10:15–14:00, 14:30–18:30…
 ```
 
 Dòng này gộp cả việc hằng ngày lẫn việc lẻ đến hạn đã có giờ, đúng như tab **Hôm nay** trong app. Không có việc nào theo giờ thì không thêm dòng thừa. Nó nằm trong bản tóm tắt hằng ngày, nên cần bật **Giờ gửi tóm tắt** trong Cài đặt → Telegram.

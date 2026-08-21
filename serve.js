@@ -124,13 +124,33 @@ function slotBusy(items){
   }
   return sp;
 }
+function winMinutes(v, def){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v == null ? '' : v).trim());
+  if (!m) return def;
+  const n = +m[1] * 60 + +m[2];
+  return (+m[2] < 60 && n >= 0 && n <= 1440) ? n : def;
+}
+function workWin(){
+  const f = winMinutes(confGet('work_from','08:30'), 510);
+  const t = winMinutes(confGet('work_to','24:00'), 1440);
+  return t > f ? {from:f, to:t} : {from:510, to:1440};
+}
+const winText = m => m >= 1440 ? '24:00' : hhmmText(m);
 function slotGaps(items, min){
-  const sp = slotBusy(items), lim = min === undefined ? 30 : min, out = [];
-  for (let i = 1; i < sp.length; i++){
-    const from = sp[i-1][1], to = sp[i][0];
-    if (to - from >= lim) out.push({from, to, mins:to - from});
+  const w = workWin(), lim = min === undefined ? 30 : min;
+  const sp = slotBusy(items).map(x => [Math.max(x[0], w.from), Math.min(x[1], w.to)])
+                            .filter(x => x[1] > x[0]);
+  const out = []; let cur = w.from;
+  for (const x of sp){
+    if (x[0] - cur >= lim) out.push({from:cur, to:x[0], mins:x[0] - cur});
+    cur = Math.max(cur, x[1]);
   }
+  if (w.to - cur >= lim) out.push({from:cur, to:w.to, mins:w.to - cur});
   return out;
+}
+function slotBusyMins(items){
+  const w = workWin();
+  return slotBusy(items).reduce((n,x) => n + Math.max(0, Math.min(x[1], w.to) - Math.max(x[0], w.from)), 0);
 }
 function remMinutes(r){
   const n = Math.round(Number(r && r.mins));
@@ -214,12 +234,13 @@ function buildDigest(){
   const slots = todaySlots(now.getTime());
   if (slots.length){
     const tot = slots.reduce((n,x) => n + x.mins, 0);
-    const cl = slotClashes(slots), gaps = slotGaps(slots);
-    const free = gaps.reduce((n,g) => n + g.mins, 0);
-    let line = `🗓 Hôm nay ${slots.length} việc theo giờ · ${durText(tot)}`;
+    const cl = slotClashes(slots), gaps = slotGaps(slots), w = workWin();
+    const busy = slotBusyMins(slots), free = Math.max(0, (w.to - w.from) - busy);
+    let line = `🗓 Hôm nay ${slots.length} việc theo giờ · ${durText(tot)}`
+      + `\n   Cửa sổ ${winText(w.from)}–${winText(w.to)} · kín ${durText(busy)} · trống ${durText(free)}`;
     if (cl) line += `\n   ⚠️ ${cl} việc chồng giờ`;
-    if (free) line += `\n   Trống ${durText(free)}: `
-      + gaps.slice(0,3).map(g => hhmmText(g.from) + '–' + hhmmText(g.to)).join(', ')
+    if (gaps.length) line += `\n   Còn rảnh: `
+      + gaps.slice(0,3).map(g => winText(g.from) + '–' + winText(g.to)).join(', ')
       + (gaps.length > 3 ? '…' : '');
     lines.push(line);
   }
@@ -731,6 +752,7 @@ function webhook(req, res, body){
         else {
           log.push(today_());
           rem.doneLog = log.slice(-80);
+          rem.doneTime = today_() + ' ' + hhmmText(new Date().getHours()*60 + new Date().getMinutes());
           rem.updatedAt = iso();
           db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
               .run(JSON.stringify(rem), rem.updatedAt, 'reminders', rm[1]);
@@ -898,6 +920,14 @@ function api(req, res, body){
     }
 
     /* ---- Telegram ---- */
+    /* cửa sổ làm việc — app đặt, máy chủ giữ một bản cho bản tóm tắt sáng */
+    case 'work_save': {
+      if (!need()) return;
+      const f = String(inp.from || '').trim(), t = String(inp.to || '').trim();
+      const ok = /^\d{1,2}:\d{2}$/.test(f) && /^\d{1,2}:\d{2}$/.test(t);
+      if (ok){ confSet('work_from', f); confSet('work_to', t); }
+      return send({ok, from:confGet('work_from','08:30'), to:confGet('work_to','24:00')});
+    }
     case 'tg_get':
     case 'tg_save': {
       if (!need()) return;
@@ -940,6 +970,7 @@ function api(req, res, body){
         escalate: !!confGet('tg_escalate',''),
         webhookOn: !!confGet('tg_webhook_on',''),
         enabled: !!confGet('tg_enabled',''),
+        workFrom: confGet('work_from','08:30'), workTo: confGet('work_to','24:00'),
         cron: '/usr/bin/php ' + path.join(__dirname, 'api/cron.php'),
         cronUrl: 'http://localhost:' + PORT + '/api/cron.php?key=' + confGet('cron_key','')});
     }
