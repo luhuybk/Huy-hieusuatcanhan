@@ -328,6 +328,41 @@ function todayUnsched(): array {
   }
   return $out;
 }
+/* Gộp mốc CÙNG NGUỒN mà chồng giờ nhau. Bản song sinh của feedMerge() trong
+   js/state.js. Không gộp ở đây thì con số "kín / trống" trong tin Telegram
+   khác con số trên màn hình, và lúc cần quyết định mình sẽ tin nhầm cái tiện
+   hơn. Chỉ gộp khi THỰC SỰ chồng nhau — hai việc nối đuôi vẫn là hai việc. */
+function feedMerge(array $list): array {
+  $bySrc = [];
+  foreach ($list as $x) $bySrc[(string)($x['feed'] ?? '')][] = $x;
+  $out = [];
+  foreach ($bySrc as $arr) {
+    usort($arr, fn($a, $b) => [$a['start'], $a['mins']] <=> [$b['start'], $b['mins']]);
+    $cur = null;
+    $flush = function () use (&$cur, &$out) {
+      if ($cur === null) return;
+      $n = count($cur['parts']);
+      $x = $cur['first'];
+      $x['start'] = $cur['start'];
+      $x['mins']  = $cur['end'] - $cur['start'];
+      if ($n > 1) $x['title'] = $n . ' việc cùng lúc (' . implode(', ', $cur['parts']) . ')';
+      $out[] = $x;
+      $cur = null;
+    };
+    foreach ($arr as $x) {
+      if ($cur !== null && $x['start'] < $cur['end']) {
+        $cur['end'] = max($cur['end'], $x['start'] + $x['mins']);
+        $cur['parts'][] = $x['title'];
+        continue;
+      }
+      $flush();
+      $cur = ['first' => $x, 'start' => $x['start'],
+              'end' => $x['start'] + $x['mins'], 'parts' => [$x['title']]];
+    }
+    $flush();
+  }
+  return $out;
+}
 function todaySlots(): array {
   $today = date('Y-m-d');
   $wday  = (int)date('w');          /* 0 = Chủ nhật, khớp với getDay() bên app */
@@ -350,6 +385,7 @@ function todaySlots(): array {
   /* Lịch nhập từ app khác cũng chiếm giờ thật. Không kể vào đây thì con số
      "trống" trong tin Telegram sẽ rộng hơn con số trong app, và mình sẽ tin
      con số nào tiện hơn. Nó không tick được nên luôn coi là chưa xong. */
+  $fd = [];
   foreach (itemsOf('feeds') as $f) {
     $date = (string)($f['date'] ?? '');
     $days = array_map('intval', (array)($f['days'] ?? []));
@@ -358,10 +394,11 @@ function todaySlots(): array {
     if ($st === null) continue;
     $title = (string)($f['title'] ?? '');
     if ($title === '') continue;
-    $out[] = ['start' => $st, 'mins' => remMinutes($f), 'title' => $title,
-              'done' => false, 'est' => true,
-              'feed' => (string)($f['srcName'] ?? $f['src'] ?? '')];
+    $fd[] = ['start' => $st, 'mins' => remMinutes($f), 'title' => $title,
+             'done' => false, 'est' => true,
+             'feed' => (string)($f['srcName'] ?? $f['src'] ?? '')];
   }
+  foreach (feedMerge($fd) as $x) $out[] = $x;
   usort($out, fn($a, $b) => $a['start'] <=> $b['start']);
   return $out;
 }
@@ -681,6 +718,86 @@ function buildWork(): array {
 function tierPing(string $tier): int {
   static $p = ['S' => 14, 'S2' => 21, 'A' => 30, 'B' => 60, 'C' => 150];
   return $p[$tier] ?? 60;
+}
+
+/* Nhìn lại một tháng. Gửi đúng ngày cuối tháng, vào giờ nhắc cuối ngày —
+   lúc đó ngày coi như đã xong nên con số không còn chạy nữa.
+   Bản song sinh của monthReview() trong js/state.js. */
+function buildMonth(?int $now = null): array {
+  $now = $now ?? time();
+  $ym    = date('Y-m', $now);
+  $lines = [];
+
+  $doneN = 0;
+  foreach (itemsOf('tasks') as $t) {
+    if (!empty($t['repeat'])) {
+      foreach ((array)($t['doneLog'] ?? []) as $d)
+        if (substr((string)$d, 0, 7) === $ym) $doneN++;
+    } elseif (!empty($t['done']) && substr((string)($t['doneAt'] ?? ''), 0, 7) === $ym) $doneN++;
+  }
+  $cardsDone = 0;
+  foreach (itemsOf('cards') as $c)
+    if ((string)($c['col'] ?? '') === 'done'
+        && substr((string)($c['doneAt'] ?? ''), 0, 7) === $ym) $cardsDone++;
+
+  /* chỉ có ngày dời gần nhất chứ không có lịch sử từng lần — nhãn nói đúng vậy */
+  $pushed = [];
+  foreach (itemsOf('tasks') as $t)
+    if (substr((string)($t['pushedAt'] ?? ''), 0, 7) === $ym) $pushed[] = $t;
+  usort($pushed, fn($a, $b) => (int)($b['pushes'] ?? 0) <=> (int)($a['pushes'] ?? 0));
+
+  $ducked = 0;
+  foreach (itemsOf('tasks') as $t)
+    if (empty($t['done']) && (int)($t['pushes'] ?? 0) >= 3) $ducked++;
+
+  $touched = 0; $people = 0; $forgot = 0;
+  foreach (itemsOf('people') as $p) {
+    $people++;
+    if (substr((string)($p['lastContact'] ?? ''), 0, 7) === $ym) $touched++;
+    $gap  = !empty($p['lastContact'])
+      ? (int)floor((strtotime(date('Y-m-d', $now)) - strtotime((string)$p['lastContact'])) / 86400)
+      : 9999;
+    if ($gap - tierPing((string)($p['tier'] ?? '')) > 0) $forgot++;
+  }
+
+  $loi = 0; $hoc = 0; $causes = []; $lessons = [];
+  foreach (itemsOf('journey') as $o) {
+    if (substr((string)($o['date'] ?? ''), 0, 7) !== $ym) continue;
+    if ((string)($o['kind'] ?? '') === 'loi') $loi++; else $hoc++;
+    foreach ((array)($o['causes'] ?? []) as $c) {
+      $c = trim((string)$c);
+      if ($c !== '') $causes[$c] = ($causes[$c] ?? 0) + 1;
+    }
+    $ls = trim((string)($o['lesson'] ?? ''));
+    if ($ls !== '' && count($lessons) < 3) $lessons[] = $ls;
+  }
+  arsort($causes);
+
+  $lines[] = '📅 <b>Nhìn lại tháng ' . (int)substr($ym, 5, 2) . '/' . substr($ym, 0, 4) . '</b>';
+  $lines[] = '';
+  $lines[] = '✓ <b>' . $doneN . '</b> việc xong · 📇 <b>' . $cardsDone . '</b> thẻ giao xong';
+  $lines[] = '☎️ <b>' . $touched . '/' . $people . '</b> người đã hỏi thăm'
+           . ($forgot ? ' · <b>' . $forgot . '</b> người quá chu kỳ' : '');
+  if ($pushed) {
+    $top = $pushed[0];
+    $lines[] = '🔁 <b>' . count($pushed) . '</b> việc bị dời — nhiều nhất: '
+             . tgEsc(cutTitle($top['title'] ?? '')) . ' (' . (int)($top['pushes'] ?? 0) . ' lần)';
+  }
+  if ($ducked) $lines[] = '🙈 Còn <b>' . $ducked . '</b> việc đang bị né — chia nhỏ, giao đi, hay bỏ hẳn';
+
+  if ($loi + $hoc > 0) {
+    $lines[] = '';
+    $lines[] = '─────────────';
+    $lines[] = '';
+    $lines[] = '🌱 Ghi được <b>' . $loi . '</b> lỗi lầm và <b>' . $hoc . '</b> bài học';
+    if ($causes) {
+      $tx = [];
+      foreach (array_slice($causes, 0, 4, true) as $c => $n) $tx[] = tgEsc($c) . ' ×' . $n;
+      $lines[] = '   ⟲ Gốc hay gặp: ' . implode(' · ', $tx);
+    }
+    foreach ($lessons as $ls) $lines[] = '   • <i>' . tgEsc(cutTitle($ls)) . '</i>';
+  }
+  return $lines;
 }
 
 function buildWeekly(): array {
@@ -1077,6 +1194,24 @@ function runSchedule(bool $dry = false): array {
         if (!empty($res['ok'])) markSent('endday:' . $today);
         $done[] = ['endday' => count($left) + count($leftUn), 'ok' => !empty($res['ok']),
                    'error' => $res['error'] ?? null];
+      }
+    }
+  }
+
+  /* Nhìn lại tháng — đúng ngày cuối tháng, cùng giờ với tin cuối ngày. Gửi
+     ngày mùng 1 thì đúng hơn về mặt số liệu, nhưng "nhìn lại" mà tới lúc
+     đang bận bắt đầu tháng mới mới đọc thì chẳng ai đọc. */
+  $ym = date('Y-m', $now);
+  if ($eh !== null && (int)$eh >= 0 && (int)date('G', $now) >= (int)$eh
+      && date('Y-m-d', $now) === date('Y-m-t', $now) && !alreadySent('month:' . $ym)) {
+    $ml = buildMonth($now);
+    if (count($ml) > 1) {
+      $text = implode("\n", $ml);
+      if ($dry) { $done[] = ['month' => $ym, 'dry' => true, 'sent' => $text]; }
+      else {
+        $res = tgSend($text, topicFor('report'));
+        if (!empty($res['ok'])) markSent('month:' . $ym);
+        $done[] = ['month' => $ym, 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
       }
     }
   }

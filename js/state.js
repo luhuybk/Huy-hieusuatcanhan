@@ -262,7 +262,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-21.12';
+const APP_BUILD = '2026-08-22.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -1058,13 +1058,59 @@ function feedStale(){
     return d !== null && d <= -FEED_STALE_DAYS;
   });
 }
+/* Gộp những mốc CÙNG NGUỒN mà chồng giờ nhau thành một khối.
+
+   Bên nhật ký giao dịch, 10:00 có "Dời SL · 5p", "Kiểm tra setup · 30p" và
+   "Symbol theo dõi · 5p". Đó không phải ba việc đá nhau — đó là MỘT lần ngồi
+   xuống làm ba việc. Để nguyên thì trục đầy khối chồng lên nhau, và con số
+   "⚠ chồng giờ" đếm toàn chuyện không có thật (đã từng lên tới 112 lượt một
+   tuần), khiến cảnh báo thật lẫn vào đó không ai còn nhìn.
+
+   Chỉ gộp khi THỰC SỰ chồng nhau. 08:35 + 5p rồi 08:40 là hai việc nối đuôi
+   chứ không phải cùng lúc — gộp cả những cái đó thì mất luôn nhịp thật của
+   ngày. Và chỉ gộp trong cùng một nguồn: việc của mình đè lên lịch bên kia
+   thì đúng là chuyện phải biết. */
+function feedMerge(list){
+  const bySrc = new Map();
+  list.forEach(x => {
+    const k = x.src || '';
+    if (!bySrc.has(k)) bySrc.set(k, []);
+    bySrc.get(k).push(x);
+  });
+  const out = [];
+  bySrc.forEach(arr => {
+    arr.sort((a, b) => a.start - b.start || a.mins - b.mins);
+    let cur = null;
+    const flush = () => {
+      if (!cur) return;
+      const n = cur.parts.length;
+      out.push(Object.assign({}, cur.first, {
+        id: n > 1 ? cur.first.id + '_g' : cur.first.id,
+        start: cur.start, mins: cur.end - cur.start,
+        title: n > 1 ? n + ' việc cùng lúc' : cur.first.title,
+        parts: cur.parts, n}));
+      cur = null;
+    };
+    arr.forEach(x => {
+      if (cur && x.start < cur.end){
+        cur.end = Math.max(cur.end, x.start + x.mins);
+        cur.parts.push(x.title);
+        return;
+      }
+      flush();
+      cur = {first:x, start:x.start, end:x.start + x.mins, parts:[x.title]};
+    });
+    flush();
+  });
+  return out.sort((a, b) => a.start - b.start);
+}
 function feedDay(wd, dstr){
-  return feeds()
+  return feedMerge(feeds()
     .filter(f => f.date ? f.date === dstr : (f.days || []).map(Number).includes(Number(wd)))
     .map(f => ({kind:'feed', id:'f_' + f.id, f, start:hhmm2min(f.time), mins:cleanMins(f.mins, 15),
                 on:true, title:f.title, areaId:'', done:false,
                 color:f.color || 'var(--warn)', src:f.srcName}))
-    .filter(x => x.start !== null);
+    .filter(x => x.start !== null));
 }
 /* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
    thật, nên vẫn phải kể ra kèm tổng ước tính. */
@@ -1230,6 +1276,70 @@ function causeNth(o, c){
 function journeyOfPerson(pid){
   return journeys().filter(o => (o.whoIds || []).includes(pid))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+/* ---- nhìn lại một tháng ----
+   Ghi chép nhiều mà không bao giờ đọc lại thì chỉ là tốn công ghi. Mỗi con số
+   ở đây đều lấy từ dấu vết có thật trong dữ liệu, không suy diễn: xong là có
+   ngày xong, dời là có ngày dời gần nhất. Chỗ nào chỉ đo được gần đúng thì
+   nói thẳng ra trong nhãn chứ không làm tròn thành một con số nghe cho oai. */
+const monthEnd = ym => {
+  const y = +String(ym).slice(0,4), m = +String(ym).slice(5,7);
+  return ymd(new Date(y, m, 0));
+};
+const inMonth = (v, ym) => String(v || '').slice(0,7) === ym;
+
+function monthReview(ym){
+  const from = ym + '-01', to = monthEnd(ym);
+  const R = {ym, from, to};
+
+  /* Việc lặp lại không mang cờ done nên phải đếm theo lịch sử hoàn thành */
+  let doneN = 0;
+  tasks().forEach(t => {
+    if (t.repeat) doneN += (t.doneLog || []).filter(d => inMonth(d, ym)).length;
+    else if (t.done && inMonth(t.doneAt, ym)) doneN++;
+  });
+  R.done = doneN;
+  R.cardsDone = cards().filter(c => c.col === 'done' && inMonth(c.doneAt, ym)).length;
+
+  /* Chỉ có ngày dời GẦN NHẤT chứ không có lịch sử từng lần, nên đây là "số
+     việc bị dời trong tháng", không phải "số lần dời". Nhãn nói đúng vậy. */
+  const pushed = tasks().filter(t => inMonth(t.pushedAt, ym));
+  R.pushed = pushed.length;
+  R.pushedMost = pushed.slice().sort((a,b) => (b.pushes||0) - (a.pushes||0))[0] || null;
+  R.ducked = duckedTasks('all').length;
+
+  const js = journeys().filter(o => inMonth(o.date, ym));
+  R.jLoi = js.filter(o => o.kind === 'loi').length;
+  R.jHoc = js.filter(o => o.kind === 'hoc').length;
+  const m = new Map();
+  js.forEach(o => causesOf(o).forEach(c => m.set(c, (m.get(c) || 0) + 1)));
+  const all = causeStats('all');
+  R.causes = [...m.entries()].map(([cause, n]) => ({
+      cause, n, all: (all.find(x => x.cause === cause) || {n:n}).n}))
+    .sort((a,b) => b.n - a.n || b.all - a.all).slice(0, 4);
+  R.lessons = js.filter(o => (o.lesson || '').trim()).slice(0, 3);
+
+  R.touched   = people().filter(p => inMonth(p.lastContact, ym)).length;
+  R.people    = people().length;
+  R.forgotten = staleP().length;
+  R.debt      = people().map(p => balance(p.id).diff).filter(d => d > 0)
+                  .reduce((a,b) => a + b, 0);
+  /* Tháng đang diễn ra thì mọi con số còn chạy tiếp — phải nói ra */
+  R.running = ym === today().slice(0,7);
+  return R;
+}
+/* Những tháng có dấu vết gì đó, mới nhất trước — để nút lùi tháng không đưa
+   mình về một dãy tháng trắng trơn không có gì để đọc. */
+function reviewMonths(){
+  const set = new Set([today().slice(0,7)]);
+  journeys().forEach(o => set.add(String(o.date).slice(0,7)));
+  tasks().forEach(t => {
+    if (t.doneAt) set.add(String(t.doneAt).slice(0,7));
+    (t.doneLog || []).forEach(d => set.add(String(d).slice(0,7)));
+  });
+  cards().forEach(c => { if (c.doneAt) set.add(String(c.doneAt).slice(0,7)); });
+  return [...set].filter(x => /^\d{4}-\d{2}$/.test(x)).sort().reverse();
 }
 
 function journeyMonths(list){

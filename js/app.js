@@ -6,6 +6,7 @@
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
             dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
             dashtab:'today', showDone:false,
+            reviewMonth:'',
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -1942,6 +1943,7 @@ document.addEventListener('click', e => {
     case 'buildAgain': buildCheck(); render(); break;
     case 'hardReset': confirmBox('Gỡ service worker và xoá sạch bộ nhớ đệm, rồi tải lại từ máy chủ?',
       hardReset, 'Gỡ sạch & tải lại'); break;
+    case 'reviewMonth': S.reviewMonth = id; render(); break;
     case 'dashtab':  S.dashtab = id; render(); window.scrollTo(0, 0); break;
     case 'showDone': S.showDone = !S.showDone; render(); break;
     case 'journeytab': S.journeytab = id; render(); break;

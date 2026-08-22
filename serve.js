@@ -106,6 +106,32 @@ function todayUnsched(atMs){
     .map(t => ({title:t.title || '', mins:taskMinutes(t), done:taskDoneTodayJs(t, today),
                 est:Math.round(Number(t.mins)) > 0}));
 }
+/* Gộp mốc cùng nguồn mà chồng giờ — bản song sinh của feedMerge() bên app.
+   Không gộp ở đây thì con số "kín / trống" trong tin Telegram khác con số
+   trên màn hình, và lúc cần quyết định mình sẽ tin nhầm cái tiện hơn. */
+function feedMerge(list){
+  const bySrc = new Map();
+  list.forEach(x => { const k = x.feed || ''; if (!bySrc.has(k)) bySrc.set(k, []); bySrc.get(k).push(x); });
+  const out = [];
+  bySrc.forEach(arr => {
+    arr.sort((a,b) => a.start - b.start || a.mins - b.mins);
+    let cur = null;
+    const flush = () => {
+      if (!cur) return;
+      const n = cur.parts.length;
+      out.push(Object.assign({}, cur.first, {start:cur.start, mins:cur.end - cur.start,
+        title: n > 1 ? n + ' việc cùng lúc (' + cur.parts.join(', ') + ')' : cur.first.title}));
+      cur = null;
+    };
+    arr.forEach(x => {
+      if (cur && x.start < cur.end){ cur.end = Math.max(cur.end, x.start + x.mins); cur.parts.push(x.title); return; }
+      flush();
+      cur = {first:x, start:x.start, end:x.start + x.mins, parts:[x.title]};
+    });
+    flush();
+  });
+  return out;
+}
 function todaySlots(atMs){
   const now = atMs ? new Date(atMs) : new Date();
   const today = dayStr(now), wday = now.getDay();
@@ -124,15 +150,17 @@ function todaySlots(atMs){
               done:taskDoneTodayJs(t, today), est:Math.round(Number(t.mins)) > 0});
   }
   /* lịch nhập từ app khác — cũng chiếm giờ thật, và không tick được */
+  const fd = [];
   for (const f of itemsOf('feeds')){
     const date = String(f.date || '');
     const days = (f.days || []).map(Number);
     if (date ? date.slice(0,10) !== today : !days.includes(wday)) continue;
     const st = hhmmMin(f.time); if (st === null) continue;
     if (!f.title) continue;
-    out.push({start:st, mins:remMinutes(f), title:f.title,
-              done:false, est:true, feed:String(f.srcName || f.src || '')});
+    fd.push({start:st, mins:remMinutes(f), title:f.title,
+             done:false, est:true, feed:String(f.srcName || f.src || '')});
   }
+  feedMerge(fd).forEach(x => out.push(x));
   return out.sort((a,b) => a.start - b.start);
 }
 function slotClashes(items){
@@ -400,6 +428,64 @@ function buildWork(atMs){
 }
 
 /* tóm tắt cuối tuần — bản song sinh của buildWeekly() bên PHP */
+/* Nhìn lại một tháng — bản song sinh của monthReview() bên app và
+   buildMonth() bên PHP. */
+function buildMonth(atMs){
+  const now = atMs ? new Date(atMs) : new Date();
+  const ymd0 = dayStr(now), ym = ymd0.slice(0,7);
+  const lines = [];
+
+  let doneN = 0;
+  for (const t of itemsOf('tasks')){
+    if (t.repeat) (t.doneLog || []).forEach(d => { if (String(d).slice(0,7) === ym) doneN++; });
+    else if (t.done && String(t.doneAt || '').slice(0,7) === ym) doneN++;
+  }
+  let cardsDone = 0;
+  for (const c of itemsOf('cards'))
+    if (c.col === 'done' && String(c.doneAt || '').slice(0,7) === ym) cardsDone++;
+
+  const pushed = itemsOf('tasks').filter(t => String(t.pushedAt || '').slice(0,7) === ym)
+    .sort((a,b) => (b.pushes||0) - (a.pushes||0));
+  const ducked = itemsOf('tasks').filter(t => !t.done && (t.pushes || 0) >= 3).length;
+
+  let touched = 0, people = 0, forgot = 0;
+  for (const p of itemsOf('people')){
+    people++;
+    if (String(p.lastContact || '').slice(0,7) === ym) touched++;
+    const gap = p.lastContact
+      ? Math.round((new Date(ymd0+'T00:00:00') - new Date(String(p.lastContact)+'T00:00:00')) / 86400000)
+      : 9999;
+    if (gap - (TIER_PING[p.tier] || 60) > 0) forgot++;
+  }
+
+  let loi = 0, hoc = 0; const causes = new Map(), lessons = [];
+  for (const o of itemsOf('journey')){
+    if (String(o.date || '').slice(0,7) !== ym) continue;
+    if (o.kind === 'loi') loi++; else hoc++;
+    (o.causes || []).forEach(c => { c = String(c).trim();
+      if (c) causes.set(c, (causes.get(c) || 0) + 1); });
+    const ls = String(o.lesson || '').trim();
+    if (ls && lessons.length < 3) lessons.push(ls);
+  }
+
+  lines.push(`📅 Nhìn lại tháng ${+ym.slice(5,7)}/${ym.slice(0,4)}`);
+  lines.push('');
+  lines.push(`✓ ${doneN} việc xong · 📇 ${cardsDone} thẻ giao xong`);
+  lines.push(`☎️ ${touched}/${people} người đã hỏi thăm` + (forgot ? ` · ${forgot} người quá chu kỳ` : ''));
+  if (pushed.length)
+    lines.push(`🔁 ${pushed.length} việc bị dời — nhiều nhất: ${pushed[0].title} (${pushed[0].pushes||0} lần)`);
+  if (ducked) lines.push(`🙈 Còn ${ducked} việc đang bị né — chia nhỏ, giao đi, hay bỏ hẳn`);
+
+  if (loi + hoc > 0){
+    lines.push('', '─────────────', '');
+    lines.push(`🌱 Ghi được ${loi} lỗi lầm và ${hoc} bài học`);
+    const top = [...causes.entries()].sort((a,b) => b[1] - a[1]).slice(0,4);
+    if (top.length) lines.push('   ⟲ Gốc hay gặp: ' + top.map(([c,n]) => `${c} ×${n}`).join(' · '));
+    lessons.forEach(ls => lines.push('   • ' + ls));
+  }
+  return lines;
+}
+
 function buildWeekly(atMs){
   const now = atMs ? new Date(atMs) : new Date();
   const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
@@ -706,6 +792,19 @@ function runSchedule(dry, atMs){
       if (dry) done.push({endday:left.length + leftUn.length, dry:true, sent:text});
       else { markSent('endday:' + today);
              done.push({endday:left.length + leftUn.length, ok:true, sent:text, topic:topicFor('report')}); }
+    }
+  }
+
+  /* nhìn lại tháng — đúng ngày cuối tháng, cùng giờ với tin cuối ngày */
+  const ym = today.slice(0,7);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  if (eh >= 0 && now.getHours() >= eh && now.getDate() === lastDay && !alreadySent('month:' + ym)){
+    const ml = buildMonth(now.getTime());
+    if (ml.length > 1){
+      const text = ml.join('\n');
+      if (dry) done.push({month:ym, dry:true, sent:text});
+      else { markSent('month:' + ym);
+             done.push({month:ym, ok:true, sent:text, topic:topicFor('report')}); }
     }
   }
 
@@ -1102,7 +1201,8 @@ function api(req, res, body){
     case 'tg_dryrun': {
       if (!need()) return;
       return send({ok:true, result:runSchedule(true, inp.at), digest:buildDigest(),
-                   work:buildWork(inp.at), weekly:buildWeekly(inp.at)});
+                   work:buildWork(inp.at), weekly:buildWeekly(inp.at),
+                   month:buildMonth(inp.at)});
     }
     case 'tg_work_now': {
       if (!need()) return;

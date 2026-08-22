@@ -1312,6 +1312,8 @@ function tlColor(x){
   return a ? a.color : 'var(--acc)';
 }
 const tlLabel = x => min2hhmm(x.start) + ' · ' + x.title + ' · ' + fmtDur(x.mins);
+/* Chú thích khi rê chuột lên khối: khối gộp phải kể ra bên trong có gì */
+const tlTip = x => tlLabel(x) + (x.n > 1 ? '\n· ' + (x.parts || []).join('\n· ') : '');
 
 /* Thanh gọn cho tab Hôm nay: mọi việc nằm chung một hàng, không nhãn, không
    kéo — vừa đúng bề ngang điện thoại, liếc một cái là thấy ngày dồn vào đâu. */
@@ -1322,7 +1324,7 @@ function tlBar(items, clash, wd){
     <div class="tlbar">${items.map(x => {
       const c = tlColor(x);
       return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''} ${
-        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''}" title="${esc(tlLabel(x))}"
+        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''}" title="${esc(tlTip(x))}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
     }).join('')}</div>
@@ -1356,12 +1358,14 @@ function tlTrack(items, clash, wd){
     return `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
       <div class="tlgrid">${hours.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join('')}</div>
       <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''}"
+        title="${esc(tlTip(x))}"
         ${fixed ? '' : `data-tlblk="${x.id}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
         <span class="gr">${fixed ? '🔒' : '⠿'}</span>
-        <span class="tllbl">${esc(tlLabel(x))}</span>
+        <span class="tllbl">${esc(tlLabel(x))}${
+          x.n > 1 ? ' · ' + esc((x.parts || [])[0]) + ' …' : ''}</span>
       </div>
     </div>`;
   }).join('');
@@ -1411,13 +1415,17 @@ function chkHead(done, total){
 
 /* Hàng của lịch nhập từ app khác: chỉ đọc, mang màu của nguồn. */
 function feedRow(x, cl, nowMin){
+  /* Khối gộp thì nêu đủ tên từng việc bên trong — dòng "3 việc cùng lúc" mà
+     không nói là ba việc nào thì gộp xong lại phải mở app kia ra xem. */
+  const many = x.n > 1;
   return chkRow({
     id:x.id, tick:'', open:'', done:false, time:min2hhmm(x.start),
     box:`<span class="cb ro" title="Lịch của app khác — tick bên đó"><i
       style="background:${esc(x.color)}"></i></span>`,
     dot:'', title:x.title, state:chkState(x, nowMin),
     sub:`${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · từ <b>${esc(x.src)}</b>${
-      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}`
+      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
+      many ? `<br>${esc((x.parts || []).join(' · '))}` : ''}`
   });
 }
 function dailyRow(x, clash, nowMin){
@@ -1889,10 +1897,63 @@ function journeyView(o){
     </div>
   </div></div>`;
 }
+/* ---- nhìn lại tháng ----
+   Đặt ở đầu mục Hành trình vì đây đúng là chỗ để ôn lại, và vì nó trộn hai
+   nửa của app: việc làm được bao nhiêu, và mình học được gì trong lúc làm. */
+function monthBlock(){
+  const list = reviewMonths();
+  const ym = list.includes(S.reviewMonth) ? S.reviewMonth : (list[0] || today().slice(0,7));
+  const i  = list.indexOf(ym);
+  const R  = monthReview(ym);
+  const nav = `${i < list.length - 1
+      ? `<button data-act="reviewMonth" data-id="${list[i+1]}">‹ ${monthName(list[i+1] + '-01')}</button>` : ''}
+    ${i > 0 ? `<button data-act="reviewMonth" data-id="${list[i-1]}">${monthName(list[i-1] + '-01')} ›</button>` : ''}`;
+
+  const st = (v, l, cls) => `<div class="stat"><div class="v"${cls ? ` style="color:var(--${cls})"` : ''
+    }>${v}</div><div class="l">${l}</div></div>`;
+
+  let h = secHd('Nhìn lại ' + monthName(ym + '-01'), nav);
+  h += `<div class="card" style="margin-bottom:14px">
+    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+      ${st(R.done, 'việc xong')}
+      ${st(R.cardsDone, 'thẻ giao xong')}
+      ${st(R.pushed, 'việc bị dời', R.pushed ? 'warn' : '')}
+      ${st(R.touched + '/' + R.people, 'người đã hỏi thăm')}
+    </div>
+    <div class="dim" style="margin-top:10px;line-height:1.7">
+      ${R.running ? '<b style="color:var(--warn)">Tháng đang chạy</b> — mấy con số này còn đổi tới cuối tháng.<br>' : ''}
+      ${R.pushedMost ? `Bị dời nhiều nhất: <b>${esc(R.pushedMost.title || '')}</b> — ${
+        R.pushedMost.pushes} lần.<br>` : ''}
+      ${R.ducked ? `<span style="color:var(--bad)">Còn ${R.ducked} việc đang bị né</span> — chia nhỏ, giao đi, hay bỏ hẳn.<br>` : ''}
+      ${R.forgotten ? `${R.forgotten} người đã quá chu kỳ hỏi thăm.` : 'Không ai bị bỏ quên quá chu kỳ.'}
+      ${R.debt ? ` · còn <b>${moneyShort(R.debt)}</b> ân tình chưa cân lại.` : ''}
+    </div>
+    ${R.jLoi + R.jHoc ? `<div class="hr"></div>
+      <div class="dim" style="line-height:1.7">Ghi được <b>${R.jLoi}</b> lỗi lầm và
+        <b>${R.jHoc}</b> bài học trong tháng.</div>
+      ${R.causes.length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:9px">
+        ${R.causes.map(c => `<span class="chip ${c.all >= 3 ? 'bad' : 'warn'}"
+          data-act="journeyCause" data-id="${esc(c.cause)}" style="cursor:pointer"
+          title="${c.n} lần trong tháng này · ${c.all} lần từ trước tới nay"
+          >⟲ ${esc(c.cause)} · ${c.n}${c.all > c.n ? ' <span style="opacity:.7">/' + c.all + '</span>' : ''}</span>`).join('')}
+      </div>
+      <div class="dim" style="margin-top:8px">Số sau vạch là tổng từ trước tới nay — gốc nào
+        tháng nào cũng có mặt thì chữa từng chuyện không xuể, phải chặn từ gốc.</div>` : ''}
+      ${R.lessons.length ? `<div class="hr"></div>
+        <div class="dim" style="margin-bottom:7px;font-weight:700">Câu đáng nhớ lại</div>
+        ${R.lessons.map(o => `<div class="row" style="padding:5px 0;gap:8px;cursor:pointer"
+          data-act="viewJourney" data-id="${o.id}">
+          <span style="flex:none">${JOURNEY_ICON[o.kind]}</span>
+          <div class="grow ell">${esc(o.lesson)}</div></div>`).join('')}` : ''}
+    ` : `<div class="hr"></div><div class="dim">Tháng này chưa ghi lỗi lầm hay bài học nào.</div>`}
+  </div>`;
+  return h;
+}
+
 function vJourney(){
   const A = S.area;
   const all = journeyList(A, 'all');
-  if (!all.length) return `<div class="empty"><b>Chưa ghi gì trong hành trình</b>
+  if (!all.length) return monthBlock() + `<div class="empty"><b>Chưa ghi gì trong hành trình</b>
     Hôm nay hỏng chuyện gì, hay học được điều gì? Ghi lại lúc còn nóng —
     ba hôm sau chỉ còn nhớ là "có chuyện gì đó".
     <div class="btns" style="justify-content:center;margin-top:14px">
@@ -1902,7 +1963,8 @@ function vJourney(){
 
   const list = journeyList(A, S.journeytab, S.journeyCause);
   const n = k => all.filter(o => k === 'all' || o.kind === k).length;
-  let h = `<div class="tabs">` + [['all','Tất cả'],['loi','Lỗi lầm'],['hoc','Bài học']].map(([id, lb]) =>
+  let h = monthBlock();
+  h += `<div class="tabs">` + [['all','Tất cả'],['loi','Lỗi lầm'],['hoc','Bài học']].map(([id, lb]) =>
     `<button class="tab ${S.journeytab === id ? 'on' : ''}" data-act="journeytab" data-id="${id}">${
       lb}<span class="n">${n(id)}</span></button>`).join('') + `</div>`;
 

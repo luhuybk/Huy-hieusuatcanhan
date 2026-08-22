@@ -395,6 +395,19 @@ Một chiều và chỉ đọc: khối lịch ngoài **không kéo được, kh�
 | `items[].date` | một trong hai | việc một lần, dạng `YYYY-MM-DD` |
 | `items[].mins` | không | dài bao lâu; thiếu thì tạm tính 15 phút |
 
+#### Mốc trùng giờ cùng nguồn được gộp lại
+
+Bên nhật ký giao dịch, 10:00 có *Dời SL · 5p*, *Kiểm tra setup · 30p* và *Symbol theo dõi · 5p*. Đó không phải ba việc đá nhau — đó là **một lần ngồi xuống làm ba việc**. Để nguyên thì trục đầy khối chồng lên nhau và con số *⚠ chồng giờ* đếm toàn chuyện không có thật (đã từng lên tới **112 lượt một tuần**), khiến cảnh báo thật lẫn vào đó không ai còn nhìn.
+
+Nên những mốc **cùng một nguồn** mà **thực sự chồng giờ** nhau được gộp thành một khối: `10:00 · 3 việc cùng lúc · 30p`, hàng bên dưới kể đủ tên ba việc, rê chuột lên khối cũng thấy.
+
+Hai điều kiện đó đều cần:
+
+- **Chỉ khi thực sự chồng nhau.** 08:35 + 5p rồi 08:40 là hai việc nối đuôi, không phải cùng lúc — gộp cả những cái đó thì mất luôn nhịp thật của ngày.
+- **Chỉ trong cùng một nguồn.** Việc của bạn đè lên lịch bên kia thì đúng là chuyện phải biết, không được giấu đi.
+
+Luật này có ở cả **app** lẫn **máy chủ**, nên con số *kín / trống* trong tin Telegram khớp đúng con số trên màn hình.
+
 #### Bản sao lưu của app Nhật ký giao dịch
 
 App đó không có nút xuất riêng lịch, chỉ có nút **sao lưu toàn bộ**. Nhập thẳng file sao lưu đó cũng được: app nhận ra và tự rút lịch từ năm chỗ sinh ra mốc giờ trong file — lịch **dời SL**, lịch **kiểm tra setup**, nhóm **symbol theo dõi**, **nhắc điền nốt lệnh**, **tổng kết tuần**, cùng những **nhắc nhở riêng** đang bật gửi Telegram. Số phút lấy theo `taskDurations` của bên đó, kể cả số phút đặt riêng cho từng lịch.
@@ -505,6 +518,40 @@ Cái nhãn đó để làm một việc: gom lại. Đọc từng mục riêng l
 Trên thẻ, **mỗi gốc một nhãn riêng**, và mỗi nhãn mang số lần của riêng nó: cùng một chuyện có thể là *lần 3* của `cầu toàn` mà mới là *lần 1* của `nóng vội`. Từ 3 lần trở lên nhãn chuyển sang màu đỏ.
 
 Mục ghi từ bản trước — kể cả khi bạn đã gõ mấy gốc ngăn bằng dấu phẩy vào một ô — được tách ra đúng như vậy, không mất gì.
+
+#### Nhìn lại tháng
+
+Ghi chép nhiều mà không bao giờ đọc lại thì chỉ là tốn công ghi. Đầu mục Hành trình có khối **Nhìn lại tháng**, lùi/tiến được qua từng tháng (chỉ hiện những tháng thật sự có dấu vết, để nút lùi không đưa bạn về một dãy tháng trắng trơn):
+
+| Con số | Lấy từ đâu |
+|---|---|
+| việc xong | việc thường theo `doneAt`; việc lặp lại theo **lịch sử hoàn thành**, vì việc lặp không bao giờ mang cờ *done* |
+| thẻ giao xong | thẻ vào cột Hoàn thành trong tháng |
+| việc bị dời | số **việc** có lần dời gần nhất rơi vào tháng đó — app chỉ giữ ngày dời gần nhất chứ không giữ lịch sử từng lần, nên nhãn nói đúng "việc bị dời", không phải "lần dời" |
+| người đã hỏi thăm | `7/12` — bảy trên mười hai người có liên lạc trong tháng |
+
+Dưới đó là phần hành trình: ghi được bao nhiêu lỗi lầm và bài học, **gốc hay gặp trong tháng kèm tổng từ trước tới nay** (`⟲ cầu toàn · 2 /3` — hai lần tháng này, ba lần tính cả trước đó; gốc nào tháng nào cũng có mặt thì chữa từng chuyện không xuể), và ba **câu đáng nhớ lại** bấm được để mở xem nhanh.
+
+Tháng đang diễn ra thì có dòng **“Tháng đang chạy — mấy con số này còn đổi tới cuối tháng”**. Con số còn chạy mà không nói ra thì lần sau mở lại thấy khác, và bạn sẽ tưởng app đếm sai.
+
+**Qua Telegram:** đúng **ngày cuối tháng**, vào giờ nhắc cuối ngày, máy chủ gửi bản rút gọn của chính khối này. Gửi mùng 1 thì đúng hơn về số liệu, nhưng "nhìn lại" mà tới lúc đang bận bắt đầu tháng mới mới đọc thì chẳng ai đọc.
+
+```
+📅 Nhìn lại tháng 8/2026
+
+✓ 16 việc xong · 📇 6 thẻ giao xong
+☎️ 7/12 người đã hỏi thăm · 5 người quá chu kỳ
+🔁 2 việc bị dời — nhiều nhất: Kiểm tiền quỹ barbershop (5 lần)
+🙈 Còn 2 việc đang bị né — chia nhỏ, giao đi, hay bỏ hẳn
+
+─────────────
+
+🌱 Ghi được 2 lỗi lầm và 1 bài học
+   ⟲ Gốc hay gặp: cầu toàn ×2 · nóng vội ×1
+   • Đừng để cảm xúc lấn át lý trí
+   • Đủ tốt là đủ
+   • Đo trước khi tối ưu
+```
 
 #### Nối với danh bạ
 

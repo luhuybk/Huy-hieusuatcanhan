@@ -327,7 +327,7 @@ switch ($action) {
   case 'tg_dryrun': {
     requireAuth();
     out(['ok' => true, 'result' => runSchedule(true), 'digest' => buildDigest(),
-         'work' => buildWork(), 'weekly' => buildWeekly()]);
+         'work' => buildWork(), 'weekly' => buildWeekly(), 'month' => buildMonth()]);
   }
 
   /* Gửi bảng công việc ngay bây giờ, không chờ tới giờ đã hẹn. */
