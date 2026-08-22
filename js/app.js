@@ -411,7 +411,18 @@ function editTask(id){
   openForm({title:'Sửa việc', fields:taskFields(), values:t,
     extra:`${t.bestStreak>1?`<div class="dim" style="margin-bottom:10px">Chuỗi hiện tại ${t.streak||0} · kỷ lục ${t.bestStreak}</div>`:''}
       <button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delTask" data-id="${id}">Xoá việc này</button>`,
-    onSave(v){ Object.assign(t, normalizeTask(v)); stamp(t); save(); render(); }});
+    onSave(v){
+      /* Gõ thẳng giờ hay hạn trong biểu mẫu là nói về CẢ CHUỖI. Giữ lại mốc
+         dời riêng của kỳ này thì con số vừa gõ không hiện ra ở đâu cả, và
+         mình sẽ tưởng app nuốt mất thao tác. */
+      const nv = normalizeTask(v), key = String(t.due || '').slice(0,10);
+      const moved = !!excAt(t, key);
+      const touched = t.repeat && moved &&
+                      (nv.remindAt !== t.remindAt || String(nv.due || '').slice(0,10) !== key);
+      Object.assign(t, nv);
+      if (touched){ excSet(t, key, null); toast('Đã bỏ mốc dời riêng của kỳ này'); }
+      stamp(t); save(); render();
+    }});
 }
 function toggleTask(id){
   const t = db.tasks.find(x => x.id === id);
@@ -963,13 +974,19 @@ function workAllLikeMonday(){
    trước. Đếm số lần dời để còn biết mình đang né việc nào. */
 function pushTask(id){
   const t = db.tasks.find(x => x.id === id); if (!t) return;
-  const cur = String(t.due || '').slice(0,10);
-  t.due = addDays(cur > today() ? cur : today(), 1);
+  const cur = taskDay(t);
+  const nxt = addDays(cur > today() ? cur : today(), 1);
+  /* Việc lặp thì đẩy RIÊNG kỳ này sang mai, đừng đụng vào hạn gốc: sửa hạn
+     là cả nhịp lặp trượt theo, việc "mỗi thứ 7" hoá thành "mỗi chủ nhật". */
+  if (t.repeat){
+    const due = String(t.due || '').slice(0,10);
+    excSet(t, due, Object.assign({}, excAt(t, due) || {}, {d:nxt, off:0}));
+  } else t.due = nxt;
   t.pushes = (t.pushes || 0) + 1;
   t.pushedAt = today();
   t.snoozeUntil = '';                    /* hạn đổi rồi thì mốc dời nhắc cũ vô nghĩa */
   stamp(t); save(); render();
-  toast(t.title + ' → ' + fmtDate(t.due) + (t.pushes >= 3
+  toast(t.title + ' → ' + fmtDate(nxt) + (t.repeat ? ' · chỉ kỳ này, nhịp lặp giữ nguyên' : '') + (t.pushes >= 3
     ? ' · đã dời ' + t.pushes + ' lần rồi, chia nhỏ ra hay bỏ hẳn đi?'
     : t.pushes > 1 ? ' · lần dời thứ ' + t.pushes : ''));
 }
@@ -1709,23 +1726,63 @@ function tlEnd(){
   d.el.classList.remove('mv');
   if (!d.moved) return;
   if (d.at === undefined || d.at === d.start){ render(); return; }
-  setSlotTime(d.id, min2hhmm(d.at));
+  setSlotTime(d.id, min2hhmm(d.at), d.day);
 }
-/* Trên trục có hai loại khối. Việc hằng ngày chỉ có một giờ dùng cho cả
-   tuần, nên dời ở thứ này là dời cho mọi thứ khác — nói rõ trong lời báo,
-   đừng để người ta phát hiện sau ba ngày. Việc lẻ (id có tiền tố "t_") thì
-   giờ là của riêng nó, dời chỉ ảnh hưởng chính nó. */
-function setSlotTime(id, hhmm){
-  const s = String(id);
+/* ---- dời riêng một lần, hay dời cả chuỗi ----
+   Việc lặp chỉ giữ MỘT giờ dùng chung cho mọi kỳ, nên kéo khối ở thứ 7 này
+   là kéo luôn mọi thứ 7 về sau. Gần như không bao giờ là ý mình: hôm nay
+   bận nên đẩy việc sang tối, chứ không phải từ nay việc đó chuyển sang tối.
+   Nên hỏi thẳng thay vì đoán, và để "chỉ hôm đó" đứng trước. */
+function scopeBox(o){
+  $('#modals').innerHTML = `<div class="ov"><div class="sheet">
+    <h2>Dời riêng hôm đó, hay mọi lần?</h2>
+    <div class="dim" style="margin:-8px 0 14px;line-height:1.65">
+      <b>${esc(o.title)}</b>${o.rep ? ' · lặp ' + esc(o.rep.toLowerCase()) : ''}<br>
+      ${esc(o.dayText)}: <b>${esc(o.from || 'chưa xếp giờ')} → ${esc(o.to)}</b>
+    </div>
+    <button class="btn full pri" id="once">Chỉ ${esc(o.dayText)}</button>
+    <button class="btn full" style="margin-top:10px" id="all">Mọi lần — đổi hẳn lịch</button>
+    <button class="btn full" style="margin-top:10px" id="nope">Thôi, giữ nguyên</button>
+  </div></div>`;
+  $('#once').onclick = () => { closeModal(); o.once(); };
+  $('#all').onclick  = () => { closeModal(); o.all(); };
+  $('#nope').onclick = () => { closeModal(); render(); };
+}
+/* "Thứ 7 22/08" — đủ để biết hộp đang nói về ngày nào. Bỏ năm đi cho gọn:
+   mốc dời riêng chỉ sống được vài tuần, không ai cần nhìn năm ở đây. */
+const dayLabel = d => WDAY_NAME[wdOf(d)] + ' ' + fmtDate(d).slice(0, 5);
+/* Bỏ mốc dời riêng: lần đó tự về đúng giờ gốc của chuỗi */
+function excDrop(kind, id, day){
+  const o = (kind === 'rem' ? db.reminders : db.tasks).find(x => x.id === id); if (!o) return;
+  excSet(o, day, null); stamp(o); save(); closeModal(); render();
+  toast('Đã bỏ mốc dời riêng — về lại lịch gốc');
+}
+
+/* Trên trục có hai loại khối, cả hai đều là việc lặp. `day` là ngày thật của
+   cột đang kéo — mốc dời riêng gắn với ngày, thiếu nó thì ghi nhầm hôm. */
+function setSlotTime(id, hhmm, day){
+  const s = String(id), d = String(day || today()).slice(0,10);
   if (s.slice(0, 2) === 't_'){
-    const t = db.tasks.find(x => x.id === s.slice(2)); if (!t) return;
-    t.remindAt = hhmm; stamp(t); save(); render();
-    toast(t.title + ' → ' + hhmm);
+    const t = db.tasks.find(x => x.id === s.slice(2)); if (!t) return render();
+    const due = String(t.due || '').slice(0,10);
+    const all = () => { t.remindAt = hhmm; stamp(t); save(); render();
+                        toast(t.title + ' → ' + hhmm + (t.repeat ? ' · mọi kỳ' : '')); };
+    /* Việc không lặp thì chỉ có đúng một lần, dời là dời chính nó */
+    if (!t.repeat) return all();
+    scopeBox({title:t.title, rep:repeatText(t), dayText:dayLabel(d), from:taskAt(t), to:hhmm,
+      once(){ excSet(t, due, Object.assign({}, excAt(t, due) || {}, {at:hhmm, off:0}));
+              stamp(t); save(); render();
+              toast(t.title + ' → ' + hhmm + ' · chỉ ' + dayLabel(d)); },
+      all});
     return;
   }
-  const r = db.reminders.find(x => x.id === s); if (!r) return;
-  r.time = hhmm; stamp(r); save(); render();
-  toast(r.title + ' → ' + hhmm + ((r.days || []).length > 1 ? ' · cả ' + daysText(r.days) : ''));
+  const r = db.reminders.find(x => x.id === s); if (!r) return render();
+  scopeBox({title:r.title, rep:daysText(r.days), dayText:dayLabel(d),
+    from:remTimeOn(r, d) || r.time, to:hhmm,
+    once(){ excSet(r, d, {at:hhmm}); stamp(r); save(); render();
+            toast(r.title + ' → ' + hhmm + ' · chỉ ' + dayLabel(d)); },
+    all(){ r.time = hhmm; stamp(r); save(); render();
+           toast(r.title + ' → ' + hhmm + ((r.days || []).length > 1 ? ' · cả ' + daysText(r.days) : '')); }});
 }
 
 document.addEventListener('pointerdown', e => {
@@ -1734,7 +1791,7 @@ document.addEventListener('pointerdown', e => {
   if (!width) return;
   e.preventDefault();
   const lbl = el.querySelector('.tllbl');
-  tlDrag = {id:el.dataset.tlblk, el, lbl, x0:e.clientX, width, moved:false,
+  tlDrag = {id:el.dataset.tlblk, el, lbl, x0:e.clientX, width, moved:false, day:el.dataset.day || '',
             start:+el.dataset.start, span:+el.dataset.span, from:+el.dataset.from,
             tail:lbl.textContent.trim().slice(5)};   /* phần sau "HH:MM" của nhãn */
   el.classList.add('mv');
@@ -1747,7 +1804,7 @@ document.addEventListener('pointerdown', e => {
    biểu mẫu. Kéo cho nhanh, gõ ô này khi cần đúng phút. */
 document.addEventListener('change', e => {
   const t = e.target.closest('[data-tlt]');
-  if (t){ if (hhmm2min(t.value) !== null) setSlotTime(t.dataset.tlt, t.value); else render(); return; }
+  if (t){ if (hhmm2min(t.value) !== null) setSlotTime(t.dataset.tlt, t.value, t.dataset.day); else render(); return; }
   const m = e.target.closest('[data-tlm]');
   if (m){
     const id = String(m.dataset.tlm);
@@ -2003,6 +2060,7 @@ document.addEventListener('click', e => {
     case 'workAll':  workAllLikeMonday(); break;
     case 'slotTask': slotTask(id, el.dataset.at); break;
     case 'pushTask': pushTask(id); break;
+    case 'excDrop':  excDrop(el.dataset.k, id, el.dataset.day); break;
     case 'buildAgain': buildCheck(); render(); break;
     case 'hardReset': confirmBox('Gỡ service worker và xoá sạch bộ nhớ đệm, rồi tải lại từ máy chủ?',
       hardReset, 'Gỡ sạch & tải lại'); break;

@@ -1341,7 +1341,7 @@ function tlBar(items, clash, wd){
    vào trong là mất hút. Chừa chỗ bên phải vừa đúng nhãn dài nhất, chứ chừa
    cứng 300px thì trên điện thoại phải cuộn thêm một đoạn trắng vô ích. */
 function tlTrack(items, clash, wd){
-  const {from, to} = tlRange(items, wd), span = to - from;
+  const {from, to} = tlRange(items, wd), span = to - from, day = wdDate(wd);
   const pct = m => ((m - from) / span) * 100;
   const hours = []; for (let m = from; m <= to; m += 60) hours.push(m);
   const labels = items.map(tlLabel)
@@ -1366,7 +1366,7 @@ function tlTrack(items, clash, wd){
       ${grid}
       <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''}"
         title="${esc(tlTip(x))}"
-        ${fixed ? '' : `data-tlblk="${x.id}"`}
+        ${fixed ? '' : `data-tlblk="${x.id}" data-day="${day}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
@@ -1431,6 +1431,15 @@ function chkHead(done, total){
   </div>`;
 }
 
+/* Mốc dời riêng phải nhìn thấy được, không thì ba hôm sau mở ra lại tưởng
+   app tự đổi giờ. Bấm vào chip là trả lần đó về lịch gốc. */
+function excChip(x, kind, day){
+  if (!x.exc) return '';
+  const id = kind === 'rem' ? x.r.id : x.t.id;
+  return ` · <span class="chip mv" data-act="excDrop" data-k="${kind}" data-id="${esc(id)}"
+    data-day="${esc(day)}" title="Bấm để trả về lịch gốc">↪ ${esc(x.exc)}</span>`;
+}
+
 /* Hàng của lịch nhập từ app khác: chỉ đọc, mang màu của nguồn. */
 function feedRow(x, cl, nowMin){
   /* Khối gộp phải mở ra thành từng dòng con, mỗi dòng đủ giờ, tên và số phút.
@@ -1464,7 +1473,7 @@ function dailyRow(x, clash, nowMin){
     sub:`${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))}${
       chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}${
       cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
-      r.enabled ? '' : ' · đang tắt'}`
+      r.enabled ? '' : ' · đang tắt'}${excChip(x, 'rem', x.day || today())}`
   });
 }
 /* Ô tích ngay trong tab Cả tuần, để tick cho nhanh mà không phải nhảy tab.
@@ -1491,10 +1500,13 @@ function dailyEditRow(x, clash, live){
       ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
       ${x.done ? `<span class="chip ok">xong${x.doneTime ? ' ' + esc(x.doneTime) : ''}</span>` : ''}
       ${r.enabled ? '' : `<span class="chip">đang tắt</span>`}
+      ${x.exc ? `<span class="chip mv" data-act="excDrop" data-k="rem" data-id="${r.id}"
+        data-day="${esc(x.day || '')}" title="Bấm để trả về lịch gốc">↪ dời riêng</span>` : ''}
     </div>
     <div class="row" style="margin-top:9px;gap:8px">
       <input class="tlin" type="time" value="${esc(min2hhmm(x.start))}" data-tlt="${r.id}"
-        title="Đổi giờ — áp dụng cho mọi thứ trong tuần mà việc này đang bật">
+        data-day="${esc(x.day || '')}"
+        title="Đổi giờ — app sẽ hỏi dời riêng hôm đó hay dời cả lịch">
       <span class="tlmin"><input type="number" min="1" max="720" value="${remMins(r)}"
         data-tlm="${r.id}" title="Mất bao lâu"><i>phút → ${esc(min2hhmm(x.start + x.mins))}</i></span>
       <span class="grow dim ell" style="text-align:right"
@@ -1525,7 +1537,8 @@ function taskDayRow(x, cl, nowMin){
     sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
       tre ? `<span style="color:var(--bad)">việc lẻ, trễ ${tre} ngày</span>` : 'việc lẻ, hạn hôm nay'}${
       x.est ? '' : ' · chưa ước tính'}${doi ? ' · ' + doi : ''}${
-      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}`,
+      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
+      excChip(x, 'task', String(t.due || '').slice(0,10))}`,
     foot: x.done ? '' : `<div class="btns" style="margin-top:9px">${pushBtn(t)}</div>`
   });
 }
@@ -1645,7 +1658,8 @@ function dailyToday(A){
    và số phút, khác ở chỗ giờ này là của riêng nó — sửa không đụng ngày khác.
    Nét đứt và chữ "việc lẻ" để phân biệt ngay khi liếc. */
 function taskWeekRow(x, clash, past, live){
-  const t = x.t, cl = clash.has(x.id), tre = x.late ? -dayDiff(t.due) : 0, doi = pushInfo(t);
+  const t = x.t, cl = clash.has(x.id), tre = x.late ? -dayDiff(taskDay(t)) : 0, doi = pushInfo(t);
+  const key = String(t.due || '').slice(0,10);
   return `<div class="rem two tsk ${x.done ? 'done' : ''}">
     <div class="row">
       ${weekCb(live, x.done, 'toggleTask', t.id)}
@@ -1653,10 +1667,14 @@ function taskWeekRow(x, clash, past, live){
       ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
       ${x.done ? `<span class="chip ok">xong${x.doneTime ? ' ' + esc(x.doneTime) : ''}</span>`
                : `<span class="chip">việc lẻ</span>`}
+      ${x.exc ? `<span class="chip mv" data-act="excDrop" data-k="task" data-id="${t.id}"
+        data-day="${esc(key)}" title="Bấm để trả về lịch gốc">↪ dời riêng</span>` : ''}
     </div>
     <div class="row" style="margin-top:9px;gap:8px">
       <input class="tlin" type="time" value="${esc(min2hhmm(x.start))}" data-tlt="t_${t.id}"
-        title="Giờ nhắc của riêng việc này — không dùng chung với ngày khác">
+        data-day="${esc(x.day || '')}"
+        title="${t.repeat ? 'Việc lặp — app sẽ hỏi dời riêng hôm đó hay đổi hẳn lịch'
+                          : 'Giờ nhắc của riêng việc này'}">
       <span class="tlmin"><input type="number" min="1" max="720" value="${taskMins(t)}"
         data-tlm="t_${t.id}" title="Ước tính làm mất bao lâu"><i>phút → ${
         esc(min2hhmm(x.start + x.mins))}</i></span>
@@ -1708,8 +1726,9 @@ function dailyWeek(A, embed){
   if (sel.items.length){
     h += `<div class="dim" style="margin-bottom:10px;line-height:1.65">
       Kéo ngang một khối để dời giờ (nhích từng 5 phút), hoặc sửa thẳng ô giờ bên dưới.
-      Việc hằng ngày chỉ có <b>một</b> giờ dùng cho cả tuần — dời ở đây là dời cho cả những
-      thứ khác. Việc lẻ (nét đứt) thì giờ là của riêng nó.</div>`;
+      Việc lặp lại chỉ giữ <b>một</b> giờ dùng chung cho mọi kỳ, nên app sẽ hỏi:
+      dời riêng đúng hôm đó, hay đổi hẳn lịch. Chọn nhầm thì bấm chip
+      <b>↪ dời riêng</b> để trả về giờ gốc.</div>`;
     h += gapBlock(sel.items, clash, '', sel.wd);
     h += tlTrack(sel.items, clash, sel.wd);
     const live = dstr === t0;

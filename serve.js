@@ -87,6 +87,34 @@ function taskMinutes(t){
   return Number.isFinite(n) && n > 0 ? Math.min(n, 720) : 30;
 }
 const dayStr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+/* ---- ngoại lệ một lần ----
+   Bản song sinh của khối cùng tên trong js/state.js và api/lib.php. Việc lặp
+   chỉ giữ MỘT giờ dùng chung, nên mốc dời riêng nằm ở bảng phụ `exc`, khoá
+   là ngày gốc. Ba nơi phải hiểu giống nhau, không thì bấm Xong trên Telegram
+   ra hạn khác bấm trong app. */
+const excEntryJs = (o, day) => (o && o.exc && typeof o.exc === 'object' && o.exc[day]) || null;
+function remTimeOnJs(r, day){
+  const wd = new Date(String(day).slice(0,10) + 'T00:00:00').getDay();
+  if (!(r.days || []).map(Number).includes(wd)) return null;
+  const e = excEntryJs(r, day);
+  if (e && (e.off || (e.d && e.d !== day))) return null;
+  return (e && e.at) || r.time || null;
+}
+function taskDayJs(t){
+  const due = String((t && t.due) || '').slice(0,10);
+  if (!t || !t.repeat || due.length < 10) return due;
+  const e = excEntryJs(t, due);
+  return (e && !e.off && e.d) ? e.d : due;
+}
+function taskAtJs(t){
+  const due = String((t && t.due) || '').slice(0,10);
+  const e = t && t.repeat ? excEntryJs(t, due) : null;
+  return (e && !e.off && e.at) || (t && t.remindAt) || '';
+}
+function taskSkippedJs(t){
+  const e = t && t.repeat ? excEntryJs(t, String(t.due || '').slice(0,10)) : null;
+  return !!(e && e.off);
+}
 function remDoneTodayJs(r, today){
   return (r.doneLog || []).some(d => String(d).slice(0,10) === today);
 }
@@ -96,13 +124,13 @@ function taskDoneTodayJs(t, today){
 }
 function taskOnTodayJs(t, today){
   if (taskDoneTodayJs(t, today)) return true;
-  if (t.done) return false;
-  const due = String(t.due || '').slice(0,10);
+  if (t.done || taskSkippedJs(t)) return false;
+  const due = taskDayJs(t);
   return due.length === 10 && due <= today;
 }
 function todayUnsched(atMs){
   const today = dayStr(atMs ? new Date(atMs) : new Date());
-  return itemsOf('tasks').filter(t => taskOnTodayJs(t, today) && hhmmMin(t.remindAt) === null)
+  return itemsOf('tasks').filter(t => taskOnTodayJs(t, today) && hhmmMin(taskAtJs(t)) === null)
     .map(t => ({title:t.title || '', mins:taskMinutes(t), done:taskDoneTodayJs(t, today),
                 est:Math.round(Number(t.mins)) > 0}));
 }
@@ -138,14 +166,13 @@ function todaySlots(atMs){
   const out = [];
   for (const r of itemsOf('reminders')){
     if (!r.enabled) continue;
-    if (!(r.days || []).map(Number).includes(wday)) continue;
-    const st = hhmmMin(r.time); if (st === null) continue;
+    const st = hhmmMin(remTimeOnJs(r, today)); if (st === null) continue;
     out.push({start:st, mins:remMinutes(r), title:r.title || '',
               done:remDoneTodayJs(r, today), est:true});
   }
   for (const t of itemsOf('tasks')){
     if (!taskOnTodayJs(t, today)) continue;
-    const st = hhmmMin(t.remindAt); if (st === null) continue;
+    const st = hhmmMin(taskAtJs(t)); if (st === null) continue;
     out.push({start:st, mins:taskMinutes(t), title:t.title || '',
               done:taskDoneTodayJs(t, today), est:Math.round(Number(t.mins)) > 0});
   }
@@ -331,9 +358,9 @@ function buildDigest(){
 
   const workOn = +confGet('tg_work_hour','-1') >= 0;
   const due = workOn ? []
-    : itemsOf('tasks').filter(t => !t.done && t.due && String(t.due).slice(0,10) <= today);
+    : itemsOf('tasks').filter(t => !t.done && t.due && !taskSkippedJs(t) && taskDayJs(t) <= today);
   if (due.length){
-    const late = due.filter(t => String(t.due).slice(0,10) < today).length;
+    const late = due.filter(t => taskDayJs(t) < today).length;
     lines.push(`✓ ${due.length} việc đến hạn${late ? ` (${late} đã trễ)` : ''}`);
     due.slice(0,6).forEach(t => { const n = +(t.pushes || 0);
       lines.push('   • ' + (t.title || '') + (n >= 3 ? ` — đã dời ${n} lần` : '')); });
@@ -385,17 +412,17 @@ function buildWork(atMs){
 
   const late = [], now_ = [], soon = [];
   for (const t of itemsOf('tasks')){
-    if (t.done) continue;
-    const due = String(t.due || '').slice(0,10); if (due.length < 10) continue;
+    if (t.done || taskSkippedJs(t)) continue;
+    const due = taskDayJs(t); if (due.length < 10) continue;
     const d = dayOf(due);
     if (d < 0) late.push(t); else if (d === 0) now_.push(t); else if (d <= 3) soon.push([t, d]);
   }
   const mark = t => '   • ' + cut(t.title) + (t.prio === 'high' ? ' ❗' : '')
-                  + (t.remindAt ? ` (${t.remindAt})` : '');
+                  + (taskAtJs(t) ? ` (${taskAtJs(t)})` : '');
   if (late.length){
-    late.sort((a,b) => String(a.due).localeCompare(String(b.due)));
+    late.sort((a,b) => taskDayJs(a).localeCompare(taskDayJs(b)));
     lines.push(`🔴 Trễ hạn (${late.length})`);
-    late.slice(0,8).forEach(t => lines.push(mark(t) + ` — trễ ${-dayOf(String(t.due).slice(0,10))} ngày`));
+    late.slice(0,8).forEach(t => lines.push(mark(t) + ` — trễ ${-dayOf(taskDayJs(t))} ngày`));
     if (late.length > 8) lines.push(`   … và ${late.length - 8} việc nữa`);
   }
   if (now_.length){
@@ -501,7 +528,8 @@ function buildWeekly(atMs){
   let cardsDone = 0;
   for (const c of itemsOf('cards')) if (c.col === 'done' && String(c.doneAt || '') >= from) cardsDone++;
 
-  const lateTasks = itemsOf('tasks').filter(t => !t.done && t.due && String(t.due).slice(0,10) < today);
+  const lateTasks = itemsOf('tasks').filter(t => !t.done && t.due && !taskSkippedJs(t)
+                                                 && taskDayJs(t) < today);
 
   let touched = 0;
   for (const p of itemsOf('people')) if (p.lastContact && String(p.lastContact) >= from) touched++;
@@ -607,7 +635,7 @@ function tgWhy(atMs){
 
   for (const [kind, label] of [['tasks','Việc'], ['cards','Thẻ giao việc']]){
     for (const t of itemsOf(kind)){
-      const at = String(t.remindAt || '').trim();
+      const at = String(taskAtJs(t) || '').trim();
       const sn = String(t.snoozeUntil || '').trim();
       if (!at && !sn) continue;
       const due = String(t.due || '').slice(0,10);
@@ -667,8 +695,9 @@ function runSchedule(dry, atMs){
 
   for (const r of itemsOf('reminders')){
     if (!r.enabled) continue;
-    if (!(r.days || []).map(Number).includes(wday)) continue;
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(r.time || '')); if (!m) continue;
+    /* giờ đã áp mốc dời riêng của hôm nay; null = hôm nay không có lần nào */
+    const rt = remTimeOnJs(r, today);
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(rt || '')); if (!m) continue;
     const at = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(),
                                    +m[1], +m[2], 0).getTime() / 1000);
     if (nowSec < at || nowSec - at > REM_WINDOW) continue;
@@ -679,7 +708,7 @@ function runSchedule(dry, atMs){
     if (dry){ done.push({reminder:r.title, dry:true}); continue; }
     markSent(key);
     done.push({reminder:r.title, ok:true, mins:remMinutes(r),
-               sent:`🔔 ${r.title}\n${r.time} · ${durText(remMinutes(r))}${r.note ? '\n\n'+r.note : ''}`,
+               sent:`🔔 ${r.title}\n${rt} · ${durText(remMinutes(r))}${r.note ? '\n\n'+r.note : ''}`,
                topic:String(r.topic || '').trim() || topicFor('rem')});
   }
 
@@ -688,10 +717,12 @@ function runSchedule(dry, atMs){
                                  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
   for (const [kind, icon, what] of [['tasks','✓','việc của mình'], ['cards','👥','việc đã giao']]){
     for (const t of itemsOf(kind)){
-      const m = /^(\d{1,2}):(\d{2})$/.exec(String(t.remindAt || '')); if (!m) continue;
+      const tAt = taskAtJs(t);
+      const m = /^(\d{1,2}):(\d{2})$/.exec(String(tAt || '')); if (!m) continue;
       if (kind === 'tasks' ? t.done : t.col === 'done') continue;
+      if (taskSkippedJs(t)) continue;
 
-      const due = String(t.due || '').slice(0,10); if (due.length < 10) continue;
+      const due = taskDayJs(t); if (due.length < 10) continue;
       const before = +(t.remindBefore || 0);
       let lead;
       if (due === today)                                        lead = 0;
@@ -704,7 +735,7 @@ function runSchedule(dry, atMs){
       const at = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(),
                                      +m[1], +m[2], 0).getTime() / 1000);
       if (nowSec < at || nowSec - at > REM_WINDOW) continue;
-      const key = `item:${kind}:${t.id}:${today}:${t.remindAt}`;
+      const key = `item:${kind}:${t.id}:${today}:${tAt}`;
       if (alreadySent(key)) continue;
       if (dry){ done.push({[what]:t.title, dry:true}); continue; }
       markSent(key);
@@ -734,7 +765,8 @@ function runSchedule(dry, atMs){
     for (const [kind, what] of [['tasks','việc của mình'], ['cards','việc đã giao']]){
       for (const t of itemsOf(kind)){
         if (kind === 'tasks' ? t.done : t.col === 'done') continue;
-        const due = String(t.due || '').slice(0,10); if (due.length < 10) continue;
+        if (taskSkippedJs(t)) continue;
+        const due = taskDayJs(t); if (due.length < 10) continue;
         const daysLate = Math.floor((new Date(today+'T00:00:00') - new Date(due+'T00:00:00')) / 86400000);
         if (!ESCALATE_DAYS.includes(daysLate)) continue;
         const key = `esc:${kind}:${t.id}:${daysLate}`;

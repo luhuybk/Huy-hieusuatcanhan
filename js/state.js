@@ -179,10 +179,76 @@ function nextRepeat(iso, code){
   do { base = stepRepeat(base, code); } while (dayDiff(base) < 0 && ++guard < 400);
   return base;
 }
+
+/* ---- ngoại lệ một lần ----
+   Việc lặp chỉ giữ MỘT giờ và MỘT ngày gốc dùng chung cho mọi kỳ. Hôm nay
+   bận nên đẩy việc sang tối, mà sửa thẳng vào đó thì mọi thứ 7 từ giờ tới
+   cuối đời đều dời theo — trong khi mình chỉ muốn dời đúng hôm nay.
+   Nên mốc dời riêng ghi vào một bảng phụ, khoá là NGÀY GỐC theo lịch lặp:
+     exc['2026-08-22'] = {at:'20:00'}                đổi giờ, vẫn ngày đó
+     exc['2026-08-22'] = {d:'2026-08-23'}            dời sang ngày khác
+     exc['2026-08-22'] = {off:1}                     bỏ hẳn lần đó
+   Khoá theo ngày gốc chứ không theo ngày mới, vì có vậy bỏ ngoại lệ đi là
+   lần đó tự về đúng chỗ cũ, và nhịp lặp không bao giờ bị xê dịch. */
+const excMap = o => (o && o.exc && typeof o.exc === 'object') ? o.exc : {};
+const excAt  = (o, day) => excMap(o)[day] || null;
+function excSet(o, day, v){
+  if (!o || !day) return;
+  if (!o.exc || typeof o.exc !== 'object') o.exc = {};
+  if (v) o.exc[day] = v; else delete o.exc[day];
+}
+/* Ngoại lệ quá cũ thì bỏ — một lần đã trôi qua hai tháng chẳng còn ảnh
+   hưởng gì, giữ lại chỉ làm phình dữ liệu đồng bộ theo thời gian. */
+function excPrune(o){
+  const cut = addDays(today(), -70), m = excMap(o);
+  let n = 0;
+  Object.keys(m).forEach(k => { if (String(k) < cut){ delete o.exc[k]; n++; } });
+  return n > 0;                       /* có dọn thì bên gọi stamp() để đẩy lên máy chủ */
+}
+/* Câu mô tả ngoại lệ để hiện trên thẻ — nói cả giờ gốc, vì thứ dễ quên
+   nhất là mình đã dời nó đi đâu so với chỗ cũ. */
+function excText(o, day, base){
+  const e = excAt(o, day); if (!e) return '';
+  if (e.off) return 'bỏ riêng lần này';
+  if (e.d && e.d !== day) return 'dời riêng sang ' + fmtDate(e.d) + (e.at ? ' ' + e.at : '');
+  return 'dời riêng hôm đó → ' + (e.at || base || '') + (base ? ' (gốc ' + base + ')' : '');
+}
+
+/* ---- việc hằng ngày: giờ thật của một ngày ----
+   Trả null khi ngày đó không có lần nào (không đúng thứ, hoặc đã bỏ). */
+const wdOf = dstr => new Date(String(dstr).slice(0,10) + 'T00:00:00').getDay();
+function remTimeOn(r, dstr){
+  const day = String(dstr || '').slice(0,10);
+  if (day.length < 10) return null;
+  if (!(r.days || []).map(Number).includes(wdOf(day))) return null;
+  const e = excAt(r, day);
+  if (e && (e.off || (e.d && e.d !== day))) return null;
+  return (e && e.at) || r.time || null;
+}
+const remOnDay = (r, dstr) => remTimeOn(r, dstr) !== null;
+
+/* ---- việc lẻ: ngày & giờ thật của kỳ đang tới ----
+   Việc không lặp thì dời thẳng vào due/remindAt nên không cần ngoại lệ. */
+function taskDay(t){
+  const due = String((t && t.due) || '').slice(0,10);
+  if (!t || !t.repeat || due.length < 10) return due;
+  const e = excAt(t, due);
+  return (e && !e.off && e.d) ? e.d : due;
+}
+function taskAt(t){
+  const due = String((t && t.due) || '').slice(0,10);
+  const e = t && t.repeat ? excAt(t, due) : null;
+  return (e && !e.off && e.at) || (t && t.remindAt) || '';
+}
+const taskSkipped = t => { const e = t && t.repeat ? excAt(t, String(t.due || '').slice(0,10)) : null;
+                           return !!(e && e.off); };
 /* các lần việc này rơi vào khoảng [from, to] — dùng cho lịch tháng */
 function taskDatesIn(t, from, to){
   const out = [];
   if (!t.due || t.deleted) return out;
+  /* Kỳ đang tới có thể đã được dời riêng — lịch tháng phải vẽ nó ở ngày
+     mới, còn ngày gốc thì để trống. Các kỳ sau vẫn theo nhịp cũ. */
+  const eff = taskDay(t), skip = taskSkipped(t);
   if (!t.repeat || t.done){
     if (t.due >= from && t.due <= to) out.push(t.due);
     return out;
@@ -192,6 +258,12 @@ function taskDatesIn(t, from, to){
   guard = 0;
   while (d <= to && guard++ < 200){ out.push(d); d = stepRepeat(d, t.repeat); }
   if (t.due >= from && t.due <= to && !out.includes(t.due)) out.unshift(t.due);
+  if (skip || eff !== t.due){
+    const i = out.indexOf(t.due);
+    if (i >= 0) out.splice(i, 1);
+    if (!skip && eff >= from && eff <= to && !out.includes(eff)) out.push(eff);
+    out.sort();
+  }
   return out;
 }
 /* các lần một dịp rơi vào khoảng [from, to] */
@@ -262,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-22.3';
+const APP_BUILD = '2026-08-22.4';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -356,7 +428,11 @@ function ensure(){
                            /* đã bấm "dời sang mai" bao nhiêu lần, và lần gần nhất là ngày nào */
                            if(t.pushes===undefined) t.pushes=0;
                            if(t.pushedAt===undefined) t.pushedAt='';
-                           if(t.prevPushes===undefined) t.prevPushes=0; });
+                           if(t.prevPushes===undefined) t.prevPushes=0;
+                           /* mốc dời riêng từng lần, khoá là ngày gốc — xem khối
+                              "ngoại lệ một lần" ở đầu tệp */
+                           if(!t.exc || typeof t.exc!=='object') t.exc={};
+                           else if (excPrune(t)) stamp(t); });
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
                            /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
                               chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
@@ -382,7 +458,9 @@ function ensure(){
                                  định dạng của nó là đụng cả luật chuỗi lẫn bên PHP. */
                               if(r.doneTime===undefined) r.doneTime = '';
                               /* những ngày đã tick xong — nguồn duy nhất để tính chuỗi 🔥 */
-                              if(!Array.isArray(r.doneLog)) r.doneLog = []; });
+                              if(!Array.isArray(r.doneLog)) r.doneLog = [];
+                              if(!r.exc || typeof r.exc!=='object') r.exc={};
+                              else if (excPrune(r)) stamp(r); });
   db.occasions.forEach(o => { if(!Array.isArray(o.personIds)) o.personIds = [];
                               if(o.remind===undefined) o.remind = 7; if(!o.cal) o.cal = 'solar';
                               /* Lần tới rơi vào ngày dương nào — tính sẵn ở đây để máy chủ
@@ -557,7 +635,8 @@ function careScore(p){
 function careColor(s){ return s >= 60 ? 'var(--ok)' : s >= 30 ? 'var(--warn)' : 'var(--bad)'; }
 
 /* việc cần chú ý hôm nay, dùng cho badge + thông báo */
-function dueTasks(){ return tasks().filter(t => !t.done && t.due && dayDiff(t.due) <= 0); }
+function dueTasks(){ return tasks().filter(t => !t.done && t.due && !taskSkipped(t)
+                                                && dayDiff(taskDay(t)) <= 0); }
 
 /* ---- việc đang bị né ----
    Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa — nó là
@@ -698,11 +777,15 @@ const snap5 = m => Math.max(0, Math.min(Math.round(m / TL_SNAP) * TL_SNAP, 23 * 
 
 /* Mọi việc của một thứ trong tuần, kể cả việc đang tắt — bên dùng tự lọc
    theo `on` khi cộng tổng, để việc tắt vẫn hiện mờ chứ không biến mất. */
-function dayItems(wd, areaId){
+/* `dstr` là ngày thật ứng với thứ đó. Bỏ trống thì lấy ngày trong tuần này,
+   nhưng bên gọi mà đang xem một ngày ngoài tuần thì phải truyền vào — mốc
+   dời riêng gắn với NGÀY, suy từ thứ là ra nhầm tuần. */
+function dayItems(wd, areaId, dstr){
+  const day = String(dstr || wdDate(wd)).slice(0,10);
   return byArea(reminders(), areaId === undefined ? 'all' : areaId)
-    .filter(r => (r.days || []).map(Number).includes(Number(wd)))
-    .map(r => ({id:r.id, r, start:hhmm2min(r.time), mins:remMins(r),
-                on:!!r.enabled, title:r.title || 'Không tên', areaId:r.areaId || ''}))
+    .map(r => ({id:r.id, r, day, start:hhmm2min(remTimeOn(r, day)), mins:remMins(r),
+                on:!!r.enabled, title:r.title || 'Không tên', areaId:r.areaId || '',
+                exc:excText(r, day, r.time)}))
     .filter(x => x.start !== null)
     .sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
 }
@@ -772,8 +855,8 @@ const taskDoneToday = t => taskDoneOn(t, today());
    xong ngay hôm nay. Tick xong mà biến mất luôn thì mình tưởng bấm hụt. */
 function taskOnToday(t){
   if (taskDoneToday(t)) return true;
-  if (t.done) return false;
-  const due = String(t.due || '').slice(0,10);
+  if (t.done || taskSkipped(t)) return false;
+  const due = taskDay(t);
   return due.length === 10 && due <= today();
 }
 /* mốc tick, "YYYY-MM-DD HH:MM" giờ máy */
@@ -810,13 +893,14 @@ function dayTasks(wd, areaId){
   return byArea(tasks(), areaId === undefined ? 'all' : areaId).filter(t => {
     if (dstr === t0) return taskOnToday(t);
     if (dstr <  t0)  return taskDoneOn(t, dstr);
-    return !t.done && String(t.due || '').slice(0,10) === dstr;
+    return !t.done && !taskSkipped(t) && taskDay(t) === dstr;
   });
 }
 function taskSlot(t, dstr){
-  const due = String(t.due || '').slice(0,10);
+  const due = taskDay(t);
   /* id có tiền tố để không đụng id của việc hằng ngày khi dò chồng giờ */
-  return {kind:'task', id:'t_' + t.id, t, start:hhmm2min(t.remindAt), mins:taskMins(t), on:true,
+  return {kind:'task', id:'t_' + t.id, t, day:dstr, start:hhmm2min(taskAt(t)), mins:taskMins(t), on:true,
+          exc:excText(t, String(t.due || '').slice(0,10), t.remindAt),
           title:t.title || 'Việc cần làm', areaId:t.areaId || '',
           late:due < dstr, est:taskEst(t),
           done:taskDoneOn(t, dstr), doneTime:doneHhmm(t.doneTime, dstr)};
@@ -1121,7 +1205,7 @@ function feedDay(wd, dstr){
 /* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
    thật, nên vẫn phải kể ra kèm tổng ước tính. */
 function dayUnsched(wd, areaId){
-  return dayTasks(wd, areaId).filter(t => hhmm2min(t.remindAt) === null)
+  return dayTasks(wd, areaId).filter(t => hhmm2min(taskAt(t)) === null)
     .sort((a,b) => (a.due || '').localeCompare(b.due || ''));
 }
 function todayItems(areaId){ return dayAll(new Date().getDay(), areaId); }
@@ -1208,10 +1292,10 @@ function dateItems(dstr, areaId){
   if (day.length < 10) return [];
   const wd = new Date(day + 'T00:00:00').getDay();
   const A = areaId === undefined ? 'all' : areaId;
-  const out = dayItems(wd, A).filter(x => x.on).map(x => Object.assign({kind:'rem'}, x));
+  const out = dayItems(wd, A, day).filter(x => x.on).map(x => Object.assign({kind:'rem'}, x));
   byArea(tasks(), A).forEach(t => {
-    if (t.done || String(t.due || '').slice(0,10) !== day) return;
-    const st = hhmm2min(t.remindAt);
+    if (t.done || taskSkipped(t) || taskDay(t) !== day) return;
+    const st = hhmm2min(taskAt(t));
     if (st !== null) out.push({kind:'task', id:'t_' + t.id, t, start:st, mins:taskMins(t),
                                on:true, title:t.title || 'Việc cần làm'});
   });
@@ -1266,9 +1350,7 @@ function nextFreeSlot(items, mins, wd){
 
 /* Còn mấy việc chưa tick hôm nay — con số trên menu */
 function dailyLeft(){
-  const wd = new Date().getDay();
-  return reminders().filter(r => r.enabled && (r.days || []).map(Number).includes(wd)
-                                 && !remDoneToday(r)).length;
+  return reminders().filter(r => r.enabled && remOnDay(r, today()) && !remDoneToday(r)).length;
 }
 
 /* ============================================================
@@ -1659,7 +1741,7 @@ function areaStats(days){
   };
 
   tasks().forEach(t => {
-    if (!t.done) { find(t.areaId).open++; if (t.due && dayDiff(t.due) < 0) find(t.areaId).late++; }
+    if (!t.done) { find(t.areaId).open++; if (t.due && dayDiff(taskDay(t)) < 0) find(t.areaId).late++; }
     const log = t.doneLog || (t.doneAt ? [t.doneAt] : []);
     log.forEach(d => { if (d >= win) hit(t.areaId, d); });
   });

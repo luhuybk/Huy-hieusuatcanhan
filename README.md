@@ -265,7 +265,7 @@ Tab **Cả tuần** xếp mọi việc của một thứ lên một trục ngang
 - Hoặc **gõ thẳng ô giờ** bên dưới khi cần đúng phút — trên điện thoại kéo trúng 5 phút là chuyện khó.
 - **Ô phút** ngay cạnh, sửa xong là ghi luôn, không phải mở biểu mẫu.
 
-Mỗi việc chỉ có **một** giờ dùng cho cả tuần, nên dời ở thứ này là dời cho mọi thứ khác mà nó đang bật. App nói rõ điều đó ngay lúc bạn thả tay.
+Mỗi việc lặp lại chỉ giữ **một** giờ dùng chung cho mọi kỳ, nên khi bạn thả tay app sẽ hỏi: dời riêng đúng hôm đó, hay đổi hẳn lịch. Xem [Dời riêng một hôm](#dời-riêng-một-hôm--không-kéo-cả-chuỗi-theo).
 
 **Chồng giờ.** Hai việc có khoảng giờ cắt nhau thì cả hai bị viền đỏ, cột ngày tương ứng hiện `⚠ 2`, và trên đầu có một dòng đếm tổng cả tuần. Việc đang tắt không tính — tắt rồi thì trùng cũng chẳng sao, nhưng vẫn hiện mờ để bạn nhớ là nó có tồn tại.
 
@@ -293,8 +293,39 @@ Cột chia **hai màu**: phần dưới (cam) là việc lẻ, phần trên là 
 
 Chọn một ngày rồi kéo khối trên trục, hoặc sửa thẳng ô giờ ở hàng bên dưới. Hai loại khác nhau ở một điểm quan trọng:
 
-* **Việc hằng ngày** chỉ có *một* giờ dùng chung cho mọi thứ nó đang bật — dời ở T4 là dời luôn cho T2 và T6.
-* **Việc lẻ** (hàng nét đứt, gắn nhãn *việc lẻ*) thì giờ là của riêng nó, dời chỉ ảnh hưởng chính nó.
+* **Việc hằng ngày** chỉ có *một* giờ dùng chung cho mọi thứ nó đang bật.
+* **Việc lẻ lặp lại** cũng vậy: một giờ, một hạn gốc, dùng chung cho mọi kỳ.
+* **Việc lẻ không lặp** thì giờ là của riêng nó, dời là dời chính nó và app không hỏi gì cả.
+
+Với hai loại đầu, app hỏi phạm vi trước khi ghi — xem ngay dưới đây.
+
+#### Dời riêng một hôm — không kéo cả chuỗi theo
+
+Bạn đặt *nghiên cứu sản phẩm, mỗi thứ 7, 12:30*. Hôm nay bận nên đẩy sang tối. Nếu app ghi thẳng vào giờ gốc thì **mọi thứ 7 từ nay về sau** đều chuyển sang tối — trong khi bạn chỉ muốn dời đúng hôm nay.
+
+Nên mỗi lần bạn đổi giờ của một việc lặp lại — kéo khối trên trục, hay gõ ô giờ trong danh sách — app hỏi một câu:
+
+```
+Dời riêng hôm đó, hay mọi lần?
+Nghiên cứu sản phẩm · lặp hàng tuần
+Thứ 7 22/08: 12:30 → 20:00
+
+[ Chỉ Thứ 7 22/08 ]
+[ Mọi lần — đổi hẳn lịch ]
+[ Thôi, giữ nguyên ]
+```
+
+- **Chỉ hôm đó** ghi một mốc riêng cho đúng ngày ấy. Giờ gốc và hạn gốc không suy suyển, các kỳ sau vẫn đúng nhịp cũ.
+- **Mọi lần** đổi hẳn lịch, y như trước đây.
+- **Thôi** thì khối tự về chỗ cũ.
+
+Nút **→ Mai** trên một việc lặp lại cũng đi đường này: nó đẩy **riêng kỳ này** sang ngày mai chứ không sửa hạn gốc. Không có luật đó thì việc "mỗi thứ 7" bấm dời một lần là hoá thành việc "mỗi chủ nhật", và bạn chỉ phát hiện sau vài tuần.
+
+Mốc dời riêng **nhìn thấy được**: hàng của nó mang chip cam `↪ dời riêng hôm đó → 20:00 (gốc 12:30)`. Bấm vào chip là trả kỳ đó về lịch gốc.
+
+Sửa thẳng ô giờ hoặc ô hạn **trong biểu mẫu** thì khác: đó là nói về cả chuỗi, nên mốc dời riêng của kỳ hiện tại bị bỏ luôn — giữ lại thì con số bạn vừa gõ chẳng hiện ra ở đâu và bạn sẽ tưởng app nuốt mất thao tác. Đổi tên hay đổi ghi chú thì không đụng gì tới nó.
+
+Mốc dời riêng ghi theo **ngày gốc** chứ không theo ngày mới, nên bỏ nó đi là kỳ đó tự về đúng chỗ cũ và nhịp lặp không bao giờ xê dịch. Quá 70 ngày thì app tự dọn. Máy chủ đọc đúng bảng này, nên tin Telegram nhắc theo giờ đã dời chứ không nhắc theo giờ cũ.
 
 Mỗi hàng có **ô tích** ngay đầu dòng để tick cho nhanh mà không phải nhảy tab. Chỉ **cột hôm nay** mới bấm được — "xong" là chuyện của một ngày cụ thể, tick hộ ngày mai thì chẳng biết ghi vào đâu; cột khác vẫn hiện đúng trạng thái của ngày đó, chỉ là mờ và không bấm được. Tick xong thì hàng **mờ và gạch ngang**, đúng như khối của nó trên trục.
 
@@ -302,7 +333,7 @@ Mục **Chưa xếp giờ** cũng có ở đây, và nút **→ Xếp vào** tí
 
 #### Dời sang mai
 
-Ngày kín quá thì mỗi việc lẻ có nút **→ Mai**: hạn nhảy sang ngày mai và mốc dời nhắc cũ bị xoá theo. Việc đang trễ ba ngày mà bấm thì ra **ngày mai thật**, không phải hai hôm trước.
+Ngày kín quá thì mỗi việc lẻ có nút **→ Mai**: hạn nhảy sang ngày mai và mốc dời nhắc cũ bị xoá theo. Việc đang trễ ba ngày mà bấm thì ra **ngày mai thật**, không phải hai hôm trước. Việc **lặp lại** thì chỉ kỳ này bị đẩy, hạn gốc và nhịp lặp giữ nguyên — xem [Dời riêng một hôm](#dời-riêng-một-hôm--không-kéo-cả-chuỗi-theo).
 
 App **đếm số lần dời**. Dời một lần là dòng phụ đã ghi *đã dời 1 lần* màu cam; từ lần thứ ba đổi sang đỏ, nút thành **→ Mai ⚠**, và bản tóm tắt sáng qua Telegram cũng ghi kèm *— đã dời 4 lần*. Một việc dời tới lần thứ ba không còn là việc bận, nó là việc mình đang né: chia nhỏ ra hoặc bỏ hẳn đi.
 

@@ -294,6 +294,46 @@ function taskMinutes(array $t): int {
   $n = (int)round((float)($t['mins'] ?? 0));
   return $n > 0 ? min($n, 720) : 30;
 }
+/* ---- ngoại lệ một lần ----
+   Bản song sinh của khối cùng tên trong js/state.js. Việc lặp chỉ giữ MỘT
+   giờ dùng chung cho mọi kỳ, nên "hôm nay dời sang tối" phải ghi vào bảng
+   phụ `exc`, khoá là NGÀY GỐC. Bên này không đọc đúng bảng đó thì bot vẫn
+   nhắc theo giờ cũ, và tin Telegram nói khác hẳn màn hình đang mở. */
+function excEntry(array $o, string $day): array {
+  $m = $o['exc'] ?? null;
+  if (!is_array($m) || !isset($m[$day]) || !is_array($m[$day])) return [];
+  return $m[$day];
+}
+/* Giờ thật của việc hằng ngày vào $day; null = hôm đó không có lần nào */
+function remTimeOnPhp(array $r, string $day): ?string {
+  $wd = (int)date('w', strtotime($day));
+  if (!in_array($wd, array_map('intval', (array)($r['days'] ?? [])), true)) return null;
+  $e = excEntry($r, $day);
+  if (!empty($e['off'])) return null;
+  if (!empty($e['d']) && (string)$e['d'] !== $day) return null;
+  $at = (string)($e['at'] ?? '');
+  return $at !== '' ? $at : (string)($r['time'] ?? '');
+}
+/* Ngày & giờ thật của kỳ đang tới. Thẻ giao việc không lặp nên hai hàm này
+   trả về đúng giá trị gốc — dùng chung được cho cả hai loại. */
+function taskDayPhp(array $t): string {
+  $due = substr((string)($t['due'] ?? ''), 0, 10);
+  if (empty($t['repeat']) || strlen($due) < 10) return $due;
+  $e = excEntry($t, $due);
+  return (empty($e['off']) && !empty($e['d'])) ? (string)$e['d'] : $due;
+}
+function taskAtPhp(array $t): string {
+  $due = substr((string)($t['due'] ?? ''), 0, 10);
+  $e = empty($t['repeat']) ? [] : excEntry($t, $due);
+  $at = (string)($e['at'] ?? '');
+  if ($at !== '' && empty($e['off'])) return $at;
+  return (string)($t['remindAt'] ?? '');
+}
+function taskSkippedPhp(array $t): bool {
+  if (empty($t['repeat'])) return false;
+  $e = excEntry($t, substr((string)($t['due'] ?? ''), 0, 10));
+  return !empty($e['off']);
+}
 function remDoneTodayPhp(array $r): bool {
   $today = date('Y-m-d');
   foreach ((array)($r['doneLog'] ?? []) as $d)
@@ -313,8 +353,8 @@ function taskDoneTodayPhp(array $t): bool {
 }
 function taskOnTodayPhp(array $t): bool {
   if (taskDoneTodayPhp($t)) return true;
-  if (!empty($t['done'])) return false;
-  $due = substr((string)($t['due'] ?? ''), 0, 10);
+  if (!empty($t['done']) || taskSkippedPhp($t)) return false;
+  $due = taskDayPhp($t);
   return strlen($due) === 10 && $due <= date('Y-m-d');
 }
 /* Việc đến hạn mà chưa đặt giờ — chưa nằm trên trục nhưng vẫn phải làm */
@@ -322,7 +362,7 @@ function todayUnsched(): array {
   $out = [];
   foreach (itemsOf('tasks') as $t) {
     if (!taskOnTodayPhp($t)) continue;
-    if (hhmmMin((string)($t['remindAt'] ?? '')) !== null) continue;
+    if (hhmmMin(taskAtPhp($t)) !== null) continue;
     $out[] = ['title' => (string)($t['title'] ?? ''), 'mins' => taskMinutes($t),
               'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
   }
@@ -370,15 +410,14 @@ function todaySlots(): array {
   $out = [];
   foreach (itemsOf('reminders') as $r) {
     if (empty($r['enabled'])) continue;
-    if (!in_array($wday, array_map('intval', (array)($r['days'] ?? [])), true)) continue;
-    $st = hhmmMin((string)($r['time'] ?? ''));
+    $st = hhmmMin((string)remTimeOnPhp($r, $today));
     if ($st === null) continue;
     $out[] = ['start' => $st, 'mins' => remMinutes($r), 'title' => (string)($r['title'] ?? ''),
               'done' => remDoneTodayPhp($r), 'est' => true];
   }
   foreach (itemsOf('tasks') as $t) {
     if (!taskOnTodayPhp($t)) continue;
-    $st = hhmmMin((string)($t['remindAt'] ?? ''));
+    $st = hhmmMin(taskAtPhp($t));
     if ($st === null) continue;      /* chưa xếp giờ thì chưa nằm trên trục */
     $out[] = ['start' => $st, 'mins' => taskMinutes($t), 'title' => (string)($t['title'] ?? ''),
               'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
@@ -546,12 +585,12 @@ function buildDigest(): array {
   $due = [];
   if ((int)confGet('tg_work_hour', '-1') < 0)
   foreach (itemsOf('tasks') as $t) {
-    if (!empty($t['done']) || empty($t['due'])) continue;
-    if (substr((string)$t['due'], 0, 10) <= $today) $due[] = $t;
+    if (!empty($t['done']) || empty($t['due']) || taskSkippedPhp($t)) continue;
+    if (taskDayPhp($t) <= $today) $due[] = $t;
   }
   if ($due) {
     $late = 0;
-    foreach ($due as $t) if (substr((string)$t['due'], 0, 10) < $today) $late++;
+    foreach ($due as $t) if (taskDayPhp($t) < $today) $late++;
     $lines[] = '✓ <b>' . count($due) . ' việc đến hạn</b>' . ($late ? " ($late đã trễ)" : '');
     /* Việc dời tới lần thứ ba là việc mình đang né chứ không phải việc bận —
        nói ra lúc 7h sáng thì còn kịp chia nhỏ hoặc bỏ hẳn. */
@@ -647,8 +686,8 @@ function buildWork(): array {
   /* --- việc của mình --- */
   $late = []; $now = []; $soon = [];
   foreach (itemsOf('tasks') as $t) {
-    if (!empty($t['done'])) continue;
-    $due = substr((string)($t['due'] ?? ''), 0, 10);
+    if (!empty($t['done']) || taskSkippedPhp($t)) continue;
+    $due = taskDayPhp($t);
     if (strlen($due) < 10) continue;
     if ($due < $today)      $late[] = $t;
     elseif ($due === $today) $now[] = $t;
@@ -659,7 +698,7 @@ function buildWork(): array {
   }
   $mark = function ($t) {
     $p = ($t['prio'] ?? '') === 'high' ? ' ❗' : '';
-    $at = (string)($t['remindAt'] ?? '');
+    $at = taskAtPhp($t);
     return '   • ' . tgEsc(cutTitle($t['title'] ?? '')) . $p . ($at !== '' ? ' <i>(' . tgEsc($at) . ')</i>' : '');
   };
 
@@ -819,7 +858,8 @@ function buildWeekly(): array {
 
   $lateTasks = [];
   foreach (itemsOf('tasks') as $t)
-    if (empty($t['done']) && !empty($t['due']) && substr((string)$t['due'], 0, 10) < $today) $lateTasks[] = $t;
+    if (empty($t['done']) && !empty($t['due']) && !taskSkippedPhp($t)
+        && taskDayPhp($t) < $today) $lateTasks[] = $t;
 
   $touched = 0;
   foreach (itemsOf('people') as $p)
@@ -969,10 +1009,10 @@ function tgWhy(): array {
   foreach ([['tasks', 'Việc'], ['cards', 'Thẻ giao việc']] as $spec) {
     list($kind, $label) = $spec;
     foreach (itemsOf($kind) as $t) {
-      $at = trim((string)($t['remindAt'] ?? ''));
+      $at = trim(taskAtPhp($t));
       $sn = trim((string)($t['snoozeUntil'] ?? ''));
       if ($at === '' && $sn === '') continue;
-      $due = substr((string)($t['due'] ?? ''), 0, 10);
+      $due = taskDayPhp($t);
       $row = ['kind' => $label, 'title' => (string)($t['title'] ?? ''),
               'at' => $at, 'due' => $due, 'snooze' => $sn, 'ok' => false];
 
@@ -1040,10 +1080,8 @@ function runSchedule(bool $dry = false): array {
   /* --- lời nhắc lặp lại --- */
   foreach (itemsOf('reminders') as $r) {
     if (empty($r['enabled'])) continue;
-    $days = array_map('intval', (array)($r['days'] ?? []));
-    if (!in_array($wday, $days, true)) continue;
-
-    $time = (string)($r['time'] ?? '');
+    /* Giờ đã áp mốc dời riêng của hôm nay; null = hôm nay không có lần nào */
+    $time = (string)remTimeOnPhp($r, $today);
     if (!preg_match('/^(\d{1,2}):(\d{2})$/', $time, $m)) continue;
     $at = mktime((int)$m[1], (int)$m[2], 0, (int)date('n'), (int)date('j'), (int)date('Y'));
 
@@ -1068,14 +1106,15 @@ function runSchedule(bool $dry = false): array {
   foreach ([['tasks', '✓', 'việc của mình'], ['cards', '👥', 'việc đã giao']] as $spec) {
     list($kind, $icon, $what) = $spec;
     foreach (itemsOf($kind) as $t) {
-      $at = (string)($t['remindAt'] ?? '');
+      $at = taskAtPhp($t);
       if (!preg_match('/^(\d{1,2}):(\d{2})$/', $at, $m)) continue;
       if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
+      if (taskSkippedPhp($t)) continue;
 
       /* Hai ngày được nhắc: đúng ngày hạn, và ngày "còn N hôm nữa" nếu có
          đặt nhắc trước. Chỉ một tin báo trước chứ không nhắc suốt N ngày —
          việc lớn cần một cú hích sớm, không cần bị càu nhàu mỗi sáng. */
-      $due = substr((string)($t['due'] ?? ''), 0, 10);
+      $due = taskDayPhp($t);
       if (strlen($due) < 10) continue;
       $before = (int)($t['remindBefore'] ?? 0);
       if ($due === $today)                                                      $lead = 0;
@@ -1256,7 +1295,8 @@ function runSchedule(bool $dry = false): array {
       list($kind, $what) = $spec;
       foreach (itemsOf($kind) as $t) {
         if ($kind === 'tasks' ? !empty($t['done']) : (string)($t['col'] ?? '') === 'done') continue;
-        $due = substr((string)($t['due'] ?? ''), 0, 10);
+        if (taskSkippedPhp($t)) continue;
+        $due = taskDayPhp($t);
         if (strlen($due) < 10) continue;
         $daysLate = (int)floor((strtotime($today) - strtotime($due)) / 86400);
         if (!in_array($daysLate, ESCALATE_DAYS, true)) continue;
