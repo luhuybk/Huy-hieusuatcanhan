@@ -492,6 +492,11 @@ body.locked .app,body.locked .fab{display:none}
 /* Xong rồi thì mờ đi ngay trên trục — liếc một cái là thấy phần còn lại của ngày */
 .tlbar i.dn{opacity:.3}
 .tlrow.dn{opacity:.45}
+/* Ba mốc con của một khối gộp: hàng mảnh hơn, mờ hơn, thụt xuống một chút
+   để thấy ngay chúng thuộc về khối ngay phía trên chứ không phải việc riêng */
+.tlrow.sub{height:18px;margin-bottom:3px;opacity:.72}
+.tlblk.mini{height:16px;padding:0 3px;cursor:default;border-style:dotted}
+.tlblk.mini .tllbl{font-size:10.5px;color:var(--tx2);left:calc(100% + 6px)}
 .tlblk.dn .tllbl{text-decoration:line-through}
 /* Lịch nhập từ app khác: chấm chấm, không kéo được */
 .tlbar i.fd,.tlblk.fd{border-style:dotted}

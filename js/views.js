@@ -1312,8 +1312,11 @@ function tlColor(x){
   return a ? a.color : 'var(--acc)';
 }
 const tlLabel = x => min2hhmm(x.start) + ' · ' + x.title + ' · ' + fmtDur(x.mins);
+/* Nhãn của một mốc con trong khối gộp */
+const tlPart = pt => min2hhmm(pt.start) + ' · ' + pt.title + ' · ' + fmtDur(pt.mins);
 /* Chú thích khi rê chuột lên khối: khối gộp phải kể ra bên trong có gì */
-const tlTip = x => tlLabel(x) + (x.n > 1 ? '\n· ' + (x.parts || []).join('\n· ') : '');
+const tlTip = x => tlLabel(x) +
+  (x.n > 1 ? '\n· ' + (x.parts || []).map(tlPart).join('\n· ') : '');
 
 /* Thanh gọn cho tab Hôm nay: mọi việc nằm chung một hàng, không nhãn, không
    kéo — vừa đúng bề ngang điện thoại, liếc một cái là thấy ngày dồn vào đâu. */
@@ -1341,7 +1344,9 @@ function tlTrack(items, clash, wd){
   const {from, to} = tlRange(items, wd), span = to - from;
   const pct = m => ((m - from) / span) * 100;
   const hours = []; for (let m = from; m <= to; m += 60) hours.push(m);
-  const reserve = Math.min(250, Math.max(...items.map(x => tlLabel(x).length)) * 6.7 + 26);
+  const labels = items.map(tlLabel)
+    .concat(...items.map(x => (x.n > 1 ? (x.parts || []).map(tlPart) : [])));
+  const reserve = Math.min(250, Math.max(...labels.map(t => t.length)) * 6.7 + 26);
   const wide = Math.max(500, hours.length * 54);
 
   let h = `<div class="tlwrap"><div class="tlk" style="min-width:${Math.round(wide + reserve)}px;
@@ -1350,13 +1355,15 @@ function tlTrack(items, clash, wd){
     `<span class="tlhr" style="left:${pct(m).toFixed(3)}%${
       i === 0 ? ';transform:none' : i === hours.length - 1 ? ';transform:translateX(-100%)' : ''
     }">${min2hhmm(m)}</span>`).join('') + `</div>`;
+  const grid = `<div class="tlgrid">${
+    hours.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join('')}</div>`;
   h += items.map(x => {
     const c = tlColor(x);
     /* Lịch nhập từ app khác không kéo được: bên kia mới là chủ của nó, kéo
        ở đây thì lần nhập sau là mất sạch. Bỏ luôn data-tlblk cho chắc. */
     const fixed = x.kind === 'feed';
-    return `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
-      <div class="tlgrid">${hours.map(m => `<i style="left:${pct(m).toFixed(3)}%"></i>`).join('')}</div>
+    let row = `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
+      ${grid}
       <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''}"
         title="${esc(tlTip(x))}"
         ${fixed ? '' : `data-tlblk="${x.id}"`}
@@ -1364,10 +1371,21 @@ function tlTrack(items, clash, wd){
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
         <span class="gr">${fixed ? '🔒' : '⠿'}</span>
-        <span class="tllbl">${esc(tlLabel(x))}${
-          x.n > 1 ? ' · ' + esc((x.parts || [])[0]) + ' …' : ''}</span>
+        <span class="tllbl">${esc(tlLabel(x))}</span>
       </div>
     </div>`;
+    /* Khối gộp: trải ba mốc con thành ba hàng mảnh ngay bên dưới, mỗi hàng
+       đúng giờ và đúng độ dài của nó. Một khối duy nhất ghi "3 việc" thì
+       nhìn vào trục không biết cái nào 30 phút, cái nào 5 phút. */
+    if (x.n > 1) row += (x.parts || []).map(pt => `<div class="tlrow sub">
+      ${grid}
+      <div class="tlblk fd mini" title="${esc(tlPart(pt))}"
+        style="left:${pct(pt.start).toFixed(3)}%;width:${Math.max((pt.mins/span)*100, 1).toFixed(3)}%;
+               background:color-mix(in srgb, ${c} 16%, transparent);border-color:${c}">
+        <span class="tllbl">${esc(tlPart(pt))}</span>
+      </div>
+    </div>`).join('');
+    return row;
   }).join('');
   return h + `</div></div>`;
 }

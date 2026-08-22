@@ -424,7 +424,9 @@ Nên những mốc **cùng một nguồn** mà **thực sự chồng giờ** nha
   │ ■ 10:00  Symbol theo dõi · FX – H3             5p
 ```
 
-Cùng giờ thì **việc dài nhất lên đầu** — nó là cái neo của khung giờ đó, mấy mốc 5 phút chỉ là phụ. Trên trục vẫn là **một** khối (chúng chiếm cùng một khoảng thật), rê chuột lên thấy đủ danh sách.
+Cùng giờ thì **việc dài nhất lên đầu** — nó là cái neo của khung giờ đó, mấy mốc 5 phút chỉ là phụ.
+
+Trên **trục kéo thả** cũng vậy: một khối chính (chúng chiếm cùng một khoảng thật, và khối đó khoá — lịch bên kia mới là chủ), rồi ba **hàng mảnh** ngay bên dưới, mỗi hàng đúng giờ và đúng độ dài của nó. Nhìn một cái là biết cái nào 30 phút, cái nào 5 phút.
 
 Hai điều kiện đó đều cần:
 
