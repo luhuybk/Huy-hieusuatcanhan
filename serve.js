@@ -232,8 +232,28 @@ function tgItemButtons(kind, id){
 
 /* việc lặp lại — bản song sinh của stepRepeat()/nextRepeat() bên PHP,
    vốn lại là bản song sinh của js/state.js. Ba nơi phải ra cùng một ngày. */
-const isRepeat = c => /^[dwmy]\d+$/.test(String(c || ''));
+const isRepeat = c => /^([dwmy]\d+|mw[1-4L])$/.test(String(c || ''));
+const monthlyOrd = c => { const m = /^mw([1-4L])$/.exec(String(c || '')); return m ? m[1] : ''; };
+const ymd_ = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function nthWeekday(y, mo, wd, ord){
+  if (ord === 'L'){
+    const d = new Date(y, mo + 1, 0);
+    d.setDate(d.getDate() - ((d.getDay() - wd + 7) % 7));
+    return ymd_(d);
+  }
+  const d = new Date(y, mo, 1);
+  d.setDate(1 + ((wd - d.getDay() + 7) % 7) + (Number(ord) - 1) * 7);
+  return d.getMonth() === mo ? ymd_(d) : '';
+}
 function stepRepeat(iso, code){
+  /* hàng tháng theo THỨ — không cộng ngày được, phải dò lại trong tháng sau */
+  const ord = monthlyOrd(code);
+  if (ord){
+    const c = new Date(iso + 'T00:00:00');
+    const nx = new Date(c.getFullYear(), c.getMonth() + 1, 1);
+    const r = nthWeekday(nx.getFullYear(), nx.getMonth(), c.getDay(), ord);
+    if (r) return r;
+  }
   const unit = code[0], n = Math.max(1, +code.slice(1) || 1);
   const d = new Date(iso + 'T00:00:00');
   if (unit === 'd'){ d.setDate(d.getDate() + n); }

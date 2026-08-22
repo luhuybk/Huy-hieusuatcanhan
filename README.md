@@ -150,14 +150,17 @@ Riêng `api/config.php` (mã mật khẩu) và `api/data/` (cơ sở dữ liệu
 
 ### Tổng quan
 
-Màn hình mở ra nhiều nhất trong ngày, nên hai khối đầu là hai thứ dùng để sắp xếp:
+Màn hình mở ra nhiều nhất trong ngày, chia thành **ba tab**, mỗi tab một câu hỏi:
 
-| Khối | Trả lời câu |
-|---|---|
-| **Trục cả tuần** | *Tuần này nằm ở đâu, và hôm nay nên làm gì?* — bảy cột T2→CN, bấm cột nào là mở trục ngày đó, **kéo thả được ngay tại chỗ** |
-| **Đang bị né** | *Việc nào mình đang tránh?* — những việc đã bấm **→ Mai** từ ba lần trở lên |
+| Tab | Trả lời câu | Bên trong |
+|---|---|---|
+| **Lịch hôm nay** | *Sắp xếp thế nào?* | trục cả tuần (kéo thả được), việc đang bị né, việc đã giao đang trễ |
+| **Ghi nhanh** | *Còn mẩu nào chưa phân loại?* | cả hộp, kèm nguyên sáu nút phân loại — làm ngay tại đây |
+| **Dịp sắp tới** | *Sắp lỡ mất gì với ai không?* | dịp, sinh nhật, nên hỏi thăm ai, ân tình chưa trả |
 
-Cố ý là **cả tuần** chứ không chỉ hôm nay: sắp xếp thì phải nhìn cả tuần, vì dời một việc khỏi thứ Sáu là phải biết thứ Bảy đang trống bao nhiêu.
+Trước đây mọi thứ xếp một mạch từ trên xuống, nên hộp ghi nhanh và dịp sắp tới nằm sau cả trục tuần — muốn xem phải cuộn qua nguyên một màn hình, mà **thứ phải cuộn mới thấy thì coi như không có**. Con số trên mỗi tab cho biết có đáng bấm vào hay không.
+
+Tab **Lịch hôm nay** cố ý là **cả tuần** chứ không chỉ hôm nay: sắp xếp thì phải nhìn cả tuần, vì dời một việc khỏi thứ Sáu là phải biết thứ Bảy đang trống bao nhiêu.
 
 Và cố ý dùng **thẳng** khối của mục Hằng ngày chứ không dựng một bản rút gọn riêng — kéo thả được luôn, và hai màn hình không bao giờ lệch nhau vì chúng là một. `S.dailyDay` dùng chung, nên đổi ngày ở đây thì mở mục Hằng ngày cũng đúng ngày đó.
 
@@ -177,7 +180,7 @@ Cả ba đều **kết thúc việc cũ**. Để nó nằm lại thì hôm sau n
 
 Khối này cũng vào **tổng kết tuần Telegram** (🔁 *Đang bị né*), tách riêng khỏi khối ⚠️ *Đang trễ*: trễ là chưa kịp làm, né là chuyện khác, và cách xử hai thứ đó khác nhau.
 
-Dưới hai khối đó là phần cũ: việc đã giao đang trễ, dịp và sinh nhật sắp tới, ân tình chưa trả, và mục **“Hôm nay nên hỏi thăm ai”** gợi ý ba người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
+Mục **“Nên hỏi thăm ai”** (trong tab *Dịp sắp tới*) gợi ý những người đang bị bỏ quên lâu nhất so với chu kỳ của nhóm họ.
 
 ### Quan hệ — năm module S / S2 / A / B / C
 Cuộn một mạch từ trên xuống, mỗi nhóm là một khối riêng có tiêu đề và đường ngăn, người bên trong hiển thị dạng **thẻ**.
@@ -204,6 +207,22 @@ Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa 
 ### Công việc
 - **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn. Mỗi việc có ô **Ước tính (phút)**; việc đến hạn mà có đặt giờ nhắc sẽ hiện luôn trên dòng thời gian của tab [Việc hằng ngày](#việc-hằng-ngày).
 - **Việc lặp lại** — hàng ngày, cách ngày, hàng tuần, 2 tuần, hàng tháng, mỗi quý, nửa năm, hàng năm. Tick xong là hạn tự nhảy sang kỳ kế tiếp, kèm **chuỗi 🔥** đếm số kỳ làm đúng hẹn liên tiếp (bỏ lỡ thì chuỗi về 0). Nếu bỏ lỡ nhiều kỳ, app nhảy thẳng tới mốc sắp tới chứ không dồn việc.
+
+#### Hàng tháng theo thứ — "thứ 7 cuối cùng của tháng"
+
+Ngoài *hàng tháng đúng ngày* (mùng 5, ngày 15…), còn năm lựa chọn nữa: **tuần 1 / 2 / 3 / 4 / tuần cuối — theo thứ**. Thứ 7 cuối cùng của tháng không rơi vào một ngày cố định, nên loại này không cộng ngày ra được: mỗi kỳ phải dò lại trong tháng kế tiếp.
+
+**Thứ lấy từ chính Ngày hạn**, không có ô chọn thứ riêng — hai ô cùng nói về một việc thì sớm muộn cũng có lần chúng cãi nhau, và lúc đó không ai đoán được app nghe ô nào. Đặt hạn vào một thứ 7 rồi chọn *tuần cuối* là xong.
+
+Lưu xong **ngày hạn tự nắn về đúng mốc**: đặt hạn 21/08 (thứ 6) rồi chọn *tuần cuối* thì hạn nhảy sang 28/08 — thứ 6 cuối cùng của tháng 8. Không nắn thì mốc đầu tiên đã sai, và vì mọi mốc sau đều đếm từ nó nên cả chuỗi lệch một nhịp mà nhìn vào không thấy vì sao.
+
+Trên thẻ việc, nhãn ghi bằng tiếng người: `↻ Thứ 7 cuối cùng hằng tháng`, không phải mã.
+
+Luật này có ở **cả ba nơi** — app, `serve.js` và `api/lib.php` — vì bấm "Xong" trên Telegram mà ra hạn khác với bấm trong app thì dữ liệu lệch nhau.
+
+#### Mục "Đã xong" thu gọn sẵn
+
+Trong **Công việc**, mục *Đã xong* và cột *Hoàn thành* trên bảng đều **gấp lại sẵn**, chỉ hiện số lượng. Bấm ▼ mới mở. Việc đã xong không cần đọc lại mỗi lần mở màn hình, mà để nguyên thì nó dài hơn cả phần việc còn phải làm — thứ duy nhất bạn vào đây để xem.
 
 ### Việc hằng ngày
 

@@ -208,7 +208,33 @@ function newId(): string { return dechex(time()) . bin2hex(random_bytes(4)); }
    Bản song sinh của stepRepeat()/nextRepeat() trong js/state.js. Luật phải
    giống hệt: bấm "Xong" trên Telegram mà ra hạn khác với bấm trong app thì
    dữ liệu lệch nhau, và người dùng không đời nào đoán được vì sao. */
+function monthlyOrd(string $code): string {
+  return preg_match('/^mw([1-4L])$/', $code, $m) ? $m[1] : '';
+}
+/* Ngày của "thứ $wd lần thứ $ord" trong tháng $mo (1-12). '' nếu tháng đó
+   không có lần thứ $ord — tháng nào cũng đủ bốn lần, nhưng cứ chặn cho chắc. */
+function nthWeekday(int $y, int $mo, int $wd, string $ord): string {
+  if ($ord === 'L') {
+    $t = mktime(0, 0, 0, $mo + 1, 0, $y);                 /* ngày cuối tháng */
+    $t -= (((int)date('w', $t) - $wd + 7) % 7) * 86400;
+    return date('Y-m-d', $t);
+  }
+  $t = mktime(0, 0, 0, $mo, 1, $y);
+  $t += ((($wd - (int)date('w', $t) + 7) % 7) + ((int)$ord - 1) * 7) * 86400;
+  return (int)date('n', $t) === $mo ? date('Y-m-d', $t) : '';
+}
 function stepRepeat(string $iso, string $code): string {
+  /* Hàng tháng theo THỨ: thứ 7 cuối cùng của tháng không phải một ngày cố
+     định nên không cộng ngày ra được, phải dò lại trong tháng kế tiếp. */
+  $ord = monthlyOrd($code);
+  if ($ord !== '') {
+    $wd = (int)date('w', strtotime($iso));
+    $y  = (int)substr($iso, 0, 4);
+    $mo = (int)substr($iso, 5, 2) + 1;
+    if ($mo > 12) { $mo = 1; $y++; }
+    $r = nthWeekday($y, $mo, $wd, $ord);
+    return $r !== '' ? $r : date('Y-m-d', strtotime($iso . ' +1 month'));
+  }
   $unit = $code[0];
   $n = max(1, (int)substr($code, 1));
   if ($unit === 'd') return date('Y-m-d', strtotime($iso . ' +' . $n . ' day'));
@@ -221,7 +247,7 @@ function stepRepeat(string $iso, string $code): string {
   if ((int)date('j', $t) < $day) $t = strtotime(date('Y-m-01', $t) . ' -1 day');
   return date('Y-m-d', $t);
 }
-function isRepeat($code): bool { return (bool)preg_match('/^[dwmy]\d+$/', (string)$code); }
+function isRepeat($code): bool { return (bool)preg_match('/^([dwmy]\d+|mw[1-4L])$/', (string)$code); }
 function nextRepeat(string $iso, string $code): string {
   if (!isRepeat($code)) return '';
   $today = date('Y-m-d');

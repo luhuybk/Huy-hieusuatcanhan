@@ -5,6 +5,7 @@
 
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
             dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
+            dashtab:'today', showDone:false,
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -311,7 +312,8 @@ const taskFields = () => [
   {k:'due',   label:'Hạn', type:'date', half:true},
   {k:'mins',  label:'Ước tính (phút)', type:'number', half:true, ph:'30',
    hint:'để xếp việc lên dòng thời gian hôm nay; bỏ trống thì tạm tính 30'},
-  {k:'repeat',label:'Lặp lại', type:'select', half:true, opts:Object.entries(REPEATS)},
+  {k:'repeat',label:'Lặp lại', type:'select', half:true, opts:Object.entries(REPEATS),
+   hint:'"theo thứ" lấy thứ từ chính Ngày hạn — hạn rơi vào thứ 7 thì "tuần cuối" nghĩa là thứ 7 cuối cùng của tháng. Lưu xong ngày hạn tự nhảy đúng vào mốc đó'},
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
   {k:'remindAt', label:'Nhắn Telegram lúc', type:'time', half:true,
    hint:'đúng ngày hạn, để trống thì không nhắn'},
@@ -322,6 +324,8 @@ const taskFields = () => [
 /* ô số nhập tay nên có thể ra số âm hoặc số vô lý — chặn ngay tại đây */
 function normalizeTask(v){
   v.remindBefore = Math.max(0, Math.min(60, +v.remindBefore || 0));
+  /* Nắn hạn về đúng mốc "thứ … tuần mấy" ngay lúc lưu — xem snapMonthly() */
+  v.due = snapMonthly(v.due, v.repeat);
   /* 0 = chưa ước tính, và số bậy cũng về 0 chứ không bịa ra một con số —
      giao diện phải phân biệt được "mình đoán 30" với "bạn bảo 30". */
   v.mins = cleanMins(v.mins, 0);
@@ -1938,6 +1942,8 @@ document.addEventListener('click', e => {
     case 'buildAgain': buildCheck(); render(); break;
     case 'hardReset': confirmBox('Gỡ service worker và xoá sạch bộ nhớ đệm, rồi tải lại từ máy chủ?',
       hardReset, 'Gỡ sạch & tải lại'); break;
+    case 'dashtab':  S.dashtab = id; render(); window.scrollTo(0, 0); break;
+    case 'showDone': S.showDone = !S.showDone; render(); break;
     case 'journeytab': S.journeytab = id; render(); break;
     case 'addJourney': addJourney(id); break;
     case 'splitTask':   splitTask(id); break;

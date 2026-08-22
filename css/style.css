@@ -228,10 +228,26 @@ a{color:var(--acc);text-decoration:none}
 .f.half{grid-column:auto}
 .f label{display:block;font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:5px}
 .f input,.f select,.f textarea{width:100%;padding:11px 12px;border-radius:11px;background:var(--bg3);
-  border:1px solid var(--line);outline:none}
+  border:1px solid var(--line);outline:none;
+  /* Không kế thừa font thì ô nhập lấy font mặc định của trình duyệt (13.33px,
+     khác hẳn phần còn lại), và ô số / ô giờ còn kèm widget riêng — mũi tên
+     tăng giảm, biểu tượng đồng hồ — nên cao hơn ô chọn vài pixel. Cùng một
+     hàng hai ô lệch nhau nhìn là thấy ngay. Ép cùng font và cùng chiều cao. */
+  font:inherit;font-size:14px;line-height:1.35;box-sizing:border-box}
+.f input,.f select{height:44px}
+.f textarea{height:auto}
+/* Mũi tên tăng giảm của ô số chiếm chỗ mà chẳng ai bấm trên điện thoại */
+.f input[type=number]{-moz-appearance:textfield}
+.f input[type=number]::-webkit-outer-spin-button,
+.f input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .f input:focus,.f select:focus,.f textarea:focus{border-color:var(--acc)}
 .f textarea{min-height:74px;resize:vertical}
 .f .hint{font-size:11px;color:var(--tx3);margin-top:4px}
+/* Nút gấp/mở cột "Hoàn thành" trên bảng việc */
+.col h3 .fold{margin-left:auto;background:none;border:0;color:var(--tx3);font-size:11px;
+  padding:2px 6px;cursor:pointer}
+.col h3 .fold:hover{color:var(--tx2)}
+
 .pick{display:flex;gap:6px;flex-wrap:wrap}
 .pick button{padding:8px 12px;border-radius:10px;background:var(--bg3);border:1px solid var(--line);
   font-size:13px;font-weight:600;color:var(--tx2)}

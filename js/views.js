@@ -133,16 +133,111 @@ function dashWeek(A){
        + dailyWeek(A, true);
 }
 
+/* Ba tab. Trước đây mọi thứ xếp một mạch từ trên xuống, nên hộp ghi nhanh
+   và dịp sắp tới nằm sau cả trục tuần — muốn xem phải cuộn qua nguyên một
+   màn hình, mà thứ phải cuộn mới thấy thì coi như không có. Ba tab, mỗi tab
+   một câu hỏi, và con số trên tab cho biết có đáng bấm vào không. */
+const DASH_TABS = [['today','Lịch hôm nay'], ['inbox','Ghi nhanh'], ['occ','Dịp sắp tới']];
+
+function dashSoonCount(){
+  return dueOccasions().length + allBirthdays(45).filter(x => x.d <= 14).length;
+}
+
+/* Tab 1 — sắp xếp: trục tuần, việc đang né, việc đã giao đang trễ. */
+function dashToday(A){
+  let h = feedNote() + dashWeek(A) + dashDucked(A);
+  const lcs = byArea(lateCards(), A);
+  if (lcs.length){
+    h += secHd('Việc đã giao đang trễ', `<button data-act="nav" data-id="board">Mở bảng</button>`);
+    h += lcs.slice(0, 6).map(c => `<div class="item" data-act="card" data-id="${c.id}">
+        <div class="av sm" style="background:var(--bad)">${esc(initials(c.assignee||'?'))}</div>
+        <div class="grow"><div class="t ell">${esc(c.title)}</div>
+        <div class="s">${esc(c.assignee||'chưa giao')} · ${dueText(c.due)}</div></div>
+        ${areaDot(c.areaId)}</div>`).join('');
+  }
+  /* Việc đến hạn mà KHÔNG lọt vào trục hôm nay — cùng một danh sách hiện hai
+     lần trên một màn hình là hai chỗ để lệch nhau, và hai lần phải đọc. */
+  const onBoard = new Set(todayItems(A).filter(x => x.kind === 'task').map(x => x.t.id)
+    .concat(todayUnscheduled(A).map(t => t.id)));
+  const dueRest = byArea(dueTasks(), A).filter(t => !onBoard.has(t.id));
+  if (dueRest.length){
+    h += secHd('Việc đến hạn — chưa nằm trong hôm nay');
+    h += dueRest.sort((a,b) => (a.due||'').localeCompare(b.due||'')).slice(0,8).map(taskItem).join('');
+  }
+  return h;
+}
+
+/* Tab 2 — hộp ghi nhanh, lần này hiện đủ chứ không cắt còn ba dòng. */
+function dashInbox(){
+  const inb = inboxOpen();
+  if (!inb.length) return `<div class="empty" style="padding:34px 22px">
+    <b>Hộp ghi nhanh đang trống</b>
+    Bấm ✎ trên thanh trên cùng (hoặc Ctrl+J) để ném nhanh một mẩu vào đây,
+    khỏi phải quyết định nó là việc hay ý tưởng ngay lúc đó.</div>`;
+  let h = secHd('Chờ phân loại (' + inb.length + ')',
+    `<button data-act="nav" data-id="inbox">Mở hộp đầy đủ →</button>`);
+  h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
+    Đẩy từng mẩu về đúng chỗ: việc, ý tưởng, thẻ giao việc, hay nhật ký của một người.</div>`;
+  /* Dùng thẳng thẻ của mục Ghi nhanh, kèm nguyên sáu nút phân loại: mở tab
+     ra là phân loại được luôn, không phải bấm thêm một lần nữa để sang màn
+     khác rồi mới làm được việc. */
+  h += inb.map(inboxCard).join('');
+  return h;
+}
+
+/* Tab 3 — người và dịp: thứ có ngày giờ riêng, lỡ là lỡ hẳn. */
+function dashOcc(A){
+  let h = '';
+  const occs = dueOccasions();
+  if (occs.length){
+    h += secHd('Dịp sắp tới', `<button data-act="nav" data-id="occasions">Xem tất cả</button>`);
+    h += occs.slice(0, 6).map(occasionCard).join('');
+  }
+  const bdays = allBirthdays(45);
+  if (bdays.length){
+    h += secHd('Sinh nhật sắp tới (' + bdays.length + ')');
+    h += bdays.slice(0, 10).map(x => `<div class="item"
+        data-act="${x.kind === 'staff' ? 'staffPage' : 'person'}" data-id="${x.id}">
+        <div class="av" style="background:${x.kind === 'staff' ? 'var(--acc)' : TIERS[x.tier].color}${
+          x.kind === 'staff' ? ';color:#fff' : ''}">${esc(initials(x.name))}</div>
+        <div class="grow"><div class="t ell">${esc(x.name)}</div>
+        <div class="s">${fmtDate(x.birthday)} · ${esc(x.sub)}${x.kind === 'staff' ? ' · nhân viên' : ''}</div></div>
+        <span class="chip ${x.d<=7?'warn':''}">${x.d===0?'hôm nay 🎂':'còn '+x.d+' ngày'}</span></div>`).join('');
+  }
+  /* gợi ý chạm nhẹ — chống vô tâm */
+  const touch = staleP().slice().sort((a,b) =>
+      (TIER_KEYS.indexOf(a.p.tier) - TIER_KEYS.indexOf(b.p.tier)) || (b.over - a.over)).slice(0,5);
+  if (touch.length){
+    h += secHd('Nên hỏi thăm ai');
+    h += `<div class="card" style="padding:12px">
+      <div class="dim" style="margin-bottom:10px">Những người đang cách chu kỳ chăm sóc xa nhất. Một tin nhắn là đủ.</div>
+      ${touch.map(x => `<div class="row" style="padding:7px 0">
+        ${avatar(x.p,'sm')}
+        <div class="grow"><div class="ell" style="font-weight:600;font-size:14px">${esc(x.p.name)}</div>
+        <div class="dim">${x.p.lastContact ? agoText(x.p.lastContact) : 'chưa ghi nhận lần nào'} · trễ ${x.over} ngày so với nhóm ${x.p.tier}</div></div>
+        <button class="btn sm" data-act="quickLog" data-id="${x.p.id}">Ghi nhật ký</button>
+      </div>`).join('')}
+    </div>`;
+  }
+  const debts = people().map(p => ({p, b:balance(p.id)})).filter(x => x.b.diff > 0)
+                  .sort((a,b) => b.b.diff - a.b.diff);
+  if (debts.length){
+    h += secHd('Ân tình chưa trả lại');
+    h += debts.slice(0,6).map(x => `<div class="item" data-act="person" data-id="${x.p.id}">
+        ${avatar(x.p)}<div class="grow"><div class="t ell">${esc(x.p.name)}</div>
+        <div class="s">${x.b.open} món chưa cân lại</div></div>
+        <span class="chip bad">${moneyShort(x.b.diff)}</span></div>`).join('');
+  }
+  return h || `<div class="empty" style="padding:34px 22px"><b>Chưa có dịp nào sắp tới</b>
+    Thêm ngày sinh cho người quen, hoặc tạo một dịp trong mục Dịp & Lễ.</div>`;
+}
+
 function vDash(){
   const A = S.area;
   const due   = byArea(dueTasks(), A);
-  const lcs   = byArea(lateCards(), A);
-  const bdays = allBirthdays(45);
-  const stale = staleP();
-  const debts = people().map(p => ({p, b:balance(p.id)})).filter(x => x.b.diff > 0)
-                  .sort((a,b) => b.b.diff - a.b.diff);
-  const totalDebt = debts.reduce((s,x) => s + x.b.diff, 0);
   const doing = byArea(cards().filter(c => c.col === 'doing' || c.col === 'assigned'), A);
+  const totalDebt = people().map(p => balance(p.id).diff).filter(d => d > 0)
+                      .reduce((a,b) => a + b, 0);
 
   if (!people().length && !tasks().length && !cards().length){
     return `<div class="empty" style="padding-top:60px">
@@ -162,81 +257,17 @@ function vDash(){
     <div class="stat"><div class="v" style="${totalDebt?'color:var(--bad)':''}">${moneyShort(totalDebt)}</div><div class="l">Nợ ân tình</div></div>
   </div>`;
 
-  /* Trục tuần lên trước mọi thứ khác: đây là câu hỏi mình mở app ra để hỏi. */
-  h += feedNote();
-  h += dashWeek(A);
-  h += dashDucked(A);
+  const n = {today: byArea(todayItems(A), A).filter(x => !x.done && x.kind !== 'feed').length
+                  + todayUnscheduled(A).filter(t => !taskDoneToday(t)).length,
+             inbox: inboxOpen().length,
+             occ:   dashSoonCount()};
+  h += `<div class="tabs" style="margin-top:14px">` + DASH_TABS.map(([id, lb]) =>
+    `<button class="tab ${S.dashtab === id ? 'on' : ''}" data-act="dashtab" data-id="${id}">${lb}${
+      n[id] ? `<span class="n">${n[id]}</span>` : ''}</button>`).join('') + `</div>`;
 
-  /* gợi ý chạm nhẹ — chống vô tâm */
-  const touch = stale.slice().sort((a,b) =>
-      (TIER_KEYS.indexOf(a.p.tier) - TIER_KEYS.indexOf(b.p.tier)) || (b.over - a.over)).slice(0,3);
-  if (touch.length){
-    h += secHd('Hôm nay nên hỏi thăm ai');
-    h += `<div class="card" style="padding:12px">
-      <div class="dim" style="margin-bottom:10px">Ba người đang cách chu kỳ chăm sóc xa nhất. Một tin nhắn là đủ.</div>
-      ${touch.map(x => `<div class="row" style="padding:7px 0">
-        ${avatar(x.p,'sm')}
-        <div class="grow"><div class="ell" style="font-weight:600;font-size:14px">${esc(x.p.name)}</div>
-        <div class="dim">${x.p.lastContact ? agoText(x.p.lastContact) : 'chưa ghi nhận lần nào'} · trễ ${x.over} ngày so với nhóm ${x.p.tier}</div></div>
-        <button class="btn sm" data-act="quickLog" data-id="${x.p.id}">Ghi nhật ký</button>
-      </div>`).join('')}
-    </div>`;
-  }
-
-  const inb = inboxOpen();
-  if (inb.length){
-    h += secHd('Hộp ghi nhanh chờ phân loại', `<button data-act="nav" data-id="inbox">Mở hộp</button>`);
-    h += `<div class="card" style="padding:12px">
-      ${inb.slice(0,3).map(n => `<div class="row" style="padding:6px 0">
-        <span class="sw" style="width:8px;height:8px;border-radius:3px;background:var(--warn);flex:none"></span>
-        <div class="grow ell" style="font-size:14px">${esc((n.text||'').split('\n')[0])}</div>
-        <span class="dim">${whenText(n.createdAt)}</span></div>`).join('')}
-      ${inb.length > 3 ? `<div class="dim" style="margin-top:6px">+${inb.length - 3} mẩu nữa</div>` : ''}
-    </div>`;
-  }
-
-  /* Khối này có từ trước khối "Hôm nay". Giờ hầu hết việc đến hạn đã nằm
-     trên trục hoặc trong "Chưa xếp giờ" ngay phía trên, nên chỉ giữ lại
-     phần KHÔNG lọt vào đó — cùng một danh sách hiện hai lần trên một màn
-     hình là hai chỗ để lệch nhau, và là hai lần phải đọc. */
-  const onBoard = new Set(todayItems(A).filter(x => x.kind === 'task').map(x => x.t.id)
-    .concat(todayUnscheduled(A).map(t => t.id)));
-  const dueRest = due.filter(t => !onBoard.has(t.id));
-  if (dueRest.length){
-    h += secHd('Việc đến hạn — chưa nằm trong hôm nay');
-    h += dueRest.sort((a,b) => (a.due||'').localeCompare(b.due||'')).slice(0,8).map(taskItem).join('');
-  }
-  if (lcs.length){
-    h += secHd('Việc đã giao đang trễ');
-    h += lcs.slice(0,6).map(c => `<div class="item" data-act="card" data-id="${c.id}">
-        <div class="av sm" style="background:var(--bad)">${esc(initials(c.assignee||'?'))}</div>
-        <div class="grow"><div class="t ell">${esc(c.title)}</div>
-        <div class="s">${esc(c.assignee||'chưa giao')} · ${dueText(c.due)}</div></div>
-        ${areaDot(c.areaId)}</div>`).join('');
-  }
-  const occs = dueOccasions();
-  if (occs.length){
-    h += secHd('Dịp sắp tới', `<button data-act="nav" data-id="occasions">Xem tất cả</button>`);
-    h += occs.slice(0,4).map(occasionCard).join('');
-  }
-  if (bdays.length){
-    h += secHd('Sinh nhật sắp tới');
-    h += bdays.slice(0,7).map(x => `<div class="item"
-        data-act="${x.kind === 'staff' ? 'staffPage' : 'person'}" data-id="${x.id}">
-        <div class="av" style="background:${x.kind === 'staff' ? 'var(--acc)' : TIERS[x.tier].color}${
-          x.kind === 'staff' ? ';color:#fff' : ''}">${esc(initials(x.name))}</div>
-        <div class="grow"><div class="t ell">${esc(x.name)}</div>
-        <div class="s">${fmtDate(x.birthday)} · ${esc(x.sub)}${x.kind === 'staff' ? ' · nhân viên' : ''}</div></div>
-        <span class="chip ${x.d<=7?'warn':''}">${x.d===0?'hôm nay 🎂':'còn '+x.d+' ngày'}</span></div>`).join('');
-  }
-  if (debts.length){
-    h += secHd('Ân tình chưa trả lại');
-    h += debts.slice(0,6).map(x => `<div class="item" data-act="person" data-id="${x.p.id}">
-        ${avatar(x.p)}<div class="grow"><div class="t ell">${esc(x.p.name)}</div>
-        <div class="s">${x.b.open} món chưa cân lại</div></div>
-        <span class="chip bad">${moneyShort(x.b.diff)}</span></div>`).join('');
-  }
-  return h;
+  return h + (S.dashtab === 'inbox' ? dashInbox()
+            : S.dashtab === 'occ'   ? dashOcc(A)
+            : dashToday(A));
 }
 
 /* ---------------- QUAN HỆ ---------------- */
@@ -402,7 +433,7 @@ function taskItem(t){
   const cls = t.done ? '' : d === null ? '' : d < 0 ? 'bad' : d === 0 ? 'warn' : '';
   const meta = [
     t.prio === 'high' && !t.done ? `<span class="chip bad">gấp</span>` : '',
-    t.repeat ? `<span class="chip">↻ ${esc(REPEATS[t.repeat]||'')}</span>` : '',
+    t.repeat ? `<span class="chip">↻ ${esc(repeatText(t))}</span>` : '',
     t.remindAt && !t.done && !snoozeOn(t) ? `<span class="chip">🔔 ${esc(t.remindAt)}</span>` : '',
     !t.done && snoozeOn(t) ? `<span class="chip warn">⏰ ${esc(snoozeText(t.snoozeUntil))}</span>` : '',
     t.streak > 1 ? `<span class="chip"><span class="streak">🔥 ${t.streak}</span></span>` : '',
@@ -437,7 +468,14 @@ function vWork(){
   h += sec('Hôm nay', byPrio(g.today));
   h += sec('Sắp tới', g.soon.sort((a,b) => a.due.localeCompare(b.due)));
   h += sec('Không hạn', byPrio(g.none));
-  if (done.length) h += secHd('Đã xong (' + done.length + ')') + done.slice(0,15).map(taskItem).join('');
+  /* Mặc định thu gọn. Việc đã xong không cần đọc lại mỗi lần mở màn hình,
+     mà để nguyên thì nó dài hơn cả phần việc còn phải làm — thứ duy nhất
+     mình vào đây để xem. Con số vẫn ở tiêu đề nên không mất dấu. */
+  if (done.length){
+    h += secHd('Đã xong (' + done.length + ')',
+      `<button data-act="showDone">${S.showDone ? '▲ Thu gọn' : '▼ Hiện'}</button>`);
+    if (S.showDone) h += done.slice(0, 30).map(taskItem).join('');
+  }
   return h;
 }
 
@@ -527,9 +565,15 @@ function vBoard(){
 
   h += `<div class="board">` + COLS.map((col, ci) => {
     const cs = list.filter(c => c.col === col.id);
+    /* Cột Hoàn thành chỉ để yên tâm là việc đã xong, không phải để đọc —
+       thu gọn sẵn, bấm mới mở. */
+    const fold = col.id === 'done' && cs.length && !S.showDone;
     return `<div class="col">
-      <h3>${esc(col.label)}<span class="n">${cs.length}</span></h3>
-      ${cs.map(c => {
+      <h3>${esc(col.label)}<span class="n">${cs.length}</span>${
+        col.id === 'done' && cs.length ? `<button class="fold" data-act="showDone"
+          title="${S.showDone ? 'Thu gọn' : 'Hiện các thẻ đã xong'}">${S.showDone ? '▲' : '▼'}</button>` : ''}</h3>
+      ${fold ? `<button class="btn sm full" style="background:transparent;color:var(--tx3)"
+          data-act="showDone">▼ Hiện ${cs.length} thẻ đã xong</button>` : cs.map(c => {
         const late = c.due && c.col !== 'done' && dayDiff(c.due) < 0;
         return `<div class="kc">
           <div data-act="card" data-id="${c.id}">

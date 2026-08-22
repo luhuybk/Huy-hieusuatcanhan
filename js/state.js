@@ -29,17 +29,31 @@ const LOG_KINDS = {
   help:'🤝 Giúp đỡ', gift:'🎁 Quà cáp', event:'🎉 Sự kiện', other:'• Khác'
 };
 
+/* Nhóm "mw…" là hàng tháng theo THỨ chứ không theo ngày: thứ 7 cuối cùng
+   của tháng không rơi vào một ngày cố định nên không cộng ngày ra được.
+   Thứ lấy từ chính Ngày hạn — chọn thứ ở đây nữa là hai ô nói hai chuyện
+   khác nhau về cùng một việc, và sớm muộn cũng có lần chúng cãi nhau. */
 const REPEATS = {
   '':        'Không lặp',
   'd1':      'Hàng ngày',
   'd2':      'Cách 1 ngày',
   'w1':      'Hàng tuần',
   'w2':      '2 tuần một lần',
-  'm1':      'Hàng tháng',
+  'm1':      'Hàng tháng — đúng ngày',
+  'mw1':     'Hàng tháng — tuần 1 (theo thứ)',
+  'mw2':     'Hàng tháng — tuần 2 (theo thứ)',
+  'mw3':     'Hàng tháng — tuần 3 (theo thứ)',
+  'mw4':     'Hàng tháng — tuần 4 (theo thứ)',
+  'mwL':     'Hàng tháng — tuần cuối (theo thứ)',
   'm3':      'Mỗi quý',
   'm6':      'Nửa năm',
   'y1':      'Hàng năm'
 };
+const ORD_NAME = {'1':'đầu tiên', '2':'thứ hai', '3':'thứ ba', '4':'thứ tư', 'L':'cuối cùng'};
+function monthlyOrd(code){
+  const m = /^mw([1-4L])$/.exec(String(code == null ? '' : code));
+  return m ? m[1] : '';
+}
 
 const AREA_COLORS = ['#5b8cff','#3ddc97','#ffb84d','#ff6b6b','#8b5cff','#4dd4d4','#ff8fd1','#a3b18a'];
 
@@ -107,13 +121,56 @@ function addMonths(iso, n){
   if (d.getDate() < day) d.setDate(0);       // 31/1 + 1 tháng → 28/2
   return ymd(d);
 }
+/* Ngày của "thứ <wd> lần thứ <ord>" trong tháng (mo tính từ 0 như Date).
+   ord = '1'..'4' hoặc 'L' cho lần cuối cùng. */
+function nthWeekday(y, mo, wd, ord){
+  if (ord === 'L'){
+    const d = new Date(y, mo + 1, 0);                      /* ngày cuối tháng */
+    d.setDate(d.getDate() - ((d.getDay() - wd + 7) % 7));
+    return ymd(d);
+  }
+  const d = new Date(y, mo, 1);
+  d.setDate(1 + ((wd - d.getDay() + 7) % 7) + (Number(ord) - 1) * 7);
+  /* tháng nào cũng có đủ bốn lần mỗi thứ, nhưng cứ chặn cho chắc */
+  return d.getMonth() === mo ? ymd(d) : null;
+}
 /* một bước lặp, không quan tâm quá khứ hay tương lai */
 function stepRepeat(iso, code){
+  const ord = monthlyOrd(code);
+  if (ord){
+    const d = new Date(String(iso).slice(0,10) + 'T00:00:00');
+    const nx = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    return nthWeekday(nx.getFullYear(), nx.getMonth(), d.getDay(), ord) || addMonths(iso, 1);
+  }
   const unit = code[0], n = +code.slice(1) || 1;
   return unit === 'd' ? addDays(iso, n)
        : unit === 'w' ? addDays(iso, 7*n)
        : unit === 'm' ? addMonths(iso, n)
        : addMonths(iso, 12*n);
+}
+/* Chọn "tuần cuối" mà ngày hạn đang ở giữa tháng thì hạn phải nhảy về đúng
+   mốc đó ngay lúc lưu. Không nắn thì mốc ĐẦU TIÊN đã sai, và vì mọi mốc sau
+   đều đếm từ nó nên cả chuỗi lệch một nhịp mà nhìn vào không thấy vì sao. */
+function snapMonthly(iso, code){
+  const ord = monthlyOrd(code), day = String(iso || '').slice(0,10);
+  if (!ord || day.length < 10) return iso;
+  const d = new Date(day + 'T00:00:00'), wd = d.getDay();
+  const here = nthWeekday(d.getFullYear(), d.getMonth(), wd, ord);
+  if (here && here >= day) return here;
+  const nx = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return nthWeekday(nx.getFullYear(), nx.getMonth(), wd, ord) || iso;
+}
+/* Nhãn đọc được: "Thứ 7 cuối cùng hằng tháng" chứ không phải "mwL". Thứ suy
+   ra từ ngày hạn nên phải có việc mới nói được, không chỉ có mã. */
+function repeatText(t){
+  const code = t && t.repeat;
+  if (!code) return '';
+  const ord = monthlyOrd(code);
+  if (!ord) return REPEATS[code] || '';
+  const day = String(t.due || '').slice(0,10);
+  if (day.length < 10) return REPEATS[code];
+  const wd = new Date(day + 'T00:00:00').getDay();
+  return WDAY_NAME[wd] + ' ' + ORD_NAME[ord] + ' hằng tháng';
 }
 function nextRepeat(iso, code){
   if (!code) return null;
@@ -205,7 +262,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-21.11';
+const APP_BUILD = '2026-08-21.12';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
