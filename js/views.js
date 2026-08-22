@@ -1415,17 +1415,24 @@ function chkHead(done, total){
 
 /* Hàng của lịch nhập từ app khác: chỉ đọc, mang màu của nguồn. */
 function feedRow(x, cl, nowMin){
-  /* Khối gộp thì nêu đủ tên từng việc bên trong — dòng "3 việc cùng lúc" mà
-     không nói là ba việc nào thì gộp xong lại phải mở app kia ra xem. */
-  const many = x.n > 1;
+  /* Khối gộp phải mở ra thành từng dòng con, mỗi dòng đủ giờ, tên và số phút.
+     Dồn cả ba vào một dòng "3 việc cùng lúc" là gộp kiểu giấu bớt: nhìn vào
+     không biết việc nào, lại phải mở app kia ra xem. */
+  const parts = x.n > 1 ? (x.parts || []) : [];
   return chkRow({
     id:x.id, tick:'', open:'', done:false, time:min2hhmm(x.start),
     box:`<span class="cb ro" title="Lịch của app khác — tick bên đó"><i
       style="background:${esc(x.color)}"></i></span>`,
     dot:'', title:x.title, state:chkState(x, nowMin),
     sub:`${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · từ <b>${esc(x.src)}</b>${
-      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
-      many ? `<br>${esc((x.parts || []).join(' · '))}` : ''}`
+      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}`,
+    foot: parts.length ? `<div class="subs">` + parts.map(pt =>
+      `<div class="sub1">
+        <span class="sw" style="background:${esc(x.color)}"></span>
+        <span class="hh">${esc(min2hhmm(pt.start))}</span>
+        <span class="grow ell">${esc(pt.title)}</span>
+        <span class="dim">${fmtDur(pt.mins)}</span>
+      </div>`).join('') + `</div>` : ''
   });
 }
 function dailyRow(x, clash, nowMin){

@@ -337,7 +337,8 @@ function feedMerge(array $list): array {
   foreach ($list as $x) $bySrc[(string)($x['feed'] ?? '')][] = $x;
   $out = [];
   foreach ($bySrc as $arr) {
-    usort($arr, fn($a, $b) => [$a['start'], $a['mins']] <=> [$b['start'], $b['mins']]);
+    /* cùng giờ thì việc dài nhất lên đầu — nó là cái neo của khung giờ đó */
+    usort($arr, fn($a, $b) => [$a['start'], -$a['mins']] <=> [$b['start'], -$b['mins']]);
     $cur = null;
     $flush = function () use (&$cur, &$out) {
       if ($cur === null) return;

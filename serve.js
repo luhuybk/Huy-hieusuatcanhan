@@ -114,7 +114,7 @@ function feedMerge(list){
   list.forEach(x => { const k = x.feed || ''; if (!bySrc.has(k)) bySrc.set(k, []); bySrc.get(k).push(x); });
   const out = [];
   bySrc.forEach(arr => {
-    arr.sort((a,b) => a.start - b.start || a.mins - b.mins);
+    arr.sort((a,b) => a.start - b.start || b.mins - a.mins);   /* dài nhất lên đầu */
     let cur = null;
     const flush = () => {
       if (!cur) return;

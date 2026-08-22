@@ -206,6 +206,21 @@ Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa 
 
 ### Công việc
 - **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn. Mỗi việc có ô **Ước tính (phút)**; việc đến hạn mà có đặt giờ nhắc sẽ hiện luôn trên dòng thời gian của tab [Việc hằng ngày](#việc-hằng-ngày).
+
+#### Thêm việc: app chỉ luôn chỗ nào còn trống
+
+Trong form thêm việc có ô **Khung giờ còn trống**. Điền **Ngày hạn** và **Ước tính (phút)** là nó hiện ngay mấy khung nhét vừa việc đó — bấm một khung là điền luôn vào ô *Nhắn Telegram lúc*, khỏi phải mở lịch ra dò rồi gõ tay.
+
+Vài luật nhỏ để mấy nút đó thật sự dùng được:
+
+- Tính theo **ngày hạn bạn vừa chọn**, kể cả ngày ngoài tuần này — và tính lại mỗi lần bạn đổi ngày hoặc đổi số phút.
+- Hôm nay thì **chỉ tính từ bây giờ trở đi**; chỗ trống hồi 9 giờ sáng đâu còn nhét được gì.
+- **Rải ra chứ không dồn một cục.** Một ngày trống trơn thì gợi ý cách nhau ít nhất hai tiếng và rơi vào mốc `:00` / `:30` — năm mốc cách nhau năm phút thì chọn cái nào cũng như nhau, mà nhìn thì rối.
+- Không còn chỗ nào đủ, ngày đã qua, hay ngày đó đang đặt là ngày nghỉ — nói thẳng ra, không hiện một dãy nút vô nghĩa.
+
+#### Lưu xong thì không bị kéo đi đâu cả
+
+Việc mới rơi vào **tuần đang xem** và bạn đang ở *Tổng quan* hay *Hằng ngày*? App **ở nguyên đó**, chỉ nhảy trục sang đúng ngày của việc vừa thêm và báo một dòng — để bạn kéo nó vào chỗ phù hợp ngay. Nhảy sang mục Công việc lúc đó là kéo bạn ra khỏi đúng chỗ bạn vừa định xếp nó vào. Việc rơi ngoài tuần này thì vẫn nhảy sang **Công việc** như cũ, vì ở lại cũng chẳng thấy nó đâu.
 - **Việc lặp lại** — hàng ngày, cách ngày, hàng tuần, 2 tuần, hàng tháng, mỗi quý, nửa năm, hàng năm. Tick xong là hạn tự nhảy sang kỳ kế tiếp, kèm **chuỗi 🔥** đếm số kỳ làm đúng hẹn liên tiếp (bỏ lỡ thì chuỗi về 0). Nếu bỏ lỡ nhiều kỳ, app nhảy thẳng tới mốc sắp tới chứ không dồn việc.
 
 #### Hàng tháng theo thứ — "thứ 7 cuối cùng của tháng"
@@ -399,7 +414,17 @@ Một chiều và chỉ đọc: khối lịch ngoài **không kéo được, kh�
 
 Bên nhật ký giao dịch, 10:00 có *Dời SL · 5p*, *Kiểm tra setup · 30p* và *Symbol theo dõi · 5p*. Đó không phải ba việc đá nhau — đó là **một lần ngồi xuống làm ba việc**. Để nguyên thì trục đầy khối chồng lên nhau và con số *⚠ chồng giờ* đếm toàn chuyện không có thật (đã từng lên tới **112 lượt một tuần**), khiến cảnh báo thật lẫn vào đó không ai còn nhìn.
 
-Nên những mốc **cùng một nguồn** mà **thực sự chồng giờ** nhau được gộp thành một khối: `10:00 · 3 việc cùng lúc · 30p`, hàng bên dưới kể đủ tên ba việc, rê chuột lên khối cũng thấy.
+Nên những mốc **cùng một nguồn** mà **thực sự chồng giờ** nhau được gộp thành một khối — nhưng gộp mà giấu bớt thì cũng vô dụng, nên khối đó **mở ra thành từng dòng con**, mỗi dòng đủ giờ, tên và số phút của riêng nó:
+
+```
+■ 10:00  3 việc cùng lúc                              quá giờ
+  30p → 10:30 · từ Nhật ký giao dịch
+  │ ■ 10:00  Kiểm tra setup · Forex – H3          30p
+  │ ■ 10:00  Dời SL · Forex – H3                   5p
+  │ ■ 10:00  Symbol theo dõi · FX – H3             5p
+```
+
+Cùng giờ thì **việc dài nhất lên đầu** — nó là cái neo của khung giờ đó, mấy mốc 5 phút chỉ là phụ. Trên trục vẫn là **một** khối (chúng chiếm cùng một khoảng thật), rê chuột lên thấy đủ danh sách.
 
 Hai điều kiện đó đều cần:
 

@@ -118,6 +118,12 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
         ? opts.map(o => `<button type="button" data-pk="${esc(o[0])}" class="${sel.includes(o[0])?'on':''}">${esc(o[1])}</button>`).join('')
         : `<span class="dim">Chưa có mục nào để chọn.</span>`) + `</div>`;
     }
+    else if (f.type === 'slots'){
+      /* Chỉ là chỗ trống lúc dựng — nội dung do fillSlots() điền vào, và điền
+         lại mỗi lần đổi ngày hay số phút. Không thể dựng sẵn: lúc mở form
+         chưa biết mình sẽ chọn ngày nào. */
+      inp = `<div class="slotpick" id="f_${f.k}"></div>`;
+    }
     else if (f.list && f.list.length){
       /* Gõ tự do vẫn được — danh sách chỉ để gợi ý. Dùng select thì mỗi lần
          gặp một gốc chưa có tên là phải đi sửa code, mà gốc thì mỗi người
@@ -155,6 +161,48 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
     if (mic){ e.preventDefault(); Voice.toggle(document.getElementById(mic.dataset.mic)); }
   });
 
+  /* Gợi ý khung giờ trống: đọc ngày + số phút đang điền, dựng lại mấy nút.
+     Chạy lại mỗi lần hai ô đó đổi, chứ tính một lần lúc mở form thì lúc đó
+     mình còn chưa chọn ngày nào cả. */
+  const slotF = fields.filter(f => f.type === 'slots');
+  if (slotF.length){
+    const fill = () => slotF.forEach(f => {
+      const box = document.getElementById('f_' + f.k);
+      const tEl = document.getElementById('f_' + (f.target || 'remindAt'));
+      if (!box) return;
+      const day  = (document.getElementById('f_' + (f.from || 'due')) || {}).value || '';
+      const mins = cleanMins((document.getElementById('f_' + (f.mins || 'mins')) || {}).value, 30);
+      const cur  = tEl ? tEl.value : '';
+      if (!day){ box.innerHTML = `<span class="dim">Chọn ngày hạn trước đã.</span>`; return; }
+      if (String(day).slice(0,10) < today()){
+        box.innerHTML = `<span class="dim">Ngày này đã qua rồi.</span>`; return;
+      }
+      if (winIsOff(new Date(String(day).slice(0,10) + 'T00:00:00').getDay())){
+        box.innerHTML = `<span class="dim">Ngày này đang đặt là ngày nghỉ.</span>`; return;
+      }
+      const list = freeSlots(day, mins, 5);
+      box.innerHTML = list.length
+        ? list.map(g => `<button type="button" data-slot="${min2hhmm(g.start)}"
+            class="${cur === min2hhmm(g.start) ? 'on' : ''}"
+            title="Khoảng này trống ${fmtDur(g.room)}"><b>${min2hhmm(g.start)}</b></button>`).join('')
+          + `<span class="dim">còn trống ${fmtDur(freeMins(dateItems(day),
+              new Date(String(day).slice(0,10) + 'T00:00:00').getDay()))} trong ngày</span>`
+        : `<span class="dim">Ngày đó không còn khoảng nào đủ ${fmtDur(mins)} — chọn ngày khác, hoặc cứ để trống giờ.</span>`;
+    });
+    fill();
+    $('#theform').addEventListener('input', fill);
+    $('#theform').addEventListener('change', fill);
+    $('#theform').addEventListener('click', e => {
+      const b = e.target.closest('[data-slot]');
+      if (!b) return;
+      e.preventDefault();
+      const f = slotF[0];
+      const tEl = document.getElementById('f_' + (f.target || 'remindAt'));
+      if (tEl){ tEl.value = b.dataset.slot; }
+      fill();
+    });
+  }
+
   $('#theform').addEventListener('submit', e => {
     e.preventDefault();
     Voice.stop();
@@ -169,6 +217,7 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
         out[f.k] = Array.from(el.querySelectorAll('.on')).map(b => +b.dataset.pk);
         continue;
       }
+      if (f.type === 'slots') continue;   /* chỗ gợi ý, không phải một trường */
       let v = el.value.trim();
       if (f.type === 'money')  v = parseMoney(v);
       if (f.type === 'number') v = v === '' ? 0 : +v;
@@ -320,6 +369,9 @@ const taskFields = () => [
    hint:'đúng ngày hạn, để trống thì không nhắn'},
   {k:'remindBefore', label:'Báo trước (ngày)', type:'number', half:true, ph:'0',
    hint:'thêm một tin sớm cho việc lớn; 0 = chỉ nhắc đúng ngày hạn'},
+  {k:'slotPick', label:'Khung giờ còn trống', type:'slots', from:'due', mins:'mins',
+   target:'remindAt',
+   hint:'tính theo ngày hạn và số phút ở trên — bấm một khung là điền luôn vào ô giờ'},
   {k:'note',  label:'Ghi chú', type:'textarea'}
 ];
 /* ô số nhập tay nên có thể ra số âm hoặc số vô lý — chặn ngay tại đây */
@@ -337,9 +389,20 @@ function addTask(due){
     values:{prio:'mid', areaId:S.area==='all'?'':S.area, due: due || ''},
     onSave(v){
       normalizeTask(v);
-      db.tasks.push(stamp(Object.assign({done:false, streak:0, bestStreak:0, doneLog:[], createdAt:today()}, v)));
+      const t = stamp(Object.assign({done:false, streak:0, bestStreak:0, doneLog:[],
+                                     createdAt:today()}, v));
+      db.tasks.push(t);
       save();
-      if (S.view !== 'calendar') S.view = 'work';
+      /* Việc rơi vào tuần đang xem thì nó đã nằm sẵn trên trục ngay trước mắt
+         — nhảy sang mục Công việc lúc đó là kéo mình ra khỏi đúng chỗ mình
+         vừa định xếp nó vào. Chỉ nhảy khi việc mới KHÔNG hiện ở đây. */
+      const day = String(t.due || '').slice(0,10);
+      const onWeek = day && WDAYS.some(([wd]) => wdDate(wd) === day);
+      if (onWeek && (S.view === 'dash' || S.view === 'daily')){
+        S.dailyDay = new Date(day + 'T00:00:00').getDay();
+        toast(t.title + ' → ' + WDAY_NAME[S.dailyDay] + ' ' + fmtDate(day) +
+              (t.remindAt ? ' · ' + t.remindAt : ' · chưa xếp giờ, kéo vào chỗ trống'));
+      } else if (S.view !== 'calendar') S.view = 'work';
       render();
     }});
 }

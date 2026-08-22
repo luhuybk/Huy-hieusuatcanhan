@@ -262,7 +262,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-22.1';
+const APP_BUILD = '2026-08-22.2';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -1079,11 +1079,17 @@ function feedMerge(list){
   });
   const out = [];
   bySrc.forEach(arr => {
-    arr.sort((a, b) => a.start - b.start || a.mins - b.mins);
+    /* Cùng giờ thì việc DÀI NHẤT lên đầu — nó là cái neo của khung giờ đó,
+       mấy mốc 5 phút chỉ là phụ. Xếp ngắn trước thì đọc ba dòng mới tới việc
+       thật sự chiếm cả nửa tiếng. */
+    arr.sort((a, b) => a.start - b.start || b.mins - a.mins);
     let cur = null;
     const flush = () => {
       if (!cur) return;
       const n = cur.parts.length;
+      /* parts giữ nguyên cả mốc con (giờ, số phút, tên) chứ không chỉ tên:
+         "3 việc cùng lúc" mà không nói là ba việc nào, mỗi việc mấy phút,
+         thì gộp xong lại phải mở app kia ra xem — gộp kiểu đó là giấu bớt. */
       out.push(Object.assign({}, cur.first, {
         id: n > 1 ? cur.first.id + '_g' : cur.first.id,
         start: cur.start, mins: cur.end - cur.start,
@@ -1094,11 +1100,11 @@ function feedMerge(list){
     arr.forEach(x => {
       if (cur && x.start < cur.end){
         cur.end = Math.max(cur.end, x.start + x.mins);
-        cur.parts.push(x.title);
+        cur.parts.push(x);
         return;
       }
       flush();
-      cur = {first:x, start:x.start, end:x.start + x.mins, parts:[x.title]};
+      cur = {first:x, start:x.start, end:x.start + x.mins, parts:[x]};
     });
     flush();
   });
@@ -1194,6 +1200,58 @@ function outsideWin(items, wd){
    đã 15:00 thì chẳng để làm gì. Ngày mai trở đi lấy trọn cửa sổ, ngày đã
    qua thì thôi. Trả về null khi ngày đó không còn chỗ nào đủ rộng. */
 const snap5up = m => Math.ceil(m / 5) * 5;
+/* Mọi thứ đã chiếm giờ trong một ngày bất kỳ — kể cả ngày ngoài tuần này.
+   dayAll() chỉ đi được trong tuần hiện tại vì nó suy ngày từ thứ; hàm này
+   đi từ ngày thật nên đặt hạn tháng sau vẫn xem được ngày đó đã có gì. */
+function dateItems(dstr, areaId){
+  const day = String(dstr || '').slice(0,10);
+  if (day.length < 10) return [];
+  const wd = new Date(day + 'T00:00:00').getDay();
+  const A = areaId === undefined ? 'all' : areaId;
+  const out = dayItems(wd, A).filter(x => x.on).map(x => Object.assign({kind:'rem'}, x));
+  byArea(tasks(), A).forEach(t => {
+    if (t.done || String(t.due || '').slice(0,10) !== day) return;
+    const st = hhmm2min(t.remindAt);
+    if (st !== null) out.push({kind:'task', id:'t_' + t.id, t, start:st, mins:taskMins(t),
+                               on:true, title:t.title || 'Việc cần làm'});
+  });
+  feedDay(wd, day).forEach(x => out.push(x));
+  return out.sort((a,b) => a.start - b.start);
+}
+/* Mấy khung còn nhét vừa một việc dài `mins` phút trong ngày `dstr`.
+   Lấy MỞ ĐẦU của từng khoảng hở chứ không cắt một khoảng lớn thành năm mốc
+   dính nhau — năm mốc cách nhau 30 phút trong cùng một buổi thì chọn cái nào
+   cũng như nhau, mà nhìn thì rối. Rải ra sáng/chiều/tối mới là gợi ý. */
+function freeSlots(dstr, mins, max, areaId){
+  const day = String(dstr || '').slice(0,10);
+  if (day.length < 10) return [];
+  const wd = new Date(day + 'T00:00:00').getDay();
+  if (workWindow(wd).off) return [];
+  const t0 = today();
+  if (day < t0) return [];
+  const need = cleanMins(mins, 30);
+  const d = new Date();
+  const floor = day === t0 ? snap5up(d.getHours() * 60 + d.getMinutes()) : 0;
+  const cap = max || 5;
+  const out = [];
+  /* Làm tròn lên mốc :00 hoặc :30 — không ai hẹn việc lúc 12:47 */
+  const round = m => { const r = m % 30; return r ? m + (30 - r) : m; };
+  for (const g of dayGaps(dateItems(day, areaId), wd, 5)){
+    let from = Math.max(g.from, floor), n = 0;
+    while (g.to - from >= need && n < 3 && out.length < cap){
+      out.push({start:from, room:g.to - from});
+      n++;
+      /* Mốc kế tiếp trong cùng khoảng phải cách xa ra: hai gợi ý cách nhau
+         năm phút thì chọn cái nào cũng như nhau, mà nhìn thì rối. Một buổi
+         trống cả ngày nên rải sáng / trưa / chiều chứ đừng dồn một cục. */
+      const nxt = round(from + Math.max(need, 120));
+      if (nxt <= from) break;
+      from = nxt;
+    }
+    if (out.length >= cap) break;
+  }
+  return out;
+}
 function nextFreeSlot(items, mins, wd){
   const d = new Date(), w = wd === undefined ? d.getDay() : Number(wd);
   const dstr = wdDate(w), t0 = today();
