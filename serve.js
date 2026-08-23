@@ -987,7 +987,8 @@ function webhook(req, res, body){
       }
     }
     console.log('[telegram thử · webhook] ' + data + ' → ' +
-      (!ok ? 'không tìm thấy' : already ? 'hôm nay đã tick rồi' : 'ghi nhận xong hôm nay'));
+      (!ok ? 'không tìm thấy' : already ? 'đã xong hôm nay từ trước, gỡ nút xuống'
+                                        : 'ghi nhận xong hôm nay'));
     return send({});
   }
 
@@ -1023,12 +1024,19 @@ function webhook(req, res, body){
 
   if (act){
     const row = db().prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?').get(kind, id);
-    let ok = false, until = '', rolled = '';
+    let ok = false, until = '', rolled = '', already = false;
     if (row){
       const item = JSON.parse(row.data);
       if (item && !item.deleted){
         const now = iso();
-        if (act === 'done'){
+        /* Đã xong rồi thì bấm nữa không ghi thêm gì — bản song sinh của luật
+           trong api/webhook.php. Không chặn thì việc lặp lại bị cộng hai lần
+           vào nhật ký và hạn nhảy thêm một kỳ nữa. */
+        if (act === 'done')
+          already = kind !== 'tasks' ? item.col === 'done'
+                  : (isRepeat(item.repeat) ? taskDoneTodayJs(item, today_()) : !!item.done);
+        if (already){ ok = true; }
+        else if (act === 'done'){
           /* việc lặp lại: xong kỳ này thì hạn nhảy kỳ sau, KHÔNG done vĩnh viễn */
           if (kind === 'tasks' && isRepeat(item.repeat)){
             const due = String(item.due || '').slice(0,10);
@@ -1047,14 +1055,17 @@ function webhook(req, res, body){
           until = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
           item.snoozeUntil = until;   // chỉ dời nhắc, hạn chót giữ nguyên
         }
-        item.updatedAt = now;
-        db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
-            .run(JSON.stringify(item), now, kind, id);
-        ok = true;
+        if (!already){
+          item.updatedAt = now;
+          db().prepare('UPDATE items SET data=?, updated_at=? WHERE kind=? AND item_id=?')
+              .run(JSON.stringify(item), now, kind, id);
+          ok = true;
+        }
       }
     }
     console.log('[telegram thử · webhook] ' + data + ' → ' +
-      (!ok ? 'không tìm thấy' : act !== 'done' ? 'dời tới ' + until
+      (!ok ? 'không tìm thấy' : already ? 'đã xong từ trước, không ghi gì thêm'
+       : act !== 'done' ? 'dời tới ' + until
        : rolled ? 'xong kỳ này, lần tới ' + rolled : 'đánh dấu xong'));
   }
   send({});

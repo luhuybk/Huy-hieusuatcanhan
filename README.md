@@ -925,6 +925,18 @@ Lời nhắc lặp lại thì có nút **✅ Xong hôm nay** thay cho bộ nút 
 
 **Việc lặp lại bấm Xong là xong kỳ này, không phải xong hẳn.** Y như tick trong app: hạn nhảy sang kỳ sau, chuỗi 🔥 cộng thêm một, và Telegram trả lời *"Xong kỳ này · lần tới 18/08 · chuỗi 5 🔥"*. Bỏ lỡ nhiều kỳ thì hạn nhảy thẳng tới mốc tương lai gần nhất chứ không dồn lại.
 
+#### Tick ở đâu cũng được, nút tự gỡ xuống
+
+Bạn làm xong việc rồi tick trong app. Tin trên Telegram thì vẫn nằm đó với nguyên nút **✅ Xong** — và lần sau mở điện thoại lên bạn sẽ bấm lại, bấm vào chỗ đã xong từ lâu.
+
+Nên mỗi tin có nút đều được nhớ lại `message_id` cùng nội dung của nó (bảng `tgmsg`, tự dọn sau 30 ngày). Tick ở **bất kỳ đâu** — trong app hay trên Telegram — máy chủ sửa lại đúng tin đó, thêm dòng `✅ Xong hôm nay — tick trong app`, và **bỏ bộ nút đi**. Xoá bản ghi trong app cũng vậy: tin cũ ghi `🗑 Đã xoá trong app`.
+
+Khoá nhớ tin cố ý không mang giờ, chỉ có loại + id + ngày: trong một ngày gửi lại mấy lần thì tin mới đè lên tin cũ, và tin mới nhất mới là tin đang nằm trên màn hình.
+
+Gọi Telegram nằm **ngoài** transaction ghi dữ liệu và chỉ chờ 6 giây: mạng chậm thì cùng lắm là nút nằm lại, chứ không được làm hỏng hay làm treo lượt đồng bộ. Mỗi lượt gỡ nhiều nhất 8 tin, để lúc đẩy cả kho lên một lượt không kẹt ở đây.
+
+**Bấm Xong hai lần thì lần sau không ghi gì thêm.** Trước đây không có chốt này: một việc lặp lại đã tick trong app mà bấm thêm nút trên Telegram là nhật ký có hai dòng cùng ngày, chuỗi 🔥 tăng khống, và hạn nhảy thêm một kỳ nữa — bấm ba lần là mất hai tuần mà nhìn vào không hiểu vì sao. Giờ Telegram trả lời *"Đã xong hôm nay lúc 10:15 ✓"* và gỡ nút xuống, dữ liệu giữ nguyên.
+
 Cần tên miền chạy **https** (Telegram không gọi ngược về địa chỉ http). Khi bấm nút: máy chủ ghi thẳng vào cơ sở dữ liệu, trả lời bằng một thông báo nhỏ ("Đã đánh dấu xong ✓" / "Đã dời tới 18:03 17/08"), và sửa lại tin nhắn gốc để bạn biết đã bấm rồi. Chỉ nút bấm từ đúng group đã cấu hình mới có tác dụng, người khác có link webhook cũng không đụng được vào dữ liệu của bạn.
 
 ### Ghi nhanh thẳng từ Telegram

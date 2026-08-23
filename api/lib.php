@@ -83,6 +83,9 @@ function db(): PDO {
   $pdo->exec('CREATE TABLE IF NOT EXISTS conf (k TEXT PRIMARY KEY, v TEXT)');
   /* đã gửi rồi thì thôi, tránh cron chạy lại làm gửi trùng */
   $pdo->exec('CREATE TABLE IF NOT EXISTS sent (k TEXT PRIMARY KEY, at INTEGER)');
+  /* tin đã gửi kèm nút bấm — nhớ message_id để sau còn gỡ nút xuống */
+  $pdo->exec('CREATE TABLE IF NOT EXISTS tgmsg (
+      k TEXT PRIMARY KEY, msg INTEGER, txt TEXT, at INTEGER)');
   return $pdo;
 }
 
@@ -997,6 +1000,53 @@ function markSent(string $key): void {
   db()->prepare('DELETE FROM sent WHERE at < ?')->execute([time() - 30 * 86400]);
 }
 
+/* ---- nhớ tin đã gửi, để sau còn gỡ nút xuống ----
+   Tick xong trong app mà tin trên Telegram vẫn còn nguyên nút "Xong" thì
+   lần sau mở điện thoại ra sẽ bấm lại — bấm vào chỗ đã xong từ lâu. Nên mỗi
+   tin có nút đều nhớ lại message_id cùng nội dung của nó; tick ở đâu cũng
+   được, máy chủ sửa lại đúng tin đó và bỏ nút đi.
+   Khoá cố ý KHÔNG mang giờ: trong ngày gửi lại mấy lần thì tin mới đè lên
+   tin cũ, và tin mới nhất mới là tin đang nằm trên màn hình. */
+function tgMsgKey(string $kind, string $id, ?string $day = null): string {
+  return $kind . ':' . $id . ':' . ($day ?? date('Y-m-d'));
+}
+function tgRemember(string $key, array $res, string $text): void {
+  $id = $res['result']['message_id'] ?? null;
+  if (empty($res['ok']) || !$id) return;
+  db()->prepare('INSERT OR REPLACE INTO tgmsg (k, msg, txt, at) VALUES (?,?,?,?)')
+      ->execute([$key, (int)$id, $text, time()]);
+  db()->prepare('DELETE FROM tgmsg WHERE at < ?')->execute([time() - 30 * 86400]);
+}
+function tgForget(string $key): void {
+  db()->prepare('DELETE FROM tgmsg WHERE k = ?')->execute([$key]);
+}
+/* Sửa tin cũ: thêm dòng kết vào cuối và bỏ bộ nút (không gửi kèm
+   reply_markup là Telegram gỡ nút xuống). Quên khoá ngay từ đầu, để hai
+   lần tick sát nhau không bắn hai lệnh sửa giống hệt lên Telegram. */
+function tgSettle(string $key, string $note): bool {
+  $token = (string)confGet('tg_token', '');
+  if ($token === '') return false;
+  $st = db()->prepare('SELECT msg, txt FROM tgmsg WHERE k = ?');
+  $st->execute([$key]);
+  $row = $st->fetch();
+  if (!$row || empty($row['msg'])) return false;
+  tgForget($key);
+  /* Chờ ngắn thôi: lượt đồng bộ của app đang đợi ở đầu kia, mà gỡ nút chỉ
+     là chuyện làm đẹp — hỏng thì lần bấm sau webhook vẫn sửa được. */
+  $res = httpPostJson("https://api.telegram.org/bot$token/editMessageText", [
+    'chat_id'    => (string)confGet('tg_chat', ''),
+    'message_id' => (int)$row['msg'],
+    'parse_mode' => 'HTML',
+    'text'       => (string)$row['txt'] . "\n\n" . $note,
+  ], 6);
+  return !empty($res['ok']);
+}
+/* Việc/lời nhắc này đã xong hôm nay chưa — dùng chung cho cả hai chiều:
+   webhook bấm nút, và app đẩy bản ghi lên. */
+function tgSettleDone(string $kind, string $id, string $note): bool {
+  return tgSettle(tgMsgKey($kind, $id), $note);
+}
+
 /* ---------------- vì sao lời nhắc chưa chạy ----------------
    Trả lời thẳng cho từng đầu việc có hẹn giờ, thay vì để người dùng
    đoán mò giữa: máy chủ chưa có dữ liệu, sai ngày hạn, chưa tới giờ,
@@ -1096,8 +1146,12 @@ function runSchedule(bool $dry = false): array {
     if (in_array($today, array_map('strval', (array)($r['doneLog'] ?? [])), true)) continue;
 
     if ($dry) { $done[] = ['reminder' => $r['title'] ?? '', 'dry' => true]; continue; }
-    $res = tgSend(remText($r), remTopic($r), tgRemButtons((string)($r['id'] ?? '')));
-    if (!empty($res['ok'])) markSent($key);
+    $rText = remText($r);
+    $res = tgSend($rText, remTopic($r), tgRemButtons((string)($r['id'] ?? '')));
+    if (!empty($res['ok'])) {
+      markSent($key);
+      tgRemember(tgMsgKey('rem', (string)($r['id'] ?? '?'), $today), $res, $rText);
+    }
     $done[] = ['reminder' => $r['title'] ?? '', 'ok' => !empty($res['ok']),
                'error' => $res['error'] ?? null];
   }
@@ -1151,7 +1205,10 @@ function runSchedule(bool $dry = false): array {
 
       if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
       $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
-      if (!empty($res['ok'])) markSent($key);
+      if (!empty($res['ok'])) {
+        markSent($key);
+        tgRemember(tgMsgKey($kind, (string)($t['id'] ?? '?'), $today), $res, $text);
+      }
       $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
     }
   }
@@ -1179,7 +1236,10 @@ function runSchedule(bool $dry = false): array {
 
       if ($dry) { $done[] = [$what => $t['title'] ?? '', 'dry' => true]; continue; }
       $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
-      if (!empty($res['ok'])) markSent($key);
+      if (!empty($res['ok'])) {
+        markSent($key);
+        tgRemember(tgMsgKey($kind, (string)($t['id'] ?? '?'), $today), $res, $text);
+      }
       $done[] = [$what => $t['title'] ?? '', 'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null];
     }
   }
@@ -1310,7 +1370,10 @@ function runSchedule(bool $dry = false): array {
 
         if ($dry) { $done[] = ['escalate' => $t['title'] ?? '', 'days' => $daysLate, 'dry' => true]; continue; }
         $res = tgSend($text, topicFor($kind), tgItemButtons($kind, (string)($t['id'] ?? '')));
-        if (!empty($res['ok'])) markSent($key);
+        if (!empty($res['ok'])) {
+          markSent($key);
+          tgRemember(tgMsgKey($kind, (string)($t['id'] ?? '?'), $today), $res, $text);
+        }
         $done[] = ['escalate' => $t['title'] ?? '', 'days' => $daysLate, 'ok' => !empty($res['ok']),
                    'error' => $res['error'] ?? null];
       }

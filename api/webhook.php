@@ -97,13 +97,19 @@ if (preg_match('#^remdone:(.+)$#', $data, $m)) {
   $st->execute(['reminders', $m[1]]);
   $row = $st->fetch();
 
-  $ok = false; $already = false;
+  $ok = false; $already = false; $khi = '';
   if ($row) {
     $rem = json_decode((string)$row['data'], true);
     if (is_array($rem) && empty($rem['deleted'])) {
       $log = array_map('strval', (array)($rem['doneLog'] ?? []));
       $today = date('Y-m-d');
-      if (in_array($today, $log, true)) { $already = true; }
+      if (in_array($today, $log, true)) {
+        $already = true;
+        /* tick lúc mấy giờ — để câu trả lời nói được "xong lúc 10:15" thay vì
+           một câu chung chung không giúp gì */
+        $dt = (string)($rem['doneTime'] ?? '');
+        if (substr($dt, 0, 10) === $today) $khi = ' lúc ' . substr($dt, 11, 5);
+      }
       else {
         $log[] = $today;
         $rem['doneLog']   = array_slice($log, -80);
@@ -121,13 +127,17 @@ if (preg_match('#^remdone:(.+)$#', $data, $m)) {
   httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery", [
     'callback_query_id' => $cbId,
     'text' => !$ok ? 'Không tìm thấy lời nhắc này (có thể đã xoá)'
-            : ($already ? 'Hôm nay đã tick rồi ✓' : 'Đã ghi nhận xong hôm nay ✓'),
+            : ($already ? 'Đã xong hôm nay' . $khi . ' ✓' : 'Đã ghi nhận xong hôm nay ✓'),
   ]);
-  if ($ok && !$already && $msgId) {
+  /* Sửa tin và bỏ nút kể cả khi đã tick từ trước — trước đây chỉ sửa ở lần
+     tick đầu, nên tick trong app xong thì nút trên Telegram nằm lại mãi và
+     bấm bao nhiêu lần cũng chỉ nhận về đúng một câu "đã tick rồi". */
+  if ($ok && $msgId) {
     httpPostJson("https://api.telegram.org/bot$token/editMessageText", [
       'chat_id' => $chatId, 'message_id' => $msgId, 'parse_mode' => 'HTML',
-      'text' => (string)($msg['text'] ?? '') . "\n\n✅ <b>Xong hôm nay</b>",
+      'text' => (string)($msg['text'] ?? '') . "\n\n✅ <b>Xong hôm nay</b>" . tgEsc($khi),
     ]);
+    tgForget(tgMsgKey('rem', $m[1]));      /* sửa tay rồi thì khỏi sửa lần nữa */
   }
   echo '{}';
   exit;
@@ -200,12 +210,20 @@ if ($act !== '') {
   $st->execute([$kind, $id]);
   $row = $st->fetch();
 
-  $ok = false; $rolled = ''; $streak = 0;
+  $ok = false; $rolled = ''; $streak = 0; $already = false;
   if ($row) {
     $item = json_decode((string)$row['data'], true);
     if (is_array($item) && empty($item['deleted'])) {
       $now = isoNow();
+      /* Đã xong hôm nay rồi thì bấm nữa cũng không ghi thêm gì. Không chặn
+         thì việc lặp lại bị cộng hai lần vào nhật ký và hạn nhảy thêm một
+         kỳ nữa — mất hẳn một kỳ mà nhìn vào không hiểu vì sao. */
       if ($act === 'done') {
+        $already = $kind !== 'tasks' ? (string)($item['col'] ?? '') === 'done'
+                 : (isRepeat($item['repeat'] ?? '') ? taskDoneTodayPhp($item) : !empty($item['done']));
+      }
+      if ($already) { $ok = true; }
+      elseif ($act === 'done') {
         /* Việc lặp lại KHÔNG được đánh dấu xong vĩnh viễn — xong kỳ này thì
            hạn nhảy sang kỳ sau và chuỗi 🔥 cộng thêm một, đúng như bấm tick
            trong app. Trước đây chỗ này set done = true, tức là bấm Xong trên
@@ -230,18 +248,21 @@ if ($act !== '') {
            nếu không thì bấm dời vài lần là mất dấu việc đang chậm. */
         $item['snoozeUntil'] = date('Y-m-d H:i', $until);
       }
-      $item['updatedAt'] = $now;
-      db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
-          ->execute([json_encode($item, JSON_UNESCAPED_UNICODE), $now, $kind, $id]);
-      $ok = true;
+      if (!$already) {
+        $item['updatedAt'] = $now;
+        db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
+            ->execute([json_encode($item, JSON_UNESCAPED_UNICODE), $now, $kind, $id]);
+        $ok = true;
+      }
     }
   }
 
   if ($token !== '') {
     $chuoi = $streak > 1 ? ' · chuỗi ' . $streak . ' 🔥' : '';
     $said = $act !== 'done'  ? 'Đã dời tới ' . date('H:i d/m', $until)
+          : ($already      ? 'Việc này đã xong rồi ✓'
           : ($rolled !== ''  ? 'Xong kỳ này · lần tới ' . date('d/m', strtotime($rolled)) . $chuoi
-                             : 'Đã đánh dấu xong ✓');
+                             : 'Đã đánh dấu xong ✓'));
     httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery", [
       'callback_query_id' => $cbId,
       'text' => $ok ? $said : 'Không tìm thấy việc này (có thể đã xoá)',
@@ -257,6 +278,7 @@ if ($act !== '') {
         'chat_id' => $chatId, 'message_id' => $msgId, 'parse_mode' => 'HTML',
         'text' => $origText . "\n\n" . $note,
       ]);
+      tgForget(tgMsgKey($kind, $id));       /* sửa tay rồi thì khỏi sửa lần nữa */
     }
   }
 }

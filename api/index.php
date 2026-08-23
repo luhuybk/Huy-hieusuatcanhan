@@ -199,6 +199,11 @@ switch ($action) {
     $upd = $pdo->prepare('UPDATE items SET data = ?, updated_at = ?, deleted = ? WHERE kind = ? AND item_id = ?');
 
     $saved = 0; $skipped = 0;
+    /* Bản ghi nào vừa được tick xong thì tin Telegram của nó phải gỡ nút
+       xuống. Gom lại ở đây, gửi sau khi ghi xong: gọi Telegram giữa lúc
+       đang mở transaction là khoá cơ sở dữ liệu suốt mấy giây chờ mạng. */
+    $settle = [];
+    $today  = date('Y-m-d');
     $pdo->beginTransaction();
     try {
       foreach ($rows as $r) {
@@ -214,14 +219,35 @@ switch ($action) {
         $sel->closeCursor();                // dùng lại câu lệnh trong vòng lặp thì phải đóng
         if (!$cur)                          { $ins->execute([$kind, $id, $json, $upAt, $del]); $saved++; }
         elseif ($cur['updated_at'] < $upAt) { $upd->execute([$json, $upAt, $del, $kind, $id]); $saved++; }
-        else                                { $skipped++; }
+        else                                { $skipped++; continue; }
+
+        /* Tin nhắc lưu dưới khoá 'rem', không phải tên bảng 'reminders' —
+           lấy nhầm là gỡ hụt, mà hụt thì im lặng chứ không báo lỗi gì. */
+        $mk = ['reminders' => 'rem', 'tasks' => 'tasks', 'cards' => 'cards'][$kind] ?? '';
+        if ($mk === '') continue;
+        $d = is_array($r['data'] ?? null) ? $r['data'] : [];
+        if ($del) { $settle[] = [$mk, $id, '🗑 <b>Đã xoá trong app</b>']; continue; }
+        if ($mk === 'rem'
+            && in_array($today, array_map('strval', (array)($d['doneLog'] ?? [])), true))
+          $settle[] = [$mk, $id, '✅ <b>Xong hôm nay</b> — tick trong app'];
+        elseif ($mk === 'tasks' && (isRepeat($d['repeat'] ?? '') ? taskDoneTodayPhp($d) : !empty($d['done'])))
+          $settle[] = [$mk, $id, '✅ <b>Đã xong</b> — tick trong app'];
+        elseif ($mk === 'cards' && (string)($d['col'] ?? '') === 'done')
+          $settle[] = [$mk, $id, '✅ <b>Đã xong</b> — tick trong app'];
       }
       $pdo->commit();
     } catch (Throwable $e) {
       $pdo->rollBack();
       fail('Ghi dữ liệu lỗi', 500);
     }
-    out(['ok' => true, 'saved' => $saved, 'skipped' => $skipped, 'now' => isoNow()]);
+    /* Telegram hỏng hay chậm cũng không được làm hỏng lượt đồng bộ — dữ liệu
+       đã ghi xong rồi, gỡ nút chỉ là chuyện làm đẹp thêm. */
+    $gone = 0;
+    foreach ($settle as $x) {
+      if (tgSettle(tgMsgKey($x[0], $x[1]), $x[2])) $gone++;
+      if ($gone >= 8) break;      /* đẩy cả kho lên một lượt cũng không kẹt ở đây */
+    }
+    out(['ok' => true, 'saved' => $saved, 'skipped' => $skipped, 'settled' => $gone, 'now' => isoNow()]);
   }
 
   /* ---------------- Telegram ---------------- */
