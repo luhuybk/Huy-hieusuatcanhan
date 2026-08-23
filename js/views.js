@@ -1318,21 +1318,55 @@ const tlPart = pt => min2hhmm(pt.start) + ' · ' + pt.title + ' · ' + fmtDur(pt
 const tlTip = x => tlLabel(x) +
   (x.n > 1 ? '\n· ' + (x.parts || []).map(tlPart).join('\n· ') : '');
 
+/* ---- vạch "bây giờ" ----
+   Trục không có mốc hiện tại thì nhìn vào chỉ biết ngày có những gì, chứ
+   không biết mình đang đứng ở đâu trong ngày. Vạch này cắt trục làm hai:
+   bên trái là việc đáng lẽ xong rồi, bên phải là việc còn nguyên giờ.
+   Chỉ vẽ ở cột HÔM NAY — vạch "bây giờ" đặt trên cột thứ tư trong khi hôm
+   nay là thứ 7 thì nó nói dối, mà nói dối rất thuyết phục. */
+function tlNowAt(wd){
+  if (wdDate(wd) !== today()) return null;
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+/* `reserve` = chỗ chừa bên phải cho nhãn. Vạch phải nằm trong một lớp rộng
+   đúng bằng bề ngang của HÀNG, không phải của cả khung: khung còn ôm thêm
+   phần chừa nhãn, tính % theo nó là vạch lệch sang phải cả trăm pixel. */
+function tlNowMark(wd, from, to, reserve){
+  const n = tlNowAt(wd);
+  if (n === null || n <= from || n >= to) return '';
+  const p = (((n - from) / (to - from)) * 100).toFixed(3);
+  return `<div class="tlnowlay" style="right:${Math.round(reserve || 0)}px">
+    <div class="tlnow" data-tlnow data-from="${from}" data-span="${to - from}"
+      style="left:${p}%">${reserve ? `<b>${min2hhmm(n)}</b>` : ''}</div>
+  </div>`;
+}
+/* Việc đã qua giờ mà chưa tích — đúng thứ cần bắt mắt trước tiên.
+   Lịch nhập từ app khác không tính: bên đó mới tick được, tô đỏ ở đây chỉ
+   làm mình lo một chuyện không tự xử lý được. */
+const tlGone = (x, now) => now !== null && !x.done && x.kind !== 'feed'
+                        && x.start !== null && x.start + x.mins <= now;
+
 /* Thanh gọn cho tab Hôm nay: mọi việc nằm chung một hàng, không nhãn, không
    kéo — vừa đúng bề ngang điện thoại, liếc một cái là thấy ngày dồn vào đâu. */
 function tlBar(items, clash, wd){
   const {from, to} = tlRange(items, wd), span = to - from;
   const pct = m => ((m - from) / span) * 100;
+  const now = tlNowAt(wd);
   return `<div class="tlbar-wrap">
     <div class="tlbar">${items.map(x => {
       const c = tlColor(x);
       return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''} ${
-        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''}" title="${esc(tlTip(x))}"
+        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''} ${tlGone(x, now) ? 'qua' : ''}"
+        title="${esc(tlTip(x))}${tlGone(x, now) ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
-    }).join('')}</div>
+    }).join('')}${tlNowMark(wd, from, to, 0)}</div>
     <div class="row dim" style="margin-top:4px">
-      <span>${winText(from)}</span><span class="grow"></span><span>${winText(to)}</span></div>
+      <span>${winText(from)}</span>
+      <span class="grow" style="text-align:center">${
+        now === null ? '' : `<b style="color:var(--bad)">▲ bây giờ ${min2hhmm(now)}</b>`}</span>
+      <span>${winText(to)}</span></div>
   </div>`;
 }
 
@@ -1342,6 +1376,7 @@ function tlBar(items, clash, wd){
    cứng 300px thì trên điện thoại phải cuộn thêm một đoạn trắng vô ích. */
 function tlTrack(items, clash, wd){
   const {from, to} = tlRange(items, wd), span = to - from, day = wdDate(wd);
+  const now = tlNowAt(wd);
   const pct = m => ((m - from) / span) * 100;
   const hours = []; for (let m = from; m <= to; m += 60) hours.push(m);
   const labels = items.map(tlLabel)
@@ -1351,6 +1386,7 @@ function tlTrack(items, clash, wd){
 
   let h = `<div class="tlwrap"><div class="tlk" style="min-width:${Math.round(wide + reserve)}px;
     padding-right:${Math.round(reserve)}px">`;
+  h += tlNowMark(wd, from, to, reserve);
   h += `<div class="tlhrs">` + hours.map((m, i) =>
     `<span class="tlhr" style="left:${pct(m).toFixed(3)}%${
       i === 0 ? ';transform:none' : i === hours.length - 1 ? ';transform:translateX(-100%)' : ''
@@ -1361,17 +1397,18 @@ function tlTrack(items, clash, wd){
     const c = tlColor(x);
     /* Lịch nhập từ app khác không kéo được: bên kia mới là chủ của nó, kéo
        ở đây thì lần nhập sau là mất sạch. Bỏ luôn data-tlblk cho chắc. */
-    const fixed = x.kind === 'feed';
+    const fixed = x.kind === 'feed', qua = tlGone(x, now);
     let row = `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
       ${grid}
-      <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''}"
-        title="${esc(tlTip(x))}"
+      <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''} ${
+        qua ? 'qua' : ''}"
+        title="${esc(tlTip(x))}${qua ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
         ${fixed ? '' : `data-tlblk="${x.id}" data-day="${day}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
         <span class="gr">${fixed ? '🔒' : '⠿'}</span>
-        <span class="tllbl">${esc(tlLabel(x))}</span>
+        <span class="tllbl">${qua ? '⚠ ' : ''}${esc(tlLabel(x))}</span>
       </div>
     </div>`;
     /* Khối gộp: trải ba mốc con thành ba hàng mảnh ngay bên dưới, mỗi hàng

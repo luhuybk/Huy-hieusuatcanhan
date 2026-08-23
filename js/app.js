@@ -1785,6 +1785,44 @@ function setSlotTime(id, hhmm, day){
            toast(r.title + ' → ' + hhmm + ((r.days || []).length > 1 ? ' · cả ' + daysText(r.days) : '')); }});
 }
 
+/* ---- vạch "bây giờ" tự trôi ----
+   Mở app lúc 9h rồi để đó, tới 11h nhìn vào vẫn thấy vạch đứng ở 9h thì nó
+   hại hơn là không có. Nửa phút một lần chỉ nhích lại vị trí của vạch —
+   không vẽ lại cả màn, vì vẽ lại giữa chừng là mất khối đang cầm trên tay.
+   Năm phút một lần mới vẽ lại thật, để nhãn "quá giờ" khỏi nói sai, và cũng
+   chỉ vẽ khi tay đang rảnh: không kéo khối, không mở biểu mẫu nào. */
+function tlNowTick(){
+  const d = new Date(), n = d.getHours() * 60 + d.getMinutes();
+  document.querySelectorAll('[data-tlnow]').forEach(el => {
+    const from = +el.dataset.from, span = +el.dataset.span;
+    if (!span) return;
+    const p = ((n - from) / span) * 100;
+    el.style.display = (p < 0 || p > 100) ? 'none' : '';
+    el.style.left = p.toFixed(3) + '%';
+    const b = el.querySelector('b'); if (b) b.textContent = min2hhmm(n);
+  });
+}
+/* Vẽ lại được hay không: đang kéo khối, đang mở biểu mẫu, hay đang gõ vào
+   một ô nào đó thì tuyệt đối không — vẽ lại giữa chừng là mất thứ đang làm
+   dở, mà mất vì một cái đồng hồ chạy ngầm thì không tài nào đoán ra vì sao. */
+function tlIdle(){
+  if (tlDrag || $('#modals').innerHTML) return false;
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return false;
+  return S.view === 'daily' || S.view === 'dash';
+}
+let tlTock = 0;
+function tlClock(){
+  setInterval(() => {
+    if (document.visibilityState !== 'visible') return;   /* tab ẩn thì khỏi làm gì */
+    tlNowTick();
+    if (++tlTock % 10 === 0 && tlIdle()) render();
+  }, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') tlNowTick();
+  });
+}
+
 document.addEventListener('pointerdown', e => {
   const el = e.target.closest('[data-tlblk]'); if (!el) return;
   const width = el.parentElement.getBoundingClientRect().width;   /* mốc % tính theo hàng chứa khối */
@@ -2477,6 +2515,7 @@ function boot(){
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && Date.now() - buildAt > 600000) buildCheck();
   });
+  tlClock();
 
   /* Có thư mục api/ trên máy chủ thì phải đăng nhập mới vào được.
      Không có (mở bằng file, hay bản gộp một tệp) thì chạy như cũ. */

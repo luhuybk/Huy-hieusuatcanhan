@@ -267,6 +267,35 @@ Tab **Cả tuần** xếp mọi việc của một thứ lên một trục ngang
 
 Mỗi việc lặp lại chỉ giữ **một** giờ dùng chung cho mọi kỳ, nên khi bạn thả tay app sẽ hỏi: dời riêng đúng hôm đó, hay đổi hẳn lịch. Xem [Dời riêng một hôm](#dời-riêng-một-hôm--không-kéo-cả-chuỗi-theo).
 
+#### Vạch "bây giờ"
+
+Trục có một **vạch đỏ dọc** cắt ngang, kèm chip giờ ở đầu vạch:
+
+```
+                    ┌──────┐
+                    │ 10:02│
+06:00  07:00  08:00 │09:00  10:00  11:00  12:00
+   ▬▬  ⚠ 07:00 Đọc tin sáng · 30p
+       ▬▬▬  08:00 Đã tick rồi · 30p   (gạch ngang, mờ)
+          ▬▬ ⚠ 08:30 Việc quá giờ · 30p
+                    │  ▬▬▬▬  09:50 Vắt qua mốc · 1h
+                    │              ▬▬▬  14:00 Họp chiều · 1h
+                    ↑ bây giờ
+```
+
+Bên trái vạch là việc đáng lẽ xong rồi, bên phải là việc còn nguyên thời gian. Việc **đã qua giờ mà chưa tích** thì viền đỏ và nhãn có dấu `⚠` — đó chính là danh sách cần xử lý trước.
+
+Bốn luật nhỏ, mỗi luật đều có lý do:
+
+- **Chỉ vẽ ở cột hôm nay.** Vạch "bây giờ" đặt trên cột thứ tư trong khi hôm nay là thứ 7 thì nó nói dối, mà nói dối rất thuyết phục.
+- **Việc đã tích không tô đỏ**, dù nằm bên trái vạch — làm xong rồi thì không còn là việc phải làm.
+- **Việc vắt qua vạch cũng không tô** (bắt đầu 09:50, dài 1 tiếng, bây giờ 10:02): nó đang trong giờ chứ chưa lỡ.
+- **Lịch nhập từ app khác không tô**, kể cả khi đã qua giờ: chỉ bên đó mới tick được, tô đỏ ở đây chỉ làm bạn lo một chuyện không tự xử lý được.
+
+Vạch **tự trôi**, nửa phút một lần — mở app lúc 9h rồi để đó, tới 11h nhìn vào vẫn thấy vạch đứng ở 9h thì nó hại hơn là không có. Nhích vạch thôi chứ không vẽ lại cả màn: vẽ lại giữa chừng là mất khối đang cầm trên tay. Năm phút một lần mới vẽ lại thật để nhãn `⚠` khỏi nói sai, và chỉ vẽ khi tay đang rảnh — không kéo khối, không mở biểu mẫu, không gõ dở ô nào.
+
+Thanh gọn ở tab **Hôm nay** cũng có vạch, nhưng chỗ hẹp nên chip giờ chuyển xuống dòng dưới: `▲ bây giờ 10:02`.
+
 **Chồng giờ.** Hai việc có khoảng giờ cắt nhau thì cả hai bị viền đỏ, cột ngày tương ứng hiện `⚠ 2`, và trên đầu có một dòng đếm tổng cả tuần. Việc đang tắt không tính — tắt rồi thì trùng cũng chẳng sao, nhưng vẫn hiện mờ để bạn nhớ là nó có tồn tại.
 
 Trục luôn dừng ở mốc giờ tròn và luôn rộng ít nhất 4 tiếng — một ngày chỉ có mỗi việc 15 phút mà kéo giãn ra cả màn hình thì nhìn như cả ngày chỉ làm mỗi việc đó.

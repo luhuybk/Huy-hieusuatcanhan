@@ -585,3 +585,21 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
 .chip.mv{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);
   cursor:pointer;border:1px solid color-mix(in srgb,var(--warn) 32%,transparent)}
 .chip.mv:active{transform:scale(.97)}
+
+/* ---- vạch "bây giờ" trên trục ----
+   Lớp bọc rộng đúng bằng bề ngang của hàng: khung còn ôm thêm phần chừa
+   cho nhãn bên phải, tính % theo khung là vạch lệch hẳn sang phải. */
+.tlnowlay{position:absolute;top:2px;bottom:0;left:0;pointer-events:none;z-index:2}
+.tlnow{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--bad)}
+.tlnow::after{content:'';position:absolute;top:-1px;left:-4px;border-left:5px solid transparent;
+  border-right:5px solid transparent;border-top:6px solid var(--bad)}
+.tlnow b{position:absolute;top:-3px;left:7px;font-size:10px;font-weight:700;color:#fff;
+  background:var(--bad);border-radius:5px;padding:1px 5px;white-space:nowrap}
+/* Vạch trong thanh gọn không có chỗ cho chip giờ — giờ hiện ở dòng dưới */
+.tlbar .tlnowlay{top:0}
+.tlbar .tlnow b{display:none}
+
+/* Đã qua giờ mà chưa tích — thứ đáng làm trước tiên, nên phải bắt mắt */
+.tlblk.qua{border-color:var(--bad)}
+.tlblk.qua .tllbl{color:var(--bad)}
+.tlbar i.qua{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
