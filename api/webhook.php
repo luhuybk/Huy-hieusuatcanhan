@@ -93,36 +93,9 @@ if ($chatId === '' || $chatId !== $confChat) { echo '{}'; exit; }
    một ngày vào nhật ký, còn chuỗi 🔥 để app tự tính từ nhật ký đó — như
    vậy chỉ có một chỗ duy nhất biết luật tính chuỗi. */
 if (preg_match('#^remdone:(.+)$#', $data, $m)) {
-  $st = db()->prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?');
-  $st->execute(['reminders', $m[1]]);
-  $row = $st->fetch();
-
-  $ok = false; $already = false; $khi = '';
-  if ($row) {
-    $rem = json_decode((string)$row['data'], true);
-    if (is_array($rem) && empty($rem['deleted'])) {
-      $log = array_map('strval', (array)($rem['doneLog'] ?? []));
-      $today = date('Y-m-d');
-      if (in_array($today, $log, true)) {
-        $already = true;
-        /* tick lúc mấy giờ — để câu trả lời nói được "xong lúc 10:15" thay vì
-           một câu chung chung không giúp gì */
-        $dt = (string)($rem['doneTime'] ?? '');
-        if (substr($dt, 0, 10) === $today) $khi = ' lúc ' . substr($dt, 11, 5);
-      }
-      else {
-        $log[] = $today;
-        $rem['doneLog']   = array_slice($log, -80);
-        /* giờ tick, để app hiện được "xong 09:09" — bấm ở Telegram hay ở web
-           đều phải ra cùng một dòng */
-        $rem['doneTime']  = $today . ' ' . date('H:i');
-        $rem['updatedAt'] = isoNow();
-        db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
-            ->execute([json_encode($rem, JSON_UNESCAPED_UNICODE), $rem['updatedAt'], 'reminders', $m[1]]);
-      }
-      $ok = true;
-    }
-  }
+  $r = doRemDone($m[1]);
+  $ok = !empty($r['ok']); $already = !empty($r['already']);
+  $khi = $already ? (string)($r['khi'] ?? '') : '';
 
   httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery", [
     'callback_query_id' => $cbId,
@@ -190,6 +163,46 @@ if (preg_match('#^idea:(go|drop|snz):([^:]+)(?::([dwmy]\d+))?$#', $data, $m)) {
   exit;
 }
 
+/* ---- nút trong tin chốt cuối ngày ----
+   Khác mọi nút khác ở chỗ tin này nói về NHIỀU việc: xử xong một cái thì
+   không được gỡ cả bộ nút xuống, những việc còn lại vẫn phải bấm được. Nên
+   thay vì nối thêm một dòng vào tin cũ, vẽ lại cả tin từ dữ liệu hiện tại —
+   việc vừa xử tự biến khỏi danh sách, số ở đầu tin tụt xuống một.
+
+   `r` = việc hằng ngày, `t` = việc lẻ. Rút gọn còn một chữ để mã bấm nút
+   chắc chắn nằm trong giới hạn 64 byte của Telegram kể cả với id dài. */
+if (preg_match('#^eod:(ok|no):([rt]):(.+)$#', $data, $m)) {
+  list(, $what, $k, $eid) = $m;
+  $rem = $k === 'r';
+  if ($what === 'ok') $r = $rem ? doRemDone($eid) : doTaskDone('tasks', $eid);
+  else                $r = $rem ? doRemSkip($eid) : doTaskPush($eid);
+
+  $ok = !empty($r['ok']); $already = !empty($r['already']);
+  if (!$ok)          $said = 'Không tìm thấy việc này (có thể đã xoá)';
+  elseif ($already)  $said = $what === 'ok' ? 'Việc này đã xong rồi ✓' : 'Đã bỏ hôm nay rồi ✓';
+  elseif ($what === 'ok') {
+    $chuoi = (int)($r['streak'] ?? 0) > 1 ? ' · chuỗi ' . (int)$r['streak'] . ' 🔥' : '';
+    $said = (string)($r['rolled'] ?? '') !== ''
+          ? 'Xong kỳ này · lần tới ' . date('d/m', strtotime((string)$r['rolled'])) . $chuoi
+          : 'Đã đánh dấu xong ✓';
+  }
+  elseif ($rem) $said = 'Bỏ riêng hôm nay — nhịp lặp giữ nguyên';
+  else {
+    $n = (int)($r['pushes'] ?? 0);
+    $said = 'Dời sang ' . date('d/m', strtotime((string)($r['to'] ?? date('Y-m-d'))))
+          . ($n >= 3 ? ' · đã dời ' . $n . ' lần rồi, chia nhỏ ra hay bỏ hẳn đi?'
+                     : ($n > 1 ? ' · lần dời thứ ' . $n : ''));
+  }
+
+  httpPostJson("https://api.telegram.org/bot$token/answerCallbackQuery",
+               ['callback_query_id' => $cbId, 'text' => $said]);
+  /* Vẽ lại kể cả khi bấm nhầm vào thứ đã xử: đúng lúc đó tin đang nói sai,
+     và một lần vẽ lại là hết sai. */
+  if ($ok && $msgId) eodRedraw('', (int)$msgId);
+  echo '{}';
+  exit;
+}
+
 /* Hai loại nút: đánh dấu xong, và dời lời nhắc lại N phút. Mã bấm nút
    Telegram cho tối đa 64 byte nên chỉ mang đúng loại, kho, id, số phút. */
 $act = ''; $kind = ''; $id = ''; $mins = 0;
@@ -206,56 +219,11 @@ if ($act !== '') {
      và giá trị ghi vào bản ghi chắc chắn là cùng một con số */
   $until = $act === 'snz' ? time() + $mins * 60 : 0;
 
-  $st = db()->prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?');
-  $st->execute([$kind, $id]);
-  $row = $st->fetch();
-
-  $ok = false; $rolled = ''; $streak = 0; $already = false;
-  if ($row) {
-    $item = json_decode((string)$row['data'], true);
-    if (is_array($item) && empty($item['deleted'])) {
-      $now = isoNow();
-      /* Đã xong hôm nay rồi thì bấm nữa cũng không ghi thêm gì. Không chặn
-         thì việc lặp lại bị cộng hai lần vào nhật ký và hạn nhảy thêm một
-         kỳ nữa — mất hẳn một kỳ mà nhìn vào không hiểu vì sao. */
-      if ($act === 'done') {
-        $already = $kind !== 'tasks' ? (string)($item['col'] ?? '') === 'done'
-                 : (isRepeat($item['repeat'] ?? '') ? taskDoneTodayPhp($item) : !empty($item['done']));
-      }
-      if ($already) { $ok = true; }
-      elseif ($act === 'done') {
-        /* Việc lặp lại KHÔNG được đánh dấu xong vĩnh viễn — xong kỳ này thì
-           hạn nhảy sang kỳ sau và chuỗi 🔥 cộng thêm một, đúng như bấm tick
-           trong app. Trước đây chỗ này set done = true, tức là bấm Xong trên
-           Telegram một cái là mất luôn việc lặp đó khỏi danh sách. */
-        if ($kind === 'tasks' && isRepeat($item['repeat'] ?? '')) {
-          $due    = substr((string)($item['due'] ?? ''), 0, 10);
-          $onTime = $due === '' || $due >= date('Y-m-d');
-          $streak = ($onTime ? (int)($item['streak'] ?? 0) : 0) + 1;
-          $log    = array_map('strval', (array)($item['doneLog'] ?? []));
-          $log[]  = date('Y-m-d');
-          $item['streak']     = $streak;
-          $item['bestStreak'] = max((int)($item['bestStreak'] ?? 0), $streak);
-          $item['doneLog']    = array_slice($log, -80);
-          $item['doneAt']     = date('Y-m-d');
-          $item['due']        = $rolled = nextRepeat($due, (string)$item['repeat']);
-        }
-        elseif ($kind === 'tasks') { $item['done'] = true;  $item['doneAt'] = date('Y-m-d'); }
-        else                       { $item['col']  = 'done'; $item['doneAt'] = date('Y-m-d'); }
-        $item['snoozeUntil'] = '';        // xong rồi thì mốc dời cũ hết nghĩa
-      } else {
-        /* Chỉ dời lời nhắc, KHÔNG dời hạn: hạn trễ vẫn phải hiện là trễ,
-           nếu không thì bấm dời vài lần là mất dấu việc đang chậm. */
-        $item['snoozeUntil'] = date('Y-m-d H:i', $until);
-      }
-      if (!$already) {
-        $item['updatedAt'] = $now;
-        db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
-            ->execute([json_encode($item, JSON_UNESCAPED_UNICODE), $now, $kind, $id]);
-        $ok = true;
-      }
-    }
-  }
+  $r = $act === 'done' ? doTaskDone($kind, $id) : doTaskSnooze($kind, $id, $until);
+  $ok      = !empty($r['ok']);
+  $already = !empty($r['already']);
+  $rolled  = (string)($r['rolled'] ?? '');
+  $streak  = (int)($r['streak'] ?? 0);
 
   if ($token !== '') {
     $chuoi = $streak > 1 ? ' · chuỗi ' . $streak . ' 🔥' : '';

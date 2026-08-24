@@ -247,6 +247,11 @@ switch ($action) {
       if (tgSettle(tgMsgKey($x[0], $x[1]), $x[2])) $gone++;
       if ($gone >= 8) break;      /* đẩy cả kho lên một lượt cũng không kẹt ở đây */
     }
+    /* Tin chốt cuối ngày liệt kê nhiều việc, nên không gỡ nút như tin một
+       việc — vẽ lại để việc vừa tick trong app biến khỏi danh sách. Một lần
+       cho cả lượt đẩy, dù có tick mười việc: nó dựng lại từ dữ liệu hiện
+       tại nên vẽ một lần là đủ đúng. */
+    if ($settle) eodRedraw();
     out(['ok' => true, 'saved' => $saved, 'skipped' => $skipped, 'settled' => $gone, 'now' => isoNow()]);
   }
 

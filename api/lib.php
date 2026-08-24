@@ -337,6 +337,134 @@ function taskSkippedPhp(array $t): bool {
   $e = excEntry($t, substr((string)($t['due'] ?? ''), 0, 10));
   return !empty($e['off']);
 }
+/* Ghi vào bảng ngoại lệ — bản song sinh của excSet() trong js/state.js.
+   Truyền null là xoá mốc của hôm đó. */
+function excWrite(array &$o, string $day, ?array $v): void {
+  if ($day === '') return;
+  if (!isset($o['exc']) || !is_array($o['exc'])) $o['exc'] = [];
+  if ($v === null) unset($o['exc'][$day]); else $o['exc'][$day] = $v;
+}
+
+/* ---------------- đọc / ghi một bản ghi ---------------- */
+function itemGet(string $kind, string $id): ?array {
+  $st = db()->prepare('SELECT data FROM items WHERE kind = ? AND item_id = ?');
+  $st->execute([$kind, $id]);
+  $row = $st->fetch();
+  if (!$row) return null;
+  $d = json_decode((string)$row['data'], true);
+  return (is_array($d) && empty($d['deleted'])) ? $d : null;
+}
+function itemPut(string $kind, string $id, array $d): void {
+  $d['updatedAt'] = isoNow();
+  db()->prepare('UPDATE items SET data = ?, updated_at = ? WHERE kind = ? AND item_id = ?')
+      ->execute([json_encode($d, JSON_UNESCAPED_UNICODE), $d['updatedAt'], $kind, $id]);
+}
+
+/* ---------------- bốn thao tác bấm được từ Telegram ----------------
+   Viết ở đây chứ không nằm trong webhook.php, vì giờ có HAI chỗ gọi tới:
+   nút dưới từng lời nhắc, và nút trong tin chốt cuối ngày. Hai chỗ tự viết
+   lấy là hai chỗ để lệch nhau — mà lệch ở đây nghĩa là bấm nút này thì việc
+   lặp nhảy kỳ, bấm nút kia thì không.
+
+   Cả bốn đều trả về mảng có 'ok' (tìm thấy việc không) và 'already' (bấm
+   vào thứ đã xử rồi) — câu trả lời hiện trên Telegram cần phân biệt hai
+   chuyện đó, "không tìm thấy" và "làm rồi" khác hẳn nhau. */
+function doRemDone(string $id): array {
+  $r = itemGet('reminders', $id);
+  if ($r === null) return ['ok' => false];
+  $today = date('Y-m-d');
+  $log = array_map('strval', (array)($r['doneLog'] ?? []));
+  if (in_array($today, $log, true)) {
+    /* tick lúc mấy giờ — để câu trả lời nói được "xong lúc 10:15" thay vì
+       một câu chung chung không giúp gì */
+    $dt = (string)($r['doneTime'] ?? '');
+    return ['ok' => true, 'already' => true,
+            'khi' => substr($dt, 0, 10) === $today ? ' lúc ' . substr($dt, 11, 5) : ''];
+  }
+  $log[] = $today;
+  $r['doneLog']  = array_slice($log, -80);
+  /* giờ tick, để app hiện được "xong 09:09" — bấm ở Telegram hay ở web đều
+     phải ra cùng một dòng */
+  $r['doneTime'] = $today . ' ' . date('H:i');
+  itemPut('reminders', $id, $r);
+  return ['ok' => true, 'already' => false, 'khi' => ' lúc ' . date('H:i')];
+}
+/* Bỏ riêng hôm nay. Việc hằng ngày không có hạn để dời sang mai — nó lặp
+   theo thứ, "mai" là một kỳ khác chứ không phải cùng một việc — nên lựa
+   chọn thứ hai của nó là bỏ đúng lần này, ghi vào bảng ngoại lệ y như bấm
+   trong app. Chuỗi 🔥 tự đứt theo nhật ký, không phải xử riêng ở đây. */
+function doRemSkip(string $id): array {
+  $r = itemGet('reminders', $id);
+  if ($r === null) return ['ok' => false];
+  $today = date('Y-m-d');
+  $e = excEntry($r, $today);
+  if (!empty($e['off'])) return ['ok' => true, 'already' => true];
+  excWrite($r, $today, ['off' => 1]);
+  itemPut('reminders', $id, $r);
+  return ['ok' => true, 'already' => false];
+}
+function doTaskDone(string $kind, string $id): array {
+  $t = itemGet($kind, $id);
+  if ($t === null) return ['ok' => false];
+  /* Đã xong hôm nay rồi thì bấm nữa cũng không ghi thêm gì. Không chặn thì
+     việc lặp lại bị cộng hai lần vào nhật ký và hạn nhảy thêm một kỳ nữa —
+     mất hẳn một kỳ mà nhìn vào không hiểu vì sao. */
+  $already = $kind !== 'tasks' ? (string)($t['col'] ?? '') === 'done'
+           : (isRepeat($t['repeat'] ?? '') ? taskDoneTodayPhp($t) : !empty($t['done']));
+  if ($already) return ['ok' => true, 'already' => true, 'rolled' => '', 'streak' => 0];
+
+  $rolled = ''; $streak = 0;
+  /* Việc lặp lại KHÔNG được đánh dấu xong vĩnh viễn — xong kỳ này thì hạn
+     nhảy sang kỳ sau và chuỗi 🔥 cộng thêm một, đúng như bấm tick trong app. */
+  if ($kind === 'tasks' && isRepeat($t['repeat'] ?? '')) {
+    $due    = substr((string)($t['due'] ?? ''), 0, 10);
+    $onTime = $due === '' || $due >= date('Y-m-d');
+    $streak = ($onTime ? (int)($t['streak'] ?? 0) : 0) + 1;
+    $log    = array_map('strval', (array)($t['doneLog'] ?? []));
+    $log[]  = date('Y-m-d');
+    $t['streak']     = $streak;
+    $t['bestStreak'] = max((int)($t['bestStreak'] ?? 0), $streak);
+    $t['doneLog']    = array_slice($log, -80);
+    $t['doneAt']     = date('Y-m-d');
+    $t['due']        = $rolled = nextRepeat($due, (string)$t['repeat']);
+  }
+  elseif ($kind === 'tasks') { $t['done'] = true;   $t['doneAt'] = date('Y-m-d'); }
+  else                       { $t['col']  = 'done'; $t['doneAt'] = date('Y-m-d'); }
+  $t['snoozeUntil'] = '';                 // xong rồi thì mốc dời cũ hết nghĩa
+  itemPut($kind, $id, $t);
+  return ['ok' => true, 'already' => false, 'rolled' => $rolled, 'streak' => $streak];
+}
+function doTaskSnooze(string $kind, string $id, int $until): array {
+  $t = itemGet($kind, $id);
+  if ($t === null) return ['ok' => false];
+  /* Chỉ dời lời nhắc, KHÔNG dời hạn: hạn trễ vẫn phải hiện là trễ, nếu
+     không thì bấm dời vài lần là mất dấu việc đang chậm. */
+  $t['snoozeUntil'] = date('Y-m-d H:i', $until);
+  itemPut($kind, $id, $t);
+  return ['ok' => true, 'already' => false];
+}
+/* "→ mai" — bản song sinh của pushTask() trong js/app.js, kể cả việc đếm
+   số lần dời. Đếm ở đây mới đúng: dời từ Telegram hay dời trong app thì
+   cũng là một lần né, và mục Tồn đọng phải thấy được cả hai. */
+function doTaskPush(string $id): array {
+  $t = itemGet('tasks', $id);
+  if ($t === null) return ['ok' => false];
+  $today = date('Y-m-d');
+  $cur = taskDayPhp($t);
+  $nxt = date('Y-m-d', strtotime(($cur > $today ? $cur : $today) . ' +1 day'));
+  /* Việc lặp thì đẩy RIÊNG kỳ này sang mai, đừng đụng vào hạn gốc: sửa hạn
+     là cả nhịp lặp trượt theo, việc "mỗi thứ 7" hoá thành "mỗi chủ nhật". */
+  if (isRepeat($t['repeat'] ?? '')) {
+    $due = substr((string)($t['due'] ?? ''), 0, 10);
+    excWrite($t, $due, array_merge(excEntry($t, $due), ['d' => $nxt, 'off' => 0]));
+  } else $t['due'] = $nxt;
+  $t['pushes']      = (int)($t['pushes'] ?? 0) + 1;
+  $t['pushedAt']    = $today;
+  $t['snoozeUntil'] = '';                 // hạn đổi rồi thì mốc dời nhắc cũ vô nghĩa
+  itemPut('tasks', $id, $t);
+  return ['ok' => true, 'already' => false, 'to' => $nxt, 'pushes' => (int)$t['pushes']];
+}
+
 function remDoneTodayPhp(array $r): bool {
   $today = date('Y-m-d');
   foreach ((array)($r['doneLog'] ?? []) as $d)
@@ -367,7 +495,8 @@ function todayUnsched(): array {
     if (!taskOnTodayPhp($t)) continue;
     if (hhmmMin(taskAtPhp($t)) !== null) continue;
     $out[] = ['title' => (string)($t['title'] ?? ''), 'mins' => taskMinutes($t),
-              'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
+              'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0,
+              'kind' => 'task', 'id' => (string)($t['id'] ?? '')];
   }
   return $out;
 }
@@ -416,14 +545,16 @@ function todaySlots(): array {
     $st = hhmmMin((string)remTimeOnPhp($r, $today));
     if ($st === null) continue;
     $out[] = ['start' => $st, 'mins' => remMinutes($r), 'title' => (string)($r['title'] ?? ''),
-              'done' => remDoneTodayPhp($r), 'est' => true];
+              'done' => remDoneTodayPhp($r), 'est' => true,
+              'kind' => 'rem', 'id' => (string)($r['id'] ?? '')];
   }
   foreach (itemsOf('tasks') as $t) {
     if (!taskOnTodayPhp($t)) continue;
     $st = hhmmMin(taskAtPhp($t));
     if ($st === null) continue;      /* chưa xếp giờ thì chưa nằm trên trục */
     $out[] = ['start' => $st, 'mins' => taskMinutes($t), 'title' => (string)($t['title'] ?? ''),
-              'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0];
+              'done' => taskDoneTodayPhp($t), 'est' => (int)round((float)($t['mins'] ?? 0)) > 0,
+              'kind' => 'task', 'id' => (string)($t['id'] ?? '')];
   }
   /* Lịch nhập từ app khác cũng chiếm giờ thật. Không kể vào đây thì con số
      "trống" trong tin Telegram sẽ rộng hơn con số trong app, và mình sẽ tin
@@ -1041,6 +1172,46 @@ function tgSettle(string $key, string $note): bool {
   ], 6);
   return !empty($res['ok']);
 }
+/* Vẽ lại tin chốt cuối ngày. Khác tgSettle() ở chỗ nó KHÔNG gỡ nút xuống:
+   tin này nói về nhiều việc, xử xong một cái thì những cái còn lại vẫn phải
+   bấm được. Việc vừa xử tự biến khỏi danh sách vì tin được dựng lại từ dữ
+   liệu hiện tại, chứ không phải nối thêm một dòng vào tin cũ.
+
+   Gọi từ hai phía: bấm nút trong Telegram, và app đẩy bản ghi lên sau khi
+   tick trên web. Tick ở đâu thì tin cũng phải nói đúng — đó chính là chỗ
+   trước đây để lệch, nút nằm lại trong khi việc đã xong từ lâu. */
+function eodRedraw(string $foot = '', ?int $msgId = null): bool {
+  $token = (string)confGet('tg_token', '');
+  if ($token === '') return false;
+  $key = tgMsgKey('eod', date('Y-m-d'), date('Y-m-d'));
+  /* Bấm nút thì Telegram đưa thẳng message_id của đúng tin đó — tin cậy hơn
+     bảng nhớ, và vẫn chạy được cả khi bảng nhớ bị dọn. Chỉ khi không có thì
+     mới tra bảng, đó là đường của lượt đồng bộ từ app. */
+  if ($msgId === null) {
+    $st = db()->prepare('SELECT msg FROM tgmsg WHERE k = ?');
+    $st->execute([$key]);
+    $row = $st->fetch();
+    if (!$row || empty($row['msg'])) return false;
+    $msgId = (int)$row['msg'];
+  }
+
+  $eod  = eodBuild($foot);
+  $body = [
+    'chat_id'    => (string)confGet('tg_chat', ''),
+    'message_id' => $msgId,
+    'parse_mode' => 'HTML',
+    'text'       => $eod['text'],
+  ];
+  $kb = $eod['n'] > 0 ? eodButtons($eod['left'], $eod['un']) : null;
+  /* Hết việc thì không gửi reply_markup — Telegram gỡ nút xuống — và quên
+     luôn khoá, khỏi sửa lại một tin đã chốt. */
+  if ($kb !== null) $body['reply_markup'] = ['inline_keyboard' => $kb];
+  $res = httpPostJson("https://api.telegram.org/bot$token/editMessageText", $body, 6);
+  if ($eod['n'] === 0) tgForget($key);
+  else db()->prepare('UPDATE tgmsg SET txt = ? WHERE k = ?')->execute([$eod['text'], $key]);
+  return !empty($res['ok']);
+}
+
 /* Việc/lời nhắc này đã xong hôm nay chưa — dùng chung cho cả hai chiều:
    webhook bấm nút, và app đẩy bản ghi lên. */
 function tgSettleDone(string $kind, string $id, string $note): bool {
@@ -1113,6 +1284,97 @@ function tgWhy(): array {
     'hasChat'   => confGet('tg_chat', '') !== '',
     'items'     => $items,
   ];
+}
+
+/* ---------------- chốt sổ cuối ngày ----------------
+   Tin "sắp hết ngày" trước đây chỉ kể ra rồi thôi: muốn tick thì phải mở
+   app, mà cuối ngày chính là lúc ít mở app nhất. Giờ mỗi việc có nút ngay
+   trong tin — một tin, hai nút mỗi việc, đóng sổ.
+
+   Khác mọi tin khác ở một điểm quan trọng: đây là tin của NHIỀU việc, nên
+   bấm xong một cái KHÔNG được gỡ cả bộ nút xuống như tin một việc. Bấm thì
+   VẼ LẠI tin từ dữ liệu hiện tại — việc vừa xử biến khỏi danh sách, những
+   việc còn lại giữ nguyên nút của chúng.
+
+   Số việc kể ra bằng đúng số việc bấm được. Kể mười hai việc mà chỉ sáu cái
+   có nút thì sáu cái kia trông như bị bỏ quên. */
+const EOD_MAX = 8;
+function eodBuild(string $foot = ''): array {
+  $slots = todaySlots();
+  /* Lịch của app khác thì bỏ ra khỏi danh sách nhắc: nó không tick được ở
+     đây nên nhắc cũng chẳng làm được gì, chỉ tổ đẩy con số "còn N việc"
+     phồng lên. Vẫn giữ trong $slots để nó chiếm giờ ở phần "còn trống" —
+     giờ đó bận thật, chỉ là bận ở app bên kia. */
+  $left = [];
+  foreach ($slots as $x)
+    if (empty($x['done']) && empty($x['feed']) && (string)($x['id'] ?? '') !== '') $left[] = $x;
+  $un = [];
+  foreach (todayUnsched() as $x)
+    if (empty($x['done']) && (string)($x['id'] ?? '') !== '') $un[] = $x;
+
+  $n = count($left) + count($un);
+  if ($n === 0)
+    return ['n' => 0, 'left' => [], 'un' => [],
+            'text' => '🌙 <b>Chốt sổ hôm nay — không còn việc nào</b>'
+                      . ($foot !== '' ? "\n\n" . $foot : '')];
+
+  $rest = 0;
+  foreach ($left as $x) $rest += $x['mins'];
+  foreach ($un as $x)   $rest += $x['mins'];
+  $l = ['🌙 <b>Sắp hết ngày — còn ' . $n . ' việc · ' . durText($rest) . '</b>'];
+
+  $shown = array_slice($left, 0, EOD_MAX);
+  $room  = EOD_MAX - count($shown);
+  $shownUn = $room > 0 ? array_slice($un, 0, $room) : [];
+  foreach ($shown as $x)
+    $l[] = '   • ' . hhmmText($x['start']) . ' ' . tgEsc($x['title'])
+           . ' · ' . (empty($x['est']) ? '~' : '') . durText($x['mins']);
+  foreach ($shownUn as $x)
+    $l[] = '   • ' . tgEsc($x['title']) . ' · ' . (empty($x['est']) ? '~' : '')
+           . durText($x['mins']) . ' <i>(chưa xếp giờ)</i>';
+  $more = $n - count($shown) - count($shownUn);
+  if ($more > 0) $l[] = '   <i>… và ' . $more . ' việc nữa</i>';
+
+  /* Còn trống bao nhiêu tính từ bây giờ tới hết cửa sổ, đã trừ phần việc đã
+     xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. */
+  $w  = workWin();
+  $nm = (int)date('G') * 60 + (int)date('i');
+  if (empty($w['off']) && $w['to'] > $nm) {
+    $busyAhead = 0;
+    foreach (slotBusy($slots) as $sp)
+      $busyAhead += max(0, min($sp[1], $w['to']) - max($sp[0], $nm));
+    $l[] = 'Còn trống ' . durText(max(0, ($w['to'] - $nm) - $busyAhead))
+           . ' tới ' . winText($w['to']) . '.';
+  }
+  if ($foot !== '') { $l[] = ''; $l[] = $foot; }
+
+  return ['n' => $n, 'left' => $shown, 'un' => $shownUn, 'text' => implode("\n", $l)];
+}
+/* Mỗi việc một hàng: [✅ tên việc] [→ mai] hoặc [✕ bỏ hôm nay].
+   Hai loại việc có hai lựa chọn thứ hai khác nhau, và khác có lý do: việc
+   lẻ có hạn nên dời được sang mai; việc hằng ngày lặp theo thứ, "mai" của
+   nó là một kỳ khác chứ không phải cùng một việc — nên nó chỉ bỏ được đúng
+   lần hôm nay.
+
+   Nhãn nút là chữ thường, KHÔNG escape HTML: Telegram nhận nhãn nút dạng
+   văn bản trần, đưa &amp; vào là hiện ra đúng chữ &amp;. */
+function eodButtons(array $left, array $un): ?array {
+  if (!confGet('tg_webhook_on')) return null;
+  $rows = [];
+  foreach (array_merge($left, $un) as $x) {
+    $id = (string)($x['id'] ?? '');
+    if ($id === '') continue;
+    $rem = (string)($x['kind'] ?? '') === 'rem';
+    $k = $rem ? 'r' : 't';
+    $rows[] = [
+      ['text' => '✅ ' . cutTitle((string)($x['title'] ?? ''), 20),
+       'callback_data' => 'eod:ok:' . $k . ':' . $id],
+      $rem ? ['text' => '✕ bỏ hôm nay', 'callback_data' => 'eod:no:r:' . $id]
+           : ['text' => '→ mai',        'callback_data' => 'eod:no:t:' . $id],
+    ];
+    if (count($rows) >= EOD_MAX) break;
+  }
+  return $rows ?: null;
 }
 
 function runSchedule(bool $dry = false): array {
@@ -1251,48 +1513,19 @@ function runSchedule(bool $dry = false): array {
   $eh = confGet('tg_endday_hour', '22');
   if ($eh !== null && (int)$eh >= 0 && (int)date('G', $now) >= (int)$eh
       && !alreadySent('endday:' . $today)) {
-    $slots = todaySlots();
-    /* Lịch của app khác thì bỏ ra khỏi danh sách nhắc: nó không tick được ở
-       đây nên nhắc cũng chẳng làm được gì, chỉ tổ đẩy con số "còn N việc"
-       phồng lên. Vẫn giữ trong $slots để nó chiếm giờ ở phần "còn trống" —
-       giờ đó bận thật, chỉ là bận ở app bên kia. */
-    $left  = [];
-    foreach ($slots as $x) if (empty($x['done']) && empty($x['feed'])) $left[] = $x;
-    $leftUn = [];
-    foreach (todayUnsched() as $x) if (empty($x['done'])) $leftUn[] = $x;
-
-    if ($left || $leftUn) {
-      $w   = workWin();
-      $nm  = (int)date('G', $now) * 60 + (int)date('i', $now);
-      $rest = 0;
-      foreach ($left as $x)   $rest += $x['mins'];
-      foreach ($leftUn as $x) $rest += $x['mins'];
-
-      $edl = ['🌙 <b>Sắp hết ngày — còn ' . (count($left) + count($leftUn))
-                . ' việc · ' . durText($rest) . '</b>'];
-      foreach (array_slice($left, 0, 8) as $x)
-        $edl[] = '   • ' . hhmmText($x['start']) . ' ' . tgEsc($x['title'])
-                 . ' · ' . (empty($x['est']) ? '~' : '') . durText($x['mins']);
-      foreach (array_slice($leftUn, 0, 4) as $x)
-        $edl[] = '   • ' . tgEsc($x['title']) . ' · ' . (empty($x['est']) ? '~' : '')
-                 . durText($x['mins']) . ' <i>(chưa xếp giờ)</i>';
-
-      /* Còn trống bao nhiêu tính từ bây giờ tới hết cửa sổ, đã trừ phần
-         việc đã xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. */
-      if (empty($w['off']) && $w['to'] > $nm) {
-        $busyAhead = 0;
-        foreach (slotBusy($slots) as $sp)
-          $busyAhead += max(0, min($sp[1], $w['to']) - max($sp[0], $nm));
-        $edl[] = 'Còn trống ' . durText(max(0, ($w['to'] - $nm) - $busyAhead))
-                 . ' tới ' . winText($w['to']) . '.';
-      }
-      $text = implode("\n", $edl);
-
-      if ($dry) { $done[] = ['endday' => count($left) + count($leftUn), 'dry' => true, 'sent' => $text]; }
+    $eod = eodBuild();
+    /* Xong hết thì im. Tin nhắc mà ngày nào cũng có, kể cả ngày mình làm
+       trọn vẹn, thì chỉ vài hôm là bị tắt thông báo. */
+    if ($eod['n'] > 0) {
+      if ($dry) { $done[] = ['endday' => $eod['n'], 'dry' => true, 'sent' => $eod['text']]; }
       else {
-        $res = tgSend($text, topicFor('report'));
-        if (!empty($res['ok'])) markSent('endday:' . $today);
-        $done[] = ['endday' => count($left) + count($leftUn), 'ok' => !empty($res['ok']),
+        $res = tgSend($eod['text'], topicFor('report'), eodButtons($eod['left'], $eod['un']));
+        if (!empty($res['ok'])) {
+          markSent('endday:' . $today);
+          /* Nhớ message_id để lát nữa bấm nút còn vẽ lại đúng tin này */
+          tgRemember(tgMsgKey('eod', $today, $today), $res, $eod['text']);
+        }
+        $done[] = ['endday' => $eod['n'], 'ok' => !empty($res['ok']),
                    'error' => $res['error'] ?? null];
       }
     }

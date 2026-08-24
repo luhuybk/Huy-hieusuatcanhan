@@ -2244,7 +2244,8 @@ function tgBlock(){
         ? ` Tóm tắt tuần gửi Chủ nhật lúc <b>${String(t.weeklyHour).padStart(2,'0')}:00</b>.`
         : ' Tóm tắt tuần đang tắt.'}
       ${t.enddayHour != null && t.enddayHour >= 0
-        ? ` Nhắc sắp hết ngày lúc <b>${String(t.enddayHour).padStart(2,'0')}:00</b> — chỉ gửi khi còn việc chưa tick.`
+        ? ` Nhắc sắp hết ngày lúc <b>${String(t.enddayHour).padStart(2,'0')}:00</b> — chỉ gửi khi còn việc chưa tick${
+            t.webhookOn ? ', và tick được ngay trong tin' : ''}.`
         : ' Nhắc sắp hết ngày đang tắt.'}
       ${t.escalate ? ' Báo trễ leo thang đang <b>bật</b> — trễ 3/7/14/30 ngày sẽ có tin riêng.' : ''}
       ${t.staffWeekly ? ' Tổng kết theo nhân sự đang <b>bật</b> — mỗi người một tin, gửi cùng giờ tóm tắt tuần.' : ''}
@@ -2267,6 +2268,8 @@ function tgBlock(){
       "⏰ 4 giờ / 12 giờ / 1 ngày / 3 ngày" dời lời nhắc lại — cả hai đều
       hiện ngay trên web sau lượt đồng bộ, không cần mở app để bấm.
       Lời nhắc lặp lại có nút "✅ Xong hôm nay" để giữ chuỗi 🔥.
+      Tin <b>sắp hết ngày</b> thì mỗi việc một hàng nút — tick hoặc dời ngay trong
+      tin đó, tin tự vẽ lại, việc còn lại vẫn bấm được.
       ${t.webhookOn ? 'Đang <b>bật</b>.' : 'Đang tắt — cần tên miền chạy https.'}
       </div>
       ${t.webhookOn ? `<div class="dim" style="margin-top:10px;line-height:1.65">

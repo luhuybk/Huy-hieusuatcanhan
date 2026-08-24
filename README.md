@@ -511,11 +511,28 @@ Cột *quá giờ* trong app chỉ thấy khi bạn mở app. Nên đúng **22:0
    • 21:00 Chốt sổ cuối ngày · 20p
    • Đi lấy hàng · ~45p (chưa xếp giờ)
 Còn trống 2h40 tới 24:00.
+┌──────────────────────┬──────────────┐
+│ ✅ Tập gym           │ ✕ bỏ hôm nay │
+│ ✅ Chốt sổ cuối ngày │ ✕ bỏ hôm nay │
+│ ✅ Đi lấy hàng       │ → mai        │
+└──────────────────────┴──────────────┘
 ```
+
+**Đóng sổ ngay trong Telegram.** Trước đây tin này chỉ kể ra rồi thôi — muốn tick thì phải mở app, mà cuối ngày chính là lúc ít mở app nhất. Giờ mỗi việc một hàng nút.
+
+Hai loại việc có lựa chọn thứ hai khác nhau, và khác có lý do: **việc lẻ** có hạn nên dời được sang mai — bấm là hạn nhảy sang mai và **đếm thêm một lần dời**, đúng như bấm *→ Mai* trong app, nên mục *Tồn đọng* thấy được cả những lần bạn né từ Telegram. **Việc hằng ngày** thì lặp theo thứ, "mai" của nó là một kỳ khác chứ không phải cùng một việc — nên nó chỉ bỏ được đúng lần hôm nay, ghi vào bảng *dời riêng* y như bấm trong app, và nhịp lặp không đụng tới.
+
+**Tin này vẽ lại chứ không gỡ nút.** Mọi tin nhắc khác nói về một việc, nên bấm xong là gỡ bộ nút xuống. Tin này nói về nhiều việc — gỡ cả bộ thì hai việc còn lại chết theo. Nên mỗi lần bấm, máy chủ dựng lại cả tin từ dữ liệu hiện tại: việc vừa xử biến khỏi danh sách, con số ở đầu tin tụt xuống một, những việc còn lại giữ nguyên nút. Tick xong hết thì tin đổi thành **🌙 Chốt sổ hôm nay — không còn việc nào** và nút biến mất.
+
+**Tick trong app cũng vẽ lại tin đó.** Cùng một luật với nút dưới từng lời nhắc: tick ở đâu thì bên kia cũng phải nói đúng.
+
+**Số việc kể ra bằng đúng số việc bấm được** (tối đa 8, dư thì ghi *… và N việc nữa*). Kể mười hai việc mà chỉ tám cái có nút thì bốn cái kia trông như bị bỏ quên.
 
 **Lịch từ app khác không nằm trong danh sách này.** Nó không tick được ở đây nên nhắc cũng chẳng làm được gì, chỉ tổ đẩy con số *"còn N việc"* phồng lên. Nhưng nó vẫn chiếm giờ ở dòng *Còn trống* — giờ đó bận thật, chỉ là bận ở app bên kia.
 
 **Tick xong hết thì không gửi gì.** Tin nhắc mà ngày nào cũng có, kể cả ngày bạn làm trọn vẹn, thì chỉ vài hôm là bị tắt. Dòng cuối tính từ *bây giờ* tới hết cửa sổ và đã trừ phần việc đã xếp giờ mà chưa làm — đó mới là chỗ thật sự còn nhét được. Ngày nghỉ thì bỏ dòng đó đi.
+
+Nút chỉ hiện khi đã **bật webhook** (Cài đặt → Telegram) — không có gì lắng nghe thì bày nút ra chỉ gây khó hiểu.
 
 #### Lịch từ app khác
 
