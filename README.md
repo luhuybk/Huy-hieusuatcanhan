@@ -205,7 +205,28 @@ Vòng tròn trên mỗi thẻ là **điểm chăm sóc 0–100**: 100 là vừa 
 Ô nhập tiền hiểu: `300k` · `1tr2` · `1,5tr` · `1tr250` · `250.000` · `2 tỷ`.
 
 ### Công việc
-- **Việc cần làm** — tự chia Quá hạn / Hôm nay / Sắp tới / Không hạn. Mỗi việc có ô **Ước tính (phút)**; việc đến hạn mà có đặt giờ nhắc sẽ hiện luôn trên dòng thời gian của tab [Việc hằng ngày](#việc-hằng-ngày).
+- **Việc cần làm** — tự chia Tồn đọng / Quá hạn / Hôm nay / Sắp tới / Không hạn. Phím tắt <kbd>Ctrl/Cmd</kbd> + <kbd>J</kbd> mở thẳng ô thêm việc, từ bất kỳ màn nào. Mỗi việc có ô **Ước tính (phút)**; việc đến hạn mà có đặt giờ nhắc sẽ hiện luôn trên dòng thời gian của tab [Việc hằng ngày](#việc-hằng-ngày).
+
+#### Tồn đọng — thứ cần một quyết định, không phải thêm một ngày
+
+Nằm **trên cùng** màn Công việc. Vào đây khi bạn muốn biết mình đang nợ những gì.
+
+Một việc rơi vào đây khi **trễ từ 3 ngày**, hoặc **đã bấm dời từ 3 lần**. Trễ một hôm là bận — nó vẫn nằm ở mục *Quá hạn* như cũ. Tới mức này thì khác: việc đang mắc ở đâu đó và cần một quyết định, chứ không phải thêm một lần cố nữa.
+
+```
+TỒN ĐỌNG — 2 VIỆC
+┌────────────────────────────────────────────────┐
+│ Gọi bảo hiểm                    [đã dời 4 lần] │
+│ trễ 5 ngày · đã dời 4 lần · hạn 19/08 · Hàng tuần│
+│ [ ✂ Chia nhỏ ] [ → Giao cho ai ] [ Bỏ hẳn ]    │
+└────────────────────────────────────────────────┘
+```
+
+Mỗi thẻ nói thẳng **vì sao nó ở đây** (trễ mấy ngày, dời mấy lần, lần dời cuối là hôm nào) và đưa đúng ba lối ra như mục *Đang bị né* bên Tổng quan — dùng chung một thẻ, nên hai chỗ không bao giờ nói khác nhau về cùng một việc.
+
+Sắp theo mức nặng: **mỗi lần bấm dời tính bằng ba ngày trễ**. Dời là hành động có ý thức — bạn nhìn thấy việc đó rồi cố ý đẩy đi; còn trễ thì có khi chỉ là quên. Hai thứ không nặng như nhau.
+
+Việc đã vào đây thì **tách khỏi bốn mục bên dưới**, không kể ở hai chỗ — đếm hai lần thì con số nào cũng vô nghĩa. Quá 6 việc thì gấp lại, bấm *Xem hết* để mở.
 
 #### Thêm việc: app chỉ luôn chỗ nào còn trống
 
@@ -683,7 +704,7 @@ Có biểu đồ 12 tháng (phần tím là quan hệ, xanh là nhân viên — 
 Phần đáng giá nhất là **Chi theo dịp trong năm**: ví dụ *"Tết · 3 người · trung bình 1,9tr · tổng 5,8tr"*. Trước Tết mở ra là biết năm ngoái tiêu bao nhiêu để đặt ngân sách, thay vì tiêu tới đâu hay tới đó.
 
 ### Hộp ghi nhanh
-Nút ✎ trên thanh đầu, hoặc <kbd>Ctrl/Cmd</kbd> + <kbd>J</kbd>. Một ô duy nhất: gõ một câu (hoặc bấm 🎤 nói) rồi <kbd>Enter</kbd> là xong — không phải chọn mảng, hạn hay loại. **Lưu & ghi tiếp** giữ ô mở để trút liền mấy ý.
+Nút ✎ trên thanh đầu. Một ô duy nhất: gõ một câu (hoặc bấm 🎤 nói) rồi <kbd>Enter</kbd> là xong — không phải chọn mảng, hạn hay loại. **Lưu & ghi tiếp** giữ ô mở để trút liền mấy ý.
 
 Lúc rảnh vào *Hộp ghi nhanh* đẩy từng mẩu về đúng chỗ, mỗi mẩu một hàng nút:
 
@@ -705,7 +726,37 @@ Việc lặp lại được **chiếu tới trước** trong tháng đang xem �
 
 Ô hẹp nên chỗ hiển thị có hạn: dịp và sinh nhật luôn được xếp lên trước, việc lặp hằng ngày xuống sau, để thứ quan trọng không bị đẩy khuất. Trên điện thoại mỗi ô rút gọn thành các chấm màu theo mảng.
 
-Chạm một ngày để xem đầy đủ bên dưới, và có nút thêm việc thẳng vào đúng ngày đó.
+#### Lịch định kỳ — nhìn cả nhịp, để thấy chỗ còn thiếu
+
+Lịch tháng là chỗ bạn xếp những việc **lặp đi lặp lại**, nên thứ nằm to nhất ở đây là danh sách các nhịp đã xếp — không phải "hôm nay có gì" (câu đó màn Tổng quan và Việc hằng ngày đã trả lời kỹ hơn nhiều).
+
+Ngay dưới lưới lịch là khối **Lịch định kỳ**, mở sẵn, gom mọi nhịp lại và chia theo tần suất:
+
+```
+LỊCH ĐỊNH KỲ — 9 NHỊP                          ▲ Thu gọn
+┌──────────────────────────────────────────────────────┐
+│ ⚠ 1 nhịp đang trễ — kỳ này chưa tick mà hạn đã qua.  │
+│ ⏰ 1 nhịp chưa đặt giờ — không có mốc nào để Telegram │
+│    nhắc.                                              │
+│ Trong tuần chưa có nhịp nào rơi vào: T7, CN.         │
+└──────────────────────────────────────────────────────┘
+HẰNG NGÀY / CÁCH NGÀY (1)
+  Tập gym                    lần tới 24/08 · 06:00 · 30p
+HẰNG TUẦN / HAI TUẦN (4) · HẰNG THÁNG (2) · MỖI QUÝ TRỞ LÊN (1)
+VIỆC HẰNG NGÀY (1)
+```
+
+Ba dòng cảnh báo trên cùng là lý do bạn mở màn này ra, nên chúng **ở lại kể cả khi danh sách đang thu gọn**:
+
+- **Nhịp đang trễ** — kỳ hiện tại chưa tick mà hạn đã qua.
+- **Nhịp chưa đặt giờ** — lặp mà không có giờ thì máy chủ không có mốc nào để nhắc, và bạn sẽ tưởng Telegram hỏng.
+- **Thứ nào trong tuần chưa có nhịp nào** — trả lời thẳng câu "mình có thiếu lên kế hoạch gì không". Chỉ đếm nhịp theo **ngày và tuần**: việc hằng tháng rơi đúng một thứ của một tuần, kể nó vào đây thì tuần nào cũng tưởng đã kín. Nhịp *hằng ngày* thì chạm cả bảy thứ. **Ngày nghỉ không bị kể là lỗ hổng** — không có việc định kỳ vào chủ nhật là đúng ý bạn, không phải thiếu sót.
+
+Bấm một dòng là mở thẳng ra sửa.
+
+#### Ngày đã chọn — thu gọn sẵn
+
+Mục *Hôm nay / Ngày đã chọn* giờ **gấp lại sẵn**, chỉ còn một dòng ghi ngày, ngày âm và số mục. Bấm vào là mở đủ, kèm nút thêm việc thẳng vào đúng ngày đó.
 
 **Tick xong việc ngay trên lịch.** Việc thường tick là xong; việc lặp tick là hoàn thành kỳ hiện tại (hạn nhảy sang kỳ sau, chuỗi 🔥 +1); thẻ giao việc tick là chuyển thẳng sang cột Hoàn thành, bỏ tick thì quay lại Đang làm.
 

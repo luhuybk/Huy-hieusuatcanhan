@@ -94,6 +94,32 @@ function renderSide(){
    được luôn, và hai màn hình không bao giờ lệch nhau vì chúng là một. */
 /* Việc đã dời từ ba lần trở lên. Ba nút, không có nút thứ tư nào tên là
    "để đó" — cái đó bấm bằng cách không làm gì cả. */
+/* Thẻ của một việc tồn đọng, dùng chung cho Tổng quan và Công việc — hai
+   chỗ nói về cùng một việc thì không được nói khác nhau. Ba nút, không có
+   nút thứ tư nào tên là "để đó": cái đó bấm bằng cách không làm gì cả. */
+function stuckCard(t){
+  const tre = stuckLate(t), n = t.pushes || 0, day = taskDay(t);
+  return `<div class="card duck" style="margin-bottom:10px">
+    <div class="row">
+      <div class="grow ell" style="font-weight:650" data-act="editTask" data-id="${t.id}">
+        ${areaDot(t.areaId)} ${esc(t.title || 'Việc chưa đặt tên')}</div>
+      ${n >= PUSH_LIMIT ? `<span class="chip bad">đã dời ${n} lần</span>`
+        : tre ? `<span class="chip bad">trễ ${tre} ngày</span>` : ''}
+    </div>
+    <div class="dim" style="margin-top:6px">${esc(stuckWhy(t))}${
+      day ? ' · hạn ' + fmtDate(day) : ''}${
+      t.repeat ? ' · ' + esc(repeatText(t)) : ''}${
+      t.pushedAt ? ' · dời lần cuối ' + fmtDate(t.pushedAt) : ''}</div>
+    <div class="btns" style="margin-top:10px">
+      <button class="btn sm grow pri" data-act="splitTask" data-id="${t.id}"
+        title="Cắt thành mấy mẩu làm được trong một lần ngồi">✂ Chia nhỏ</button>
+      <button class="btn sm grow" data-act="handOffTask" data-id="${t.id}"
+        title="Chuyển thành thẻ việc đã giao">→ Giao cho ai</button>
+      <button class="btn sm dngr" data-act="dropTask" data-id="${t.id}"
+        title="Không làm cũng là một quyết định">Bỏ hẳn</button>
+    </div>
+  </div>`;
+}
 function dashDucked(A){
   const list = duckedTasks(A);
   if (!list.length) return '';
@@ -102,27 +128,7 @@ function dashDucked(A){
     Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa.
     Chọn một trong ba đường — <b>bấm "→ Mai" lần thứ ${PUSH_LIMIT + 1}</b> thì
     ngày mai vẫn đúng dòng này thôi.</div>`;
-  h += list.slice(0, 5).map(t => {
-    const tre = -dayDiff(t.due);
-    return `<div class="card duck" style="margin-bottom:10px">
-      <div class="row">
-        <div class="grow ell" style="font-weight:650" data-act="editTask" data-id="${t.id}">
-          ${areaDot(t.areaId)} ${esc(t.title || 'Việc chưa đặt tên')}</div>
-        <span class="chip bad">đã dời ${t.pushes} lần</span>
-      </div>
-      <div class="dim" style="margin-top:6px">${
-        t.due ? (tre > 0 ? 'trễ ' + tre + ' ngày · hạn ' + fmtDate(t.due) : 'hạn ' + fmtDate(t.due))
-              : 'chưa có hạn'}${t.pushedAt ? ' · dời lần cuối ' + fmtDate(t.pushedAt) : ''}</div>
-      <div class="btns" style="margin-top:10px">
-        <button class="btn sm grow pri" data-act="splitTask" data-id="${t.id}"
-          title="Cắt thành mấy mẩu làm được trong một lần ngồi">✂ Chia nhỏ</button>
-        <button class="btn sm grow" data-act="handOffTask" data-id="${t.id}"
-          title="Chuyển thành thẻ việc đã giao">→ Giao cho ai</button>
-        <button class="btn sm dngr" data-act="dropTask" data-id="${t.id}"
-          title="Không làm cũng là một quyết định">Bỏ hẳn</button>
-      </div>
-    </div>`;
-  }).join('');
+  h += list.slice(0, 5).map(stuckCard).join('');
   if (list.length > 5)
     h += `<div class="dim" style="margin-top:4px">+${list.length - 5} việc nữa cùng cảnh</div>`;
   return h;
@@ -172,7 +178,7 @@ function dashInbox(){
   const inb = inboxOpen();
   if (!inb.length) return `<div class="empty" style="padding:34px 22px">
     <b>Hộp ghi nhanh đang trống</b>
-    Bấm ✎ trên thanh trên cùng (hoặc Ctrl+J) để ném nhanh một mẩu vào đây,
+    Bấm ✎ trên thanh trên cùng để ném nhanh một mẩu vào đây,
     khỏi phải quyết định nó là việc hay ý tưởng ngay lúc đó.</div>`;
   let h = secHd('Chờ phân loại (' + inb.length + ')',
     `<button data-act="nav" data-id="inbox">Mở hộp đầy đủ →</button>`);
@@ -429,7 +435,10 @@ function vPerson(){
 
 /* ---------------- CÔNG VIỆC ---------------- */
 function taskItem(t){
-  const d = t.due ? dayDiff(t.due) : null;
+  /* Ngày HIỂN THỊ, không phải t.due: kỳ này có thể đã dời riêng hoặc bỏ qua.
+     Lấy thẳng t.due thì thẻ ghi "quá hạn" cho một ngày mình đã dời đi rồi. */
+  const day = taskSortDay(t);
+  const d = day ? dayDiff(day) : null;
   const cls = t.done ? '' : d === null ? '' : d < 0 ? 'bad' : d === 0 ? 'warn' : '';
   const meta = [
     t.prio === 'high' && !t.done ? `<span class="chip bad">gấp</span>` : '',
@@ -445,7 +454,7 @@ function taskItem(t){
       <div class="t ell" style="${t.done?'text-decoration:line-through;opacity:.5':''}">${areaDot(t.areaId)} ${esc(t.title)}</div>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
     </div>
-    ${t.due && !t.done ? `<span class="chip ${cls}">${dueText(t.due)}</span>` : ''}
+    ${day && !t.done ? `<span class="chip ${cls}">${dueText(day)}</span>` : ''}
     ${t.done ? '' : `<button class="iconbtn" data-act="snooze" data-k="tasks" data-id="${t.id}"
        title="Dời nhắc lại">⏰</button>`}
   </div>`;
@@ -458,15 +467,38 @@ function vWork(){
   if (!all.length) return `<div class="empty"><b>Chưa có việc nào</b>Bấm + để thêm. Việc lặp lại (tập gym, đóng tiền nhà…) chỉ cần tạo một lần.</div>`;
   const g = {late:[], today:[], soon:[], none:[]};
   for (const t of open){
-    const d = t.due ? dayDiff(t.due) : null;
+    const day = taskSortDay(t);
+    const d = day ? dayDiff(day) : null;
     if (d === null) g.none.push(t); else if (d < 0) g.late.push(t); else if (d === 0) g.today.push(t); else g.soon.push(t);
   }
   const byPrio = a => a.sort((x,y) => ['high','mid','low'].indexOf(x.prio||'mid') - ['high','mid','low'].indexOf(y.prio||'mid'));
   const sec = (t, arr) => arr.length ? secHd(t + ' (' + arr.length + ')') + arr.map(taskItem).join('') : '';
   let h = '';
-  h += sec('Quá hạn', g.late.sort((a,b) => a.due.localeCompare(b.due)));
+
+  /* ---- tồn đọng ----
+     Nằm trên cùng vì đây là thứ duy nhất trong màn này cần một quyết định,
+     chứ không phải cần thêm một ngày nữa. Tách hẳn khỏi bốn mục bên dưới:
+     kể ở hai chỗ thì đếm hai lần, mà đếm hai lần thì con số nào cũng vô nghĩa. */
+  const stuck = stuckTasks(A);
+  const stuckIds = new Set(stuck.map(t => t.id));
+  if (stuck.length){
+    const cap = S.showStuck ? stuck.length : 6;
+    h += secHd('Tồn đọng — ' + stuck.length + ' việc', stuck.length > 6
+      ? `<button data-act="showStuck">${S.showStuck ? '▲ Thu gọn' : '▼ Xem hết ' + stuck.length}</button>` : '');
+    h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
+      Trễ từ ${STUCK_DAYS} ngày, hoặc đã bấm dời từ ${PUSH_LIMIT} lần.
+      Trễ một hôm là bận; tới mức này thì việc đang mắc ở đâu đó và cần một
+      quyết định, chứ không phải thêm một lần cố nữa.
+      Mấy việc này đã <b>tách khỏi các mục bên dưới</b> để không đếm hai lần.</div>`;
+    h += stuck.slice(0, cap).map(stuckCard).join('');
+    if (stuck.length > cap)
+      h += `<div class="dim" style="margin-top:4px">+${stuck.length - cap} việc nữa cùng cảnh</div>`;
+  }
+  for (const k in g) g[k] = g[k].filter(t => !stuckIds.has(t.id));
+
+  h += sec('Quá hạn', g.late.sort((a,b) => taskSortDay(a).localeCompare(taskSortDay(b))));
   h += sec('Hôm nay', byPrio(g.today));
-  h += sec('Sắp tới', g.soon.sort((a,b) => a.due.localeCompare(b.due)));
+  h += sec('Sắp tới', g.soon.sort((a,b) => taskSortDay(a).localeCompare(taskSortDay(b))));
   h += sec('Không hạn', byPrio(g.none));
   /* Mặc định thu gọn. Việc đã xong không cần đọc lại mỗi lần mở màn hình,
      mà để nguyên thì nó dài hơn cả phần việc còn phải làm — thứ duy nhất
@@ -772,7 +804,6 @@ function vInbox(){
     </div>
     <div class="btns" style="margin-top:12px">
       <button class="btn sm pri" data-act="capture">✎ Ghi nhanh</button>
-      <span class="chip">phím tắt: Ctrl/Cmd + J</span>
     </div>
   </div>`;
 
@@ -794,6 +825,70 @@ function vInbox(){
 /* ---------------- LỊCH THÁNG ---------------- */
 const WD = ['T2','T3','T4','T5','T6','T7','CN'];
 const EV_ICON = {task:'✓', card:'▦', occasion:'🎊', birthday:'🎂', staffBirthday:'🎂'};
+
+/* ---- lịch định kỳ ----
+   Lịch tháng là chỗ mình xếp những việc lặp đi lặp lại, nên thứ đáng nằm to
+   nhất ở đây là DANH SÁCH các nhịp đã xếp — để soi ra mình còn thiếu nhịp
+   nào. Ô "ngày đã chọn" chỉ trả lời "hôm nay có gì", mà câu đó thì màn Tổng
+   quan và Việc hằng ngày đã trả lời kỹ hơn nhiều rồi. */
+function planRow(o){
+  if (o.r) return `<div class="item">
+    <span class="sw" style="width:10px;height:10px;border-radius:3px;flex:none;
+      background:${areaOf(o.r.areaId) ? areaOf(o.r.areaId).color : 'var(--acc)'}"></span>
+    <div class="grow" data-act="editRem" data-id="${o.r.id}">
+      <div class="t ell">${esc(o.r.title || 'Không tên')}</div>
+      <div class="s">${esc(daysText(o.r.days))} · ${esc(o.r.time)} · ${fmtDur(remMins(o.r))}</div>
+    </div>
+    <span class="chip">hằng ngày</span>
+  </div>`;
+  const t = o.t, day = taskDay(t), tre = stuckLate(t), at = taskAt(t);
+  return `<div class="item">
+    ${areaDot(t.areaId)}
+    <div class="grow" data-act="editTask" data-id="${t.id}">
+      <div class="t ell">${esc(t.title || 'Việc chưa đặt tên')}</div>
+      <div class="s">${day ? 'lần tới ' + fmtDate(day) : 'chưa có hạn'}${
+        at ? ' · ' + esc(at) : ' · chưa đặt giờ'} · ${fmtDur(taskMins(t))}</div>
+    </div>
+    ${tre ? `<span class="chip bad">trễ ${tre} ngày</span>` : ''}
+    <span class="chip">${esc(repeatText(t))}</span>
+  </div>`;
+}
+function calRepeats(){
+  const P = repeatPlan(S.area);
+  const n = P.reps.length + P.rems.length;
+  if (!n) return secHd('Lịch định kỳ') + `<div class="empty" style="padding:22px">
+    <b>Chưa xếp nhịp lặp lại nào</b>
+    Bấm + rồi chọn ô <b>Lặp lại</b> — tập gym, đóng tiền nhà, nghiên cứu sản phẩm
+    mỗi thứ 7… tạo một lần là xong, khỏi nhớ.</div>`;
+
+  let h = secHd('Lịch định kỳ — ' + n + ' nhịp',
+    `<button data-act="showPlan">${S.showPlan ? '▲ Thu gọn' : '▼ Xem hết'}</button>`);
+
+  /* Ba lỗ hổng đáng nói, và luôn hiện dù danh sách đang thu gọn — đây mới là
+     lý do mình mở màn này ra. */
+  const warn = [];
+  if (P.late.length)
+    warn.push(`<span style="color:var(--bad)">⚠ ${P.late.length} nhịp đang trễ</span> — kỳ này chưa tick mà hạn đã qua.`);
+  if (P.noTime.length)
+    warn.push(`<span style="color:var(--warn)">⏰ ${P.noTime.length} nhịp chưa đặt giờ</span> — không có mốc nào để Telegram nhắc.`);
+  warn.push(P.gaps.length
+    ? `Trong tuần chưa có nhịp nào rơi vào: <b>${P.gaps.map(w => WDAYS.find(x => x[0] === w)[1]).join(', ')}</b>.`
+    : `Mọi ngày làm việc trong tuần đều đã có nhịp riêng.`);
+  h += `<div class="card" style="margin-bottom:12px;line-height:1.75">${warn.join('<br>')}</div>`;
+  if (!S.showPlan) return h;
+
+  P.groups.forEach(gr => {
+    if (!gr.items.length) return;
+    h += `<div class="sec"><span>${esc(gr.label)} (${gr.items.length})</span><span class="ln"></span></div>`;
+    h += gr.items.map(t => planRow({t})).join('');
+  });
+  if (P.rems.length){
+    h += `<div class="sec"><span>Việc hằng ngày (${P.rems.length})</span><span class="ln"></span></div>`;
+    h += P.rems.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)))
+               .map(r => planRow({r})).join('');
+  }
+  return h;
+}
 
 function vCalendar(){
   const [Y, M] = S.calMonth.split('-').map(Number);
@@ -841,10 +936,22 @@ function vCalendar(){
   </div>
   <div class="calgrid">${grid}</div>
 
+  ${calRepeats()}
+
   <div class="daylist">
     <div class="sec">
-      <span>${sel === tISO ? 'Hôm nay' : 'Ngày đã chọn'}</span><span class="ln"></span>
+      <span>${sel === tISO ? 'Hôm nay' : 'Ngày đã chọn'} — ${selEvs.length} mục</span>
+      <span class="ln"></span>
+      <button data-act="calList">${S.calList ? '▲ Thu gọn' : '▼ Hiện'}</button>
     </div>
+    ${!S.calList ? `<div class="card" style="margin-bottom:10px" data-act="calList">
+      <div class="row">
+        <div class="grow"><div class="dayhd">${fmtDate(sel)} · ${
+          WD[(new Date(sel+'T00:00:00').getDay()+6)%7]}</div>
+          <div class="dim">${selLu}</div></div>
+        <span class="chip">${selEvs.length ? selEvs.length + ' mục' : 'trống'}</span>
+      </div>
+    </div>` : `
     <div class="card" style="margin-bottom:10px">
       <div class="dayhd">${fmtDate(sel)} · ${WD[(new Date(sel+'T00:00:00').getDay()+6)%7]}</div>
       <div class="dim">${selLu}</div>
@@ -874,7 +981,7 @@ function vCalendar(){
       </div>`;
     }).join('') : `<div class="empty" style="padding:22px">Ngày này trống.</div>`}
     <button class="btn sm full" style="margin-top:4px" data-act="addTaskOn" data-id="${sel}">
-      + Thêm việc vào ngày ${fmtDate(sel)}</button>
+      + Thêm việc vào ngày ${fmtDate(sel)}</button>`}
   </div>`;
 }
 
@@ -1182,7 +1289,7 @@ function vReview(){
     else if (t.done && t.doneAt && t.doneAt >= from) doneW.push({title:t.title, doneAt:t.doneAt});
   });
   doneW.sort((a,b) => b.doneAt.localeCompare(a.doneAt));
-  const lateW  = tasks().filter(t => !t.done && t.due && dayDiff(t.due) < 0);
+  const lateW  = tasks().filter(t => !t.done && t.due && !taskSkipped(t) && dayDiff(taskDay(t)) < 0);
   /* Chấm theo mốc hoàn thành, không theo updatedAt — sửa lại một thẻ cũ
      không có nghĩa là tuần này mới làm xong nó. */
   const cardsW = cards().filter(c => c.col === 'done' && (c.doneAt || '') >= from);
@@ -1567,7 +1674,7 @@ function pushBtn(t){
 /* Việc lẻ trên trục hôm nay. Nét đứt và dấu ~ để phân biệt với việc hằng
    ngày: giờ của nó là giờ nhắc, còn thời lượng có thể chỉ là con số tạm. */
 function taskDayRow(x, cl, nowMin){
-  const t = x.t, tre = x.late ? -dayDiff(t.due) : 0, doi = pushInfo(t);
+  const t = x.t, tre = x.late ? -dayDiff(taskDay(t)) : 0, doi = pushInfo(t);
   return chkRow({
     id:t.id, tick:'toggleTask', open:'editTask', done:x.done, dash:true,
     time:min2hhmm(x.start), dot:areaDot(t.areaId), title:x.title, state:chkState(x, nowMin),
@@ -1592,7 +1699,7 @@ function slotBtn(t, at, need){
    live = false thì ô tích chỉ để xem, giống hàng bên trên. */
 function unschedRow(t, slot, dstr, live){
   const d0 = dstr === undefined ? today() : dstr;
-  const tre = -dayDiff(t.due), est = taskEst(t), xong = taskDoneOn(t, d0), doi = pushInfo(t);
+  const tre = -dayDiff(taskDay(t)), est = taskEst(t), xong = taskDoneOn(t, d0), doi = pushInfo(t);
   const ro = live === false;
   return chkRow({
     id:t.id, tick:ro ? '' : 'toggleTask', open:'editTask', done:xong, dash:true,

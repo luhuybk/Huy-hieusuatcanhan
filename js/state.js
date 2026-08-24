@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-23.1';
+const APP_BUILD = '2026-08-23.2';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -650,6 +650,79 @@ function duckedTasks(areaId){
     .sort((a, b) => (b.pushes || 0) - (a.pushes || 0)
                  || String(a.due || '').localeCompare(String(b.due || '')));
 }
+/* ---- việc tồn đọng ----
+   Mục "Quá hạn" gom cả việc trễ một hôm lẫn việc trễ ba tuần vào chung một
+   chỗ, nên nhìn vào không biết cái nào đang thật sự mắc. Tách riêng: trễ từ
+   ba ngày, hoặc đã bấm dời từ ba lần. Trễ một hôm là bận; trễ một tuần, hay
+   dời ba lần, là việc đang kẹt ở đâu đó và cần một QUYẾT ĐỊNH — chứ không
+   phải thêm một lần cố nữa. */
+const STUCK_DAYS = 3;
+const stuckLate = t => { const d = taskSortDay(t); return d ? Math.max(0, -dayDiff(d)) : 0; };
+/* Ngày dùng để xếp nhóm và để nói "trễ mấy ngày". Kỳ này đã bỏ qua thì tính
+   theo kỳ kế tiếp: bỏ rồi mà vẫn nằm ở "Quá hạn" thì con số quá hạn nói sai,
+   và mình sẽ đi tìm một việc mà chính mình đã quyết định là thôi. */
+function taskSortDay(t){
+  const d = taskDay(t);
+  if (!t || !taskSkipped(t)) return d;
+  return t.repeat ? (nextRepeat(String(t.due || '').slice(0,10), t.repeat) || d) : d;
+}
+/* Nặng tới đâu: mỗi lần bấm dời tính bằng ba ngày trễ. Dời là hành động có
+   ý thức — mình nhìn thấy việc đó rồi cố ý đẩy đi; còn trễ thì có khi chỉ
+   là quên. Hai thứ không nặng như nhau. */
+const stuckScore = t => stuckLate(t) + (t.pushes || 0) * 3;
+function stuckTasks(areaId){
+  return byArea(tasks(), areaId === undefined ? 'all' : areaId)
+    .filter(t => !t.done && !taskSkipped(t)
+                 && ((t.pushes || 0) >= PUSH_LIMIT || stuckLate(t) >= STUCK_DAYS))
+    .sort((a, b) => stuckScore(b) - stuckScore(a) || String(a.title).localeCompare(String(b.title)));
+}
+/* Vì sao nó nằm trong danh sách tồn đọng — nói thẳng con số, đừng bắt đoán */
+function stuckWhy(t){
+  const tre = stuckLate(t), n = t.pushes || 0, out = [];
+  if (tre) out.push('trễ ' + tre + ' ngày');
+  if (n)   out.push('đã dời ' + n + ' lần');
+  return out.join(' · ') || 'chưa có hạn';
+}
+
+/* ---- lịch định kỳ ----
+   Việc lặp lại nằm rải giữa danh sách chung nên không bao giờ nhìn được
+   thành một bức tranh: tuần này mình đã xếp những gì, thứ nào còn trống,
+   mục nào lặp mà quên đặt giờ. Gom hết về một chỗ để soi ra chỗ thiếu. */
+const CADENCE = [
+  ['day',   'Hằng ngày / cách ngày',  ['d1','d2']],
+  ['week',  'Hằng tuần / hai tuần',   ['w1','w2']],
+  ['month', 'Hằng tháng',             ['m1','mw1','mw2','mw3','mw4','mwL']],
+  ['long',  'Mỗi quý trở lên',        ['m3','m6','y1']]
+];
+const cadenceOf = code => (CADENCE.find(c => c[2].includes(String(code))) || [])[0] || '';
+function repeatPlan(areaId){
+  const A = areaId === undefined ? 'all' : areaId;
+  const reps = byArea(tasks(), A).filter(t => !t.done && t.repeat && !t.deleted);
+  const rems = byArea(reminders(), A).filter(r => r.enabled && (r.days || []).length);
+  const groups = CADENCE.map(([id, label]) => ({id, label,
+    items: reps.filter(t => cadenceOf(t.repeat) === id)
+               .sort((a, b) => String(taskDay(a)).localeCompare(String(taskDay(b))))}));
+  /* Nhịp TUẦN: chỉ việc hằng ngày và việc lặp theo ngày/tuần mới nói được
+     "thứ này có gì". Việc hằng tháng rơi đúng một thứ của một tuần, đếm nó
+     vào đây là tuần nào cũng tưởng đã kín. */
+  const hit = new Set();
+  rems.forEach(r => (r.days || []).map(Number).forEach(d => hit.add(d)));
+  reps.forEach(t => {
+    /* Nhịp theo NGÀY (hằng ngày, cách ngày) chạm mọi thứ trong tuần — chỉ
+       đếm cái thứ mà hạn hiện tại rơi vào thì sáu ngày còn lại bị báo là
+       trống, trong khi ngày nào cũng có nó. */
+    if (/^d/.test(t.repeat)){ WDAYS.forEach(([wd]) => hit.add(wd)); return; }
+    if (!/^w/.test(t.repeat)) return;
+    const d = taskDay(t); if (d) hit.add(wdOf(d));
+  });
+  /* Ngày nghỉ không có việc định kỳ nào thì đó là đúng ý mình, không phải lỗ hổng */
+  const gaps = WDAYS.map(([wd]) => wd).filter(wd => !hit.has(wd) && !workWindow(wd).off);
+  return {reps, rems, groups, gaps,
+          /* lặp mà không đặt giờ thì máy chủ không có mốc nào để nhắc */
+          noTime: reps.filter(t => hhmm2min(taskAt(t)) === null),
+          late:   reps.filter(t => stuckLate(t) > 0)};
+}
+
 function lateCards(){ return cards().filter(c => c.col !== 'done' && c.due && dayDiff(c.due) < 0); }
 function staleP(){
   return people().map(p => ({p, over: (p.lastContact ? -dayDiff(p.lastContact) : 999) - TIERS[p.tier].ping}))

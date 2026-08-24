@@ -5,7 +5,10 @@
 
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
             dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
-            dashtab:'today', showDone:false,
+            dashtab:'today', showDone:false, showStuck:false,
+            /* Lịch tháng: danh sách nhịp lặp mở sẵn, mục "ngày đã chọn" thu
+               gọn — vào đây là để soi lịch định kỳ, không phải xem hôm nay. */
+            showPlan:true, calList:false,
             reviewMonth:'',
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
@@ -2104,7 +2107,10 @@ document.addEventListener('click', e => {
       hardReset, 'Gỡ sạch & tải lại'); break;
     case 'reviewMonth': S.reviewMonth = id; render(); break;
     case 'dashtab':  S.dashtab = id; render(); window.scrollTo(0, 0); break;
-    case 'showDone': S.showDone = !S.showDone; render(); break;
+    case 'showDone':  S.showDone  = !S.showDone;  render(); break;
+    case 'showStuck': S.showStuck = !S.showStuck; render(); break;
+    case 'showPlan':  S.showPlan  = !S.showPlan;  render(); break;
+    case 'calList':   S.calList   = !S.calList;   render(); break;
     case 'journeytab': S.journeytab = id; render(); break;
     case 'addJourney': addJourney(id); break;
     case 'splitTask':   splitTask(id); break;
@@ -2283,7 +2289,10 @@ document.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){ e.preventDefault(); searchBox(); }
-  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j'){ e.preventDefault(); quickCapture(); }
+  /* Ctrl/Cmd + J mở thẳng ô "Việc cần làm". Ghi nhanh vẫn còn nút ✎ trên
+     thanh đầu — nó là chỗ trút ý nghĩ, còn phím tắt thì nên dành cho thứ
+     mình gõ nhiều lần trong ngày. */
+  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j'){ e.preventDefault(); addTask(); }
   else if (e.key === 'Escape') closeModal();
 });
 
