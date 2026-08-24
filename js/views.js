@@ -1542,7 +1542,10 @@ function chkState(x, nowMin){
   if (x.done) return {t:'xong' + (x.doneTime ? ' ' + x.doneTime : ''), c:'ok'};
   const dur = (x.est === false ? '~' : '') + fmtDur(x.mins);
   if (x.start === null || x.start === undefined) return {t:dur, c:''};
-  if (nowMin > x.start + x.mins) return {t:'quá giờ', c:'late'};
+  /* >= chứ không > : đúng phút kết thúc là việc đã hết giờ. Trục thời gian và
+     dòng cảnh báo dưới ô Cửa sổ vốn đã tính vậy — lệch một phút giữa ba chỗ
+     là lúc nhìn thấy viền đỏ mà cột phải vẫn ghi "tới giờ". */
+  if (nowMin >= x.start + x.mins) return {t:'quá giờ', c:'late'};
   if (nowMin >= x.start)         return {t:'tới giờ', c:'now'};
   return {t:dur, c:''};
 }
@@ -1554,7 +1557,10 @@ function chkRow(o){
     ? `<button class="cb ${o.done ? 'on' : ''}" data-act="${o.tick}" data-id="${o.id}"
         title="${o.done ? 'Bỏ đánh dấu' : 'Đánh dấu xong'}">✓</button>`
     : (o.box || `<span class="cb ro"><i></i></span>`);
-  return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''} ${o.tick ? '' : 'ro'}">
+  /* Đã qua giờ mà chưa tích thì đóng viền đỏ cả hàng: cột phải chữ nhỏ, lướt
+     một danh sách mười việc rất dễ trượt qua. */
+  return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''} ${
+    o.tick ? '' : 'ro'} ${st.c === 'late' ? 'qua' : ''}">
     ${box}
     <div class="grow" ${o.open ? `data-act="${o.open}" data-id="${o.id}"` : ''}>
       <div class="row">
@@ -1713,6 +1719,11 @@ function unschedRow(t, slot, dstr, live){
     foot: xong ? '' : `<div class="btns" style="margin-top:9px">${slot}${pushBtn(t)}</div>`
   });
 }
+/* Dấu ngăn giữa các việc kể trong một dòng cảnh báo. Dấu chấm giữa dòng quá
+   nhỏ: "12:30 Nghiên cứu · 14:00 Gọi khách" đọc lướt ra một cụm dài, không ra
+   hai việc. Gạch đứng có nét dọc nên mắt tách được ngay, và nới rộng hai bên. */
+const SEP = '<span class="sep">|</span>';
+
 /* Kín bao nhiêu, trống bao nhiêu, và trống vào những khúc nào.
    "Kín" đếm theo đồng hồ nên hai việc chồng nhau chỉ tính một lần — khác
    với tổng số phút ở dòng tiêu đề, và chênh lệch giữa hai con số đó chính
@@ -1744,13 +1755,15 @@ function gapBlock(items, clash, prog, wd){
         fmtDur(freeAhead(items))}</b> — đó mới là chỗ thật sự còn nhét được.</div>` : ''}
     ${slip.length ? `<div class="dim" style="margin-top:7px;color:var(--warn)">
       ${slip.length} việc đã qua giờ mà chưa tích: ${
-        slip.slice(0, 3).map(x => esc(min2hhmm(x.start) + ' ' + x.title)).join(' · ')}${
+        slip.slice(0, 3).map(x => `<b style="font-weight:650">${
+          esc(min2hhmm(x.start))}</b> ${esc(x.title)}`).join(SEP)}${
         slip.length > 3 ? ' …' : ''}</div>` : ''}
     ${w.off ? '' : gaps.length ? `<div class="gaps">` + gaps.map(g =>
       `<span class="gap">${winText(g.from)} → ${winText(g.to)} <b>${fmtDur(g.mins)}</b></span>`).join('')
       + `</div>` : `<div class="dim" style="margin-top:9px">Không còn khoảng trống nào từ 30 phút trở lên.</div>`}
     ${out.length && !w.off ? `<div class="dim" style="margin-top:9px;color:var(--warn)">
-      ${out.length} việc nằm ngoài cửa sổ: ${out.map(x => esc(min2hhmm(x.start) + ' ' + x.title)).join(' · ')}</div>` : ''}
+      ${out.length} việc nằm ngoài cửa sổ: ${out.map(x => `<b style="font-weight:650">${
+        esc(min2hhmm(x.start))}</b> ${esc(x.title)}`).join(SEP)}</div>` : ''}
     ${prog ? `<div class="hr"></div>` + prog : ''}
   </div>`;
 }

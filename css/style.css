@@ -553,6 +553,13 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
   border:1px solid var(--line);border-radius:var(--r);margin-bottom:7px}
 .chk.tsk{border-style:dashed}
 .chk.off{opacity:.48}
+/* Đã qua giờ mà chưa tích. Viền đỏ + một vệt đậm bên trái: chỉ đổi màu viền
+   thôi thì ở nền tối một đường 1px rất dễ trôi qua mắt, còn tô nền cả hàng
+   lại át mất chữ. Giữ nguyên nét đứt của việc lẻ, chỉ thay màu. */
+.chk.qua{border-color:var(--bad);
+  box-shadow:inset 3px 0 0 var(--bad),0 0 0 1px color-mix(in srgb,var(--bad) 34%,transparent);
+  background:color-mix(in srgb,var(--bad) 7%,var(--bg2))}
+.chk.qua .tm{color:var(--bad)}
 .chk .cb{margin-top:1px}
 .chk .row{gap:8px;align-items:center}
 .chk .tm{flex:none;font-size:13.5px;font-weight:750;letter-spacing:-.2px;
@@ -564,6 +571,9 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
 .chk .st.now{color:var(--acc);font-weight:700}
 .chk .sb{margin-top:3px;font-size:12px}
 .chk.off .tm,.chk.off .ti{text-decoration:line-through}
+/* Dấu ngăn trong các dòng cảnh báo — mờ hơn chữ, nhưng nới rộng hai bên để
+   mắt tách được từng việc. */
+.sep{display:inline-block;margin:0 9px;opacity:.5;font-weight:400}
 .chkhd{display:flex;align-items:center;gap:10px}
 .chkhd .n{flex:none;font-size:12.5px;font-weight:700;color:var(--tx2);white-space:nowrap}
 .chkhd .pbar{flex:1;height:6px;border-radius:4px;background:var(--bg3);overflow:hidden}

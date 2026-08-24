@@ -166,6 +166,8 @@ Và cố ý dùng **thẳng** khối của mục Hằng ngày chứ không dựn
 
 Khi ngày đang xem **là hôm nay**, khối *Cửa sổ / Kín / Trống* nói thêm hai con số chỉ đúng cho hôm nay: chỗ trống tính **từ bây giờ** tới hết cửa sổ (22 giờ tối mà báo *"còn trống 14h25"* thì đúng về số học nhưng vô dụng — chỗ trống hồi 9 giờ sáng đâu còn nhét được gì), và những việc **đã qua giờ mà chưa tích**.
 
+Dòng vàng kể tên việc quá giờ ngăn nhau bằng **gạch đứng** chứ không phải dấu chấm giữa dòng: `12:30 Nghiên cứu | 14:00 Gọi khách`. Dấu chấm nhỏ quá, ba việc đọc lướt ra một cụm chữ dài chứ không ra ba việc; gạch đứng có nét dọc nên mắt tách được ngay, và hai bên nới rộng hẳn ra. Dòng *"nằm ngoài cửa sổ"* ngay dưới cũng vậy — hai dòng cùng màu cùng kiểu thì phải ngăn giống nhau.
+
 #### Đang bị né — ba đường ra, không có đường thứ tư
 
 Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa: đó là việc bạn không muốn làm, và mỗi ngày nó lại chiếm một dòng để bạn lướt qua. App đã đếm *"đã dời N lần"* từ trước, nhưng đếm xong thì bạn vẫn chỉ có mỗi nút **→ Mai**. Giờ có ba nút thật:
@@ -402,6 +404,21 @@ Tab **Hôm nay** là một danh sách tích ô. Ô tích nằm bên trái để 
 ```
 
 Xong rồi thì hàng **gạch ngang và mờ đi**, vẫn nằm nguyên chỗ cũ chứ không biến mất — biến mất thì mình tưởng bấm hụt. Cột phải cho biết đang ở đâu so với bây giờ: **xong 09:09** · **tới giờ** · **quá giờ** · hoặc thời lượng nếu chưa tới.
+
+Hàng **quá giờ mà chưa tích** thì đóng nguyên **viền đỏ** và một vệt đậm bên trái:
+
+```
+┌ ─────────────────────────────────────────────────┐
+▌    12:30  Nghiên cứu sản phẩm            quá giờ │
+▌    30p → 13:00                                   │
+└ ─────────────────────────────────────────────────┘
+```
+
+Chữ *"quá giờ"* ở cột phải vốn đã có, nhưng nó nhỏ và nằm tận mép kia — lướt một danh sách mười việc rất dễ trượt qua. Đóng viền thì mắt bắt được ngay ở bước liếc đầu tiên, chưa cần đọc chữ nào.
+
+Việc **đã tích** thì không đóng viền dù trễ tới đâu, và **ngày khác hôm nay cũng không đóng** — hàng của thứ Ba tuần sau mà viền đỏ thì nó đang nói dối.
+
+Ranh giới là **đúng phút kết thúc**: việc 12:30 dài 30 phút thì tới 13:00 là đã quá giờ, không phải 13:01. Trục thời gian và dòng cảnh báo dưới ô *Cửa sổ* vốn đã tính vậy; cột phải thì trước đây chờ thêm một phút, nên có một phút mà nhìn thấy viền đỏ trong khi cột phải vẫn ghi *"tới giờ"*. Giờ cả ba chỗ đếm giống nhau — số việc trong dòng cảnh báo luôn bằng đúng số hàng đang có viền.
 
 **Tích xong là Telegram im.** Việc hằng ngày đã tick thì hôm đó không bắn tin nữa; việc lẻ đã xong cũng vậy. Bấm ✅ dưới tin Telegram hay tích trong app đều ghi vào cùng một chỗ, kể cả giờ tick — nên tích ở đâu thì bên kia cũng thấy "xong 09:09".
 
