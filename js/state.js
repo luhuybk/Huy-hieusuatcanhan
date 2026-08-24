@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-24.3';
+const APP_BUILD = '2026-08-24.4';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -1409,6 +1409,52 @@ function freeSlots(dstr, mins, max, areaId){
   }
   return out;
 }
+/* ---- việc đã lỡ giờ ----
+   Một luật duy nhất cho mọi chỗ đụng tới nó: khối trên trục, vạch trên
+   thanh gọn, hàng trong danh sách, dòng cảnh báo, và nút xếp lại. Mỗi chỗ
+   tự đếm riêng là mỗi chỗ để lệch nhau — mà lệch thì đúng lúc nhìn hai chỗ
+   cạnh nhau mới lòi ra.
+
+   Lịch nhập từ app khác không tính: chỉ bên đó mới tick được, kể ở đây chỉ
+   làm mình lo một chuyện không tự xử lý được. `now === null` nghĩa là ngày
+   đang xem không phải hôm nay, và ngày khác thì không có "quá giờ". */
+const overdueAt = (x, now) => now !== null && now !== undefined && !x.done && x.kind !== 'feed'
+                           && x.start !== null && x.start !== undefined
+                           && x.start + x.mins <= now;
+const minNow = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+function slipToday(items){
+  const n = minNow();
+  return (items || []).filter(x => x.on !== false && overdueAt(x, n));
+}
+
+/* ---- xếp lại những việc đã lỡ giờ ----
+   Việc quá giờ hiện chỉ đứng đó viền vàng: muốn cứu thì phải tự gõ lại giờ
+   từng cái. Nhưng app đã biết đủ ba thứ để tự làm — còn trống khoảng nào
+   TỪ BÂY GIỜ, mỗi việc cần bao lâu, và cửa sổ làm việc đóng lúc mấy giờ.
+
+   Bỏ chính mấy việc đang xếp lại ra khỏi lịch trước khi đi tìm chỗ. Không
+   thì chúng tự chắn chỗ của mình bằng đúng cái giờ đã trôi qua, và hàm này
+   trả về "không còn chỗ nào" trong khi chỗ trống nằm ngay đó.
+
+   Xếp theo thứ tự giờ cũ chứ không theo việc ngắn trước: nhét việc ngắn lên
+   đầu thì tổng số việc cứu được nhiều hơn, nhưng thứ tự trong ngày là thứ
+   tự mình đã cân nhắc khi lên lịch — máy không biết vì sao việc 9 giờ phải
+   đứng trước việc 10 giờ. */
+function reflowPlan(areaId){
+  const wd = new Date().getDay(), items = todayItems(areaId);
+  const late = slipToday(items).slice().sort((a, b) => a.start - b.start);
+  const gone = new Set(late.map(x => x.id));
+  const keep = items.filter(x => !gone.has(x.id));
+  const move = [], stuck = [];
+  late.forEach(x => {
+    const at = nextFreeSlot(keep, x.mins, wd);
+    if (at === null){ stuck.push(x); return; }
+    keep.push({id:'rf_' + x.id, start:at, mins:x.mins, on:true});
+    move.push({x, at, from:x.start});
+  });
+  return {late, move, stuck, room:freeAhead(items), win:workWindow(wd)};
+}
+
 function nextFreeSlot(items, mins, wd){
   const d = new Date(), w = wd === undefined ? d.getDay() : Number(wd);
   const dstr = wdDate(w), t0 = today();

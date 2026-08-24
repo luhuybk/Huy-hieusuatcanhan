@@ -993,6 +993,70 @@ function pushTask(id){
     ? ' · đã dời ' + t.pushes + ' lần rồi, chia nhỏ ra hay bỏ hẳn đi?'
     : t.pushes > 1 ? ' · lần dời thứ ' + t.pushes : ''));
 }
+/* ---- xếp lại những việc đã lỡ giờ ----
+   Hộp xem trước chứ không xếp thẳng: đây là sửa giờ của nhiều việc cùng
+   lúc, mà một cú bấm không hoàn tác được thì lần sau không ai dám bấm.
+   Nhìn thấy "18:30 → 21:15" của từng việc rồi mới quyết.
+
+   Tính lại kế hoạch ở cả hai bước chứ không giữ lại bản đã tính: ngồi nhìn
+   hộp này năm phút rồi mới bấm thì mấy mốc trong đó đã thành quá khứ. Tính
+   lại nghĩa là giờ áp vào luôn là giờ còn xếp được, chỉ khác bản xem trước
+   vài phút — còn hơn là ghi một mốc đã trôi qua. */
+function reflowBox(){
+  const p = reflowPlan(S.area);
+  if (!p.move.length && !p.stuck.length) return render();
+  const row = (x, at) => `<div class="row" style="gap:10px;padding:7px 0;align-items:baseline">
+    <span class="dim" style="flex:none;width:96px;font-variant-numeric:tabular-nums">
+      <s>${esc(min2hhmm(x.start))}</s> →
+      <b style="color:var(--ok)">${at === null ? '—' : esc(min2hhmm(at))}</b></span>
+    <span class="grow ell">${esc(x.title)}</span>
+    <span class="dim" style="flex:none">${fmtDur(x.mins)}</span>
+  </div>`;
+  $('#modals').innerHTML = `<div class="ov"><div class="sheet">
+    <h2>Xếp lại ${p.move.length} việc quá giờ</h2>
+    <div class="dim" style="margin:-8px 0 12px;line-height:1.65">
+      Dồn vào chỗ trống còn lại của hôm nay, nối tiếp nhau, giữ nguyên thứ tự cũ.
+      Mỗi việc chỉ đổi giờ <b>của riêng hôm nay</b> — nhịp lặp không đụng tới.</div>
+    ${p.move.map(m => row(m.x, m.at)).join('')}
+    ${p.stuck.length ? `<div class="hr"></div>
+      <div class="dim" style="color:var(--warn);line-height:1.6">
+        ${p.stuck.length} việc không còn chỗ nào đủ rộng trước ${esc(winText(p.win.to))} —
+        giữ nguyên giờ cũ. Việc lẻ thì bấm <b>→ Mai</b>, việc hằng ngày thì hôm nay coi như lỡ.</div>
+      ${p.stuck.map(x => row(x, null)).join('')}` : ''}
+    <button class="btn full pri" style="margin-top:14px" id="rfgo">Xếp lại ${p.move.length} việc</button>
+    <button class="btn full" style="margin-top:10px" id="rfno">Thôi, giữ nguyên</button>
+  </div></div>`;
+  $('#rfgo').onclick = reflowApply;
+  $('#rfno').onclick = () => { closeModal(); render(); };
+}
+/* Luôn ghi mốc DỜI RIÊNG HÔM NAY, không hỏi "mọi lần" như khi kéo tay một
+   khối: mình đang cứu đúng một ngày đã trôi lệch, chứ không phải đổi ý về
+   giờ của cả chuỗi. Bấm chip ↪ trên hàng là trả lần đó về giờ gốc. */
+function reflowApply(){
+  const p = reflowPlan(S.area), t0 = today();
+  p.move.forEach(({x, at}) => {
+    const hhmm = min2hhmm(at);
+    if (x.kind === 'task'){
+      const t = x.t; if (!t) return;
+      const due = String(t.due || '').slice(0,10);
+      if (t.repeat) excSet(t, due, Object.assign({}, excAt(t, due) || {}, {at:hhmm, off:0}));
+      else t.remindAt = hhmm;
+      t.snoozeUntil = '';            /* giờ mới rồi thì mốc dời nhắc cũ vô nghĩa */
+      stamp(t);
+    } else {
+      const r = x.r; if (!r) return;
+      excSet(r, t0, {at:hhmm});
+      stamp(r);
+    }
+  });
+  save(); closeModal(); render();
+  const n = p.move.length;
+  toast(n ? 'Đã xếp lại ' + n + ' việc — sớm nhất ' + min2hhmm(p.move[0].at)
+            + (p.stuck.length ? ' · ' + p.stuck.length + ' việc không còn chỗ' : '')
+            + (Server.available() ? ' · Telegram nhắc theo giờ mới' : '')
+          : 'Không còn chỗ trống nào hôm nay');
+}
+
 /* Xếp một việc chưa có giờ vào chỗ trống gần nhất còn nhét vừa nó */
 function slotTask(id, at){
   const t = db.tasks.find(x => x.id === id); if (!t || !at) return;
@@ -2100,6 +2164,7 @@ document.addEventListener('click', e => {
     case 'workOff':  toggleWorkOff(+id); break;
     case 'workAll':  workAllLikeMonday(); break;
     case 'slotTask': slotTask(id, el.dataset.at); break;
+    case 'reflowBox': reflowBox(); break;
     case 'pushTask': pushTask(id); break;
     case 'excDrop':  excDrop(el.dataset.k, id, el.dataset.day); break;
     case 'buildAgain': buildCheck(); render(); break;

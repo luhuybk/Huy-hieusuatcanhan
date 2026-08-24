@@ -166,6 +166,37 @@ Và cố ý dùng **thẳng** khối của mục Hằng ngày chứ không dựn
 
 Khi ngày đang xem **là hôm nay**, khối *Cửa sổ / Kín / Trống* nói thêm hai con số chỉ đúng cho hôm nay: chỗ trống tính **từ bây giờ** tới hết cửa sổ (22 giờ tối mà báo *"còn trống 14h25"* thì đúng về số học nhưng vô dụng — chỗ trống hồi 9 giờ sáng đâu còn nhét được gì), và những việc **đã qua giờ mà chưa tích**.
 
+#### Xếp lại việc đã lỡ giờ
+
+Dưới dòng vàng đó có một nút: **↻ Xếp lại 3 việc quá giờ**.
+
+App đã biết đủ ba thứ để tự làm việc này — còn trống khoảng nào **từ bây giờ**, mỗi việc cần bao lâu, và cửa sổ làm việc đóng lúc mấy giờ. Nhưng trước nay việc quá giờ chỉ đứng đó viền vàng: muốn cứu thì phải mở từng cái ra gõ lại giờ.
+
+Bấm nút thì hiện hộp **xem trước**, không xếp thẳng:
+
+```
+Xếp lại 3 việc quá giờ
+Dồn vào chỗ trống còn lại của hôm nay, nối tiếp nhau, giữ nguyên thứ tự cũ.
+
+  18:08 → 21:30    Nghiên cứu sản phẩm              30p
+  18:58 → 22:00    Gọi khách hàng                   20p
+  19:47 → 22:20    Quá giờ C                       1h30
+  ─────────────────────────────────────────────────────
+  1 việc không còn chỗ nào đủ rộng trước 24:00 — giữ nguyên giờ cũ.
+  19:58 →  —       Đẩy deal sốc lên mall            15p
+```
+
+Sửa giờ của nhiều việc cùng lúc mà không hoàn tác được thì lần sau không ai dám bấm — nên phải nhìn thấy từng dòng `cũ → mới` rồi mới quyết.
+
+Bốn điều nó cố ý làm:
+
+- **Bỏ chính mấy việc đang xếp lại ra khỏi lịch trước khi đi tìm chỗ.** Không thì chúng tự chắn chỗ của mình bằng đúng cái giờ đã trôi qua, và app báo "không còn chỗ nào" trong khi chỗ trống nằm ngay đó.
+- **Giữ nguyên thứ tự giờ cũ**, không xếp việc ngắn lên trước. Nhét việc ngắn lên đầu thì cứu được nhiều việc hơn, nhưng thứ tự trong ngày là thứ tự bạn đã cân nhắc khi lên lịch — máy không biết vì sao việc 9 giờ phải đứng trước việc 10 giờ.
+- **Chỉ đổi giờ của riêng hôm nay.** Ghi mốc *dời riêng*, nhịp lặp không đụng tới — bấm chip **↪** trên hàng là trả lần đó về giờ gốc.
+- **Nói thẳng phần không cứu được**, thay vì lặng lẽ bỏ qua. Việc lẻ thì còn nút **→ Mai**; việc hằng ngày thì hôm nay coi như lỡ.
+
+Nút chỉ hiện khi có việc thật sự xếp lại được: hết cửa sổ làm việc rồi, hoặc hôm nay là ngày nghỉ, thì nó không mọc ra để trêu.
+
 Dòng vàng kể tên việc quá giờ ngăn nhau bằng **gạch đứng** chứ không phải dấu chấm giữa dòng: `12:30 Nghiên cứu | 14:00 Gọi khách`. Dấu chấm nhỏ quá, ba việc đọc lướt ra một cụm chữ dài chứ không ra ba việc; gạch đứng có nét dọc nên mắt tách được ngay, và hai bên nới rộng hẳn ra. Dòng *"nằm ngoài cửa sổ"* ngay dưới cũng vậy — hai dòng cùng màu cùng kiểu thì phải ngăn giống nhau.
 
 #### Đang bị né — ba đường ra, không có đường thứ tư

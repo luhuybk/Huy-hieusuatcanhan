@@ -1448,21 +1448,11 @@ function tlNowMark(wd, from, to, reserve){
       style="left:${p}%">${reserve ? `<b>${min2hhmm(n)}</b>` : ''}</div>
   </div>`;
 }
-/* Việc đã qua giờ mà chưa tích — đúng thứ cần bắt mắt trước tiên.
-   Lịch nhập từ app khác không tính: bên đó mới tick được, tô màu ở đây chỉ
-   làm mình lo một chuyện không tự xử lý được.
-
-   Một luật duy nhất cho cả bốn chỗ vẽ: khối trên trục, vạch trên thanh gọn,
-   hàng có ô tích, và hàng sửa giờ ở tab Cả tuần / Tổng quan. Bốn chỗ tự
-   đếm riêng là bốn chỗ để lệch nhau — mà lệch thì đúng lúc nhìn hai chỗ
-   cạnh nhau mới lòi ra. `now === null` nghĩa là ngày đang xem không phải
-   hôm nay, và ngày khác thì không có "quá giờ". */
-const tlGone = (x, now) => now !== null && now !== undefined && !x.done && x.kind !== 'feed'
-                        && x.start !== null && x.start !== undefined
-                        && x.start + x.mins <= now;
+/* Luật "đã qua giờ mà chưa tích" nằm ở state.js — overdueAt() — vì nút xếp
+   lại cũng phải hỏi đúng câu đó. Ở đây chỉ đặt lại tên cho hợp ngữ cảnh vẽ. */
+const tlGone = overdueAt;
 /* Phút hiện tại, nhưng chỉ khi ngày đang xem là hôm nay. */
-const liveNow = live => { if (!live) return null;
-                          const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+const liveNow = live => live ? minNow() : null;
 
 /* Thanh gọn cho tab Hôm nay: mọi việc nằm chung một hàng, không nhãn, không
    kéo — vừa đúng bề ngang điện thoại, liếc một cái là thấy ngày dồn vào đâu. */
@@ -1756,9 +1746,10 @@ function gapBlock(items, clash, prog, wd){
      lại tính TỪ BÂY GIỜ (chỗ trống hồi 9 giờ sáng đâu nhét được gì nữa), và
      những việc đã qua giờ mà chưa tích. Ngày khác thì cả hai đều vô nghĩa. */
   const live = wdDate(wd === undefined ? new Date().getDay() : wd) === today();
-  const nowMin = (d => d.getHours() * 60 + d.getMinutes())(new Date());
-  const slip = live ? items.filter(x => x.kind !== 'feed' && !x.done
-                                     && x.start + x.mins <= nowMin) : [];
+  const slip = live ? slipToday(items) : [];
+  /* Xếp lại được mấy việc — tính luôn ở đây để cái nút biết mình có việc gì
+     để làm không. Ngày nghỉ thì không có cửa sổ nào để xếp vào. */
+  const rf = slip.length && !w.off ? reflowPlan(S.area) : null;
   return `<div class="card" style="margin-bottom:12px">
     <div class="row dim" style="gap:12px;flex-wrap:wrap">
       ${head}
@@ -1772,6 +1763,9 @@ function gapBlock(items, clash, prog, wd){
         slip.slice(0, 3).map(x => `<b style="font-weight:650">${
           esc(min2hhmm(x.start))}</b> ${esc(x.title)}`).join(SEP)}${
         slip.length > 3 ? ' …' : ''}</div>` : ''}
+    ${rf && rf.move.length ? `<div class="btns" style="margin-top:10px">
+      <button class="btn sm pri" data-act="reflowBox">↻ Xếp lại ${rf.move.length} việc quá giờ${
+        rf.stuck.length ? ' (còn ' + rf.stuck.length + ' không đủ chỗ)' : ''}</button></div>` : ''}
     ${w.off ? '' : gaps.length ? `<div class="gaps">` + gaps.map(g =>
       `<span class="gap">${winText(g.from)} → ${winText(g.to)} <b>${fmtDur(g.mins)}</b></span>`).join('')
       + `</div>` : `<div class="dim" style="margin-top:9px">Không còn khoảng trống nào từ 30 phút trở lên.</div>`}
