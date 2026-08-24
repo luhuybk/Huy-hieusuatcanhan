@@ -1449,10 +1449,20 @@ function tlNowMark(wd, from, to, reserve){
   </div>`;
 }
 /* Việc đã qua giờ mà chưa tích — đúng thứ cần bắt mắt trước tiên.
-   Lịch nhập từ app khác không tính: bên đó mới tick được, tô đỏ ở đây chỉ
-   làm mình lo một chuyện không tự xử lý được. */
-const tlGone = (x, now) => now !== null && !x.done && x.kind !== 'feed'
-                        && x.start !== null && x.start + x.mins <= now;
+   Lịch nhập từ app khác không tính: bên đó mới tick được, tô màu ở đây chỉ
+   làm mình lo một chuyện không tự xử lý được.
+
+   Một luật duy nhất cho cả bốn chỗ vẽ: khối trên trục, vạch trên thanh gọn,
+   hàng có ô tích, và hàng sửa giờ ở tab Cả tuần / Tổng quan. Bốn chỗ tự
+   đếm riêng là bốn chỗ để lệch nhau — mà lệch thì đúng lúc nhìn hai chỗ
+   cạnh nhau mới lòi ra. `now === null` nghĩa là ngày đang xem không phải
+   hôm nay, và ngày khác thì không có "quá giờ". */
+const tlGone = (x, now) => now !== null && now !== undefined && !x.done && x.kind !== 'feed'
+                        && x.start !== null && x.start !== undefined
+                        && x.start + x.mins <= now;
+/* Phút hiện tại, nhưng chỉ khi ngày đang xem là hôm nay. */
+const liveNow = live => { if (!live) return null;
+                          const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 
 /* Thanh gọn cho tab Hôm nay: mọi việc nằm chung một hàng, không nhãn, không
    kéo — vừa đúng bề ngang điện thoại, liếc một cái là thấy ngày dồn vào đâu. */
@@ -1557,10 +1567,12 @@ function chkRow(o){
     ? `<button class="cb ${o.done ? 'on' : ''}" data-act="${o.tick}" data-id="${o.id}"
         title="${o.done ? 'Bỏ đánh dấu' : 'Đánh dấu xong'}">✓</button>`
     : (o.box || `<span class="cb ro"><i></i></span>`);
-  /* Đã qua giờ mà chưa tích thì đóng viền đỏ cả hàng: cột phải chữ nhỏ, lướt
-     một danh sách mười việc rất dễ trượt qua. */
+  /* Đã qua giờ mà chưa tích thì đóng viền cả hàng: cột phải chữ nhỏ, lướt
+     một danh sách mười việc rất dễ trượt qua. Cờ truyền vào chứ không suy
+     từ màu chữ cột phải — hàng lịch nhập từ app khác vẫn ghi "quá giờ"
+     nhưng không được đóng viền, y như nó không được tô trên trục. */
   return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''} ${
-    o.tick ? '' : 'ro'} ${st.c === 'late' ? 'qua' : ''}">
+    o.tick ? '' : 'ro'} ${o.qua ? 'qua' : ''}">
     ${box}
     <div class="grow" ${o.open ? `data-act="${o.open}" data-id="${o.id}"` : ''}>
       <div class="row">
@@ -1619,7 +1631,7 @@ function dailyRow(x, clash, nowMin){
   const r = x.r, chuoi = remStreak(r);
   return chkRow({
     id:r.id, tick:'remDone', open:'editRem', done:x.done, time:min2hhmm(x.start),
-    dot:areaDot(r.areaId), title:x.title, state:chkState(x, nowMin),
+    dot:areaDot(r.areaId), title:x.title, state:chkState(x, nowMin), qua:tlGone(x, nowMin),
     sub:`${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))}${
       chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}${
       cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
@@ -1643,7 +1655,8 @@ function weekCb(live, done, act, id){
    là tên bị cắt cụt còn chữ "phút" chui xuống dưới nút tròn ở khổ 375px. */
 function dailyEditRow(x, clash, live){
   const r = x.r, cl = clash.has(x.id);
-  return `<div class="rem two ${r.enabled ? '' : 'off'} ${x.done ? 'done' : ''}">
+  return `<div class="rem two ${r.enabled ? '' : 'off'} ${x.done ? 'done' : ''} ${
+    tlGone(x, liveNow(live)) ? 'qua' : ''}">
     <div class="row">
       ${weekCb(live, x.done, 'remDone', r.id)}
       <div class="nm ell grow" data-act="editRem" data-id="${r.id}">${areaDot(r.areaId)} ${esc(x.title)}</div>
@@ -1684,6 +1697,7 @@ function taskDayRow(x, cl, nowMin){
   return chkRow({
     id:t.id, tick:'toggleTask', open:'editTask', done:x.done, dash:true,
     time:min2hhmm(x.start), dot:areaDot(t.areaId), title:x.title, state:chkState(x, nowMin),
+    qua:tlGone(x, nowMin),
     sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
       tre ? `<span style="color:var(--bad)">việc lẻ, trễ ${tre} ngày</span>` : 'việc lẻ, hạn hôm nay'}${
       x.est ? '' : ' · chưa ước tính'}${doi ? ' · ' + doi : ''}${
@@ -1817,7 +1831,8 @@ function dailyToday(A){
 function taskWeekRow(x, clash, past, live){
   const t = x.t, cl = clash.has(x.id), tre = x.late ? -dayDiff(taskDay(t)) : 0, doi = pushInfo(t);
   const key = String(t.due || '').slice(0,10);
-  return `<div class="rem two tsk ${x.done ? 'done' : ''}">
+  return `<div class="rem two tsk ${x.done ? 'done' : ''} ${
+    tlGone(x, liveNow(live)) ? 'qua' : ''}">
     <div class="row">
       ${weekCb(live, x.done, 'toggleTask', t.id)}
       <div class="nm ell grow" data-act="editTask" data-id="${t.id}">${areaDot(t.areaId)} ${esc(x.title)}</div>

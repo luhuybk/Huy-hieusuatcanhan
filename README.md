@@ -292,7 +292,7 @@ Mỗi việc lặp lại chỉ giữ **một** giờ dùng chung cho mọi kỳ,
 
 #### Vạch "bây giờ"
 
-Trục có một **vạch đỏ dọc** cắt ngang, kèm chip giờ ở đầu vạch:
+Trục có một **vạch dọc màu đỏ** cắt ngang, kèm chip giờ ở đầu vạch — đỏ ở đây là mốc *bây giờ*, không phải cảnh báo:
 
 ```
                     ┌──────┐
@@ -306,14 +306,14 @@ Trục có một **vạch đỏ dọc** cắt ngang, kèm chip giờ ở đầu 
                     ↑ bây giờ
 ```
 
-Bên trái vạch là việc đáng lẽ xong rồi, bên phải là việc còn nguyên thời gian. Việc **đã qua giờ mà chưa tích** thì viền đỏ và nhãn có dấu `⚠` — đó chính là danh sách cần xử lý trước.
+Bên trái vạch là việc đáng lẽ xong rồi, bên phải là việc còn nguyên thời gian. Việc **đã qua giờ mà chưa tích** thì viền vàng và nhãn có dấu `⚠` — đó chính là danh sách cần xử lý trước. Cùng màu vàng với hàng trong danh sách bên dưới, vì đó là cùng một việc.
 
 Bốn luật nhỏ, mỗi luật đều có lý do:
 
 - **Chỉ vẽ ở cột hôm nay.** Vạch "bây giờ" đặt trên cột thứ tư trong khi hôm nay là thứ 7 thì nó nói dối, mà nói dối rất thuyết phục.
-- **Việc đã tích không tô đỏ**, dù nằm bên trái vạch — làm xong rồi thì không còn là việc phải làm.
+- **Việc đã tích không tô**, dù nằm bên trái vạch — làm xong rồi thì không còn là việc phải làm.
 - **Việc vắt qua vạch cũng không tô** (bắt đầu 09:50, dài 1 tiếng, bây giờ 10:02): nó đang trong giờ chứ chưa lỡ.
-- **Lịch nhập từ app khác không tô**, kể cả khi đã qua giờ: chỉ bên đó mới tick được, tô đỏ ở đây chỉ làm bạn lo một chuyện không tự xử lý được.
+- **Lịch nhập từ app khác không tô**, kể cả khi đã qua giờ: chỉ bên đó mới tick được, tô ở đây chỉ làm bạn lo một chuyện không tự xử lý được.
 
 Vạch **tự trôi**, nửa phút một lần — mở app lúc 9h rồi để đó, tới 11h nhìn vào vẫn thấy vạch đứng ở 9h thì nó hại hơn là không có. Nhích vạch thôi chứ không vẽ lại cả màn: vẽ lại giữa chừng là mất khối đang cầm trên tay. Năm phút một lần mới vẽ lại thật để nhãn `⚠` khỏi nói sai, và chỉ vẽ khi tay đang rảnh — không kéo khối, không mở biểu mẫu, không gõ dở ô nào.
 
@@ -405,20 +405,32 @@ Tab **Hôm nay** là một danh sách tích ô. Ô tích nằm bên trái để 
 
 Xong rồi thì hàng **gạch ngang và mờ đi**, vẫn nằm nguyên chỗ cũ chứ không biến mất — biến mất thì mình tưởng bấm hụt. Cột phải cho biết đang ở đâu so với bây giờ: **xong 09:09** · **tới giờ** · **quá giờ** · hoặc thời lượng nếu chưa tới.
 
-Hàng **quá giờ mà chưa tích** thì đóng nguyên **viền đỏ** và một vệt đậm bên trái:
+Hàng nào cần mắt dừng lại thì đóng viền, và chỉ hai màu:
 
 ```
 ┌ ─────────────────────────────────────────────────┐
-▌    12:30  Nghiên cứu sản phẩm            quá giờ │
+▌    12:30  Nghiên cứu sản phẩm            quá giờ │   vàng — còn phải làm
 ▌    30p → 13:00                                   │
+└ ─────────────────────────────────────────────────┘
+
+┌ ─────────────────────────────────────────────────┐
+▌ ✓  09:00  Trả lời tin nhắn khách       xong 09:09 │   xanh — hết việc
 └ ─────────────────────────────────────────────────┘
 ```
 
 Chữ *"quá giờ"* ở cột phải vốn đã có, nhưng nó nhỏ và nằm tận mép kia — lướt một danh sách mười việc rất dễ trượt qua. Đóng viền thì mắt bắt được ngay ở bước liếc đầu tiên, chưa cần đọc chữ nào.
 
-Việc **đã tích** thì không đóng viền dù trễ tới đâu, và **ngày khác hôm nay cũng không đóng** — hàng của thứ Ba tuần sau mà viền đỏ thì nó đang nói dối.
+**Vàng chứ không đỏ.** Đỏ trong app này để dành cho việc trễ tính bằng **ngày** và việc **chồng giờ** — hai chuyện nặng hơn. Quá giờ trong hôm nay thì mới lỡ một buổi, dùng chung màu với chúng là cái nặng chìm lẫn vào cái nhẹ. Khối trên trục thời gian cũng đổi sang vàng theo: cùng một việc mà trục tô một màu, hàng tô màu khác thì trông như hai chuyện.
 
-Ranh giới là **đúng phút kết thúc**: việc 12:30 dài 30 phút thì tới 13:00 là đã quá giờ, không phải 13:01. Trục thời gian và dòng cảnh báo dưới ô *Cửa sổ* vốn đã tính vậy; cột phải thì trước đây chờ thêm một phút, nên có một phút mà nhìn thấy viền đỏ trong khi cột phải vẫn ghi *"tới giờ"*. Giờ cả ba chỗ đếm giống nhau — số việc trong dòng cảnh báo luôn bằng đúng số hàng đang có viền.
+Ba trường hợp **không** đóng viền, cố ý:
+
+- **Đã tích** — trễ tới đâu cũng thôi, nó chuyển sang vệt xanh.
+- **Ngày khác hôm nay** — hàng của thứ Ba tuần sau mà viền vàng thì nó đang nói dối. Ngày mai có việc đúng giờ đó cũng vậy.
+- **Lịch nhập từ app khác** — chỉ tick được bên đó, tô ở đây chỉ làm mình lo một chuyện không tự xử lý được. Trục thời gian và dòng cảnh báo vốn đã bỏ qua chúng, giờ hàng cũng vậy.
+
+Viền có ở **cả ba nơi** hiện danh sách hôm nay: mục Việc hằng ngày, tab **Lịch hôm nay** của Tổng quan, và tab **Cả tuần** — cùng một luật, viết một chỗ dùng chung, vì bốn chỗ tự đếm riêng là bốn chỗ để lệch nhau.
+
+Ranh giới là **đúng phút kết thúc**: việc 12:30 dài 30 phút thì tới 13:00 là đã quá giờ, không phải 13:01. Trục thời gian và dòng cảnh báo dưới ô *Cửa sổ* vốn đã tính vậy; cột phải thì trước đây chờ thêm một phút, nên có một phút mà nhìn thấy viền vàng trong khi cột phải vẫn ghi *"tới giờ"*. Giờ cả ba chỗ đếm giống nhau — số việc trong dòng cảnh báo luôn bằng đúng số hàng đang có viền.
 
 **Tích xong là Telegram im.** Việc hằng ngày đã tick thì hôm đó không bắn tin nữa; việc lẻ đã xong cũng vậy. Bấm ✅ dưới tin Telegram hay tích trong app đều ghi vào cùng một chỗ, kể cả giờ tick — nên tích ở đâu thì bên kia cũng thấy "xong 09:09".
 
