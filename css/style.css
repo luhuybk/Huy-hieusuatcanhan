@@ -534,7 +534,7 @@ body.locked .app,body.locked .fab{display:none}
 /* Ô tích chỉ để xem — cột không phải hôm nay thì không bấm được */
 .cb.mute{opacity:.4;cursor:default}
 /* Hàng trong tab Cả tuần đã tick xong: mờ và gạch, khớp với khối trên trục */
-.rem.done{opacity:.64}   /* nhạt đi để lùi ra sau, nhưng còn đủ để thấy vệt xanh */
+.rem.done{opacity:.55}
 .rem.done .nm{text-decoration:line-through}
 .feedrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
 .feedrow:last-of-type{border-bottom:0}
@@ -552,11 +552,14 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
 .chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--bg2);
   border:1px solid var(--line);border-radius:var(--r);margin-bottom:7px}
 .chk.tsk{border-style:dashed}
-/* Hai trạng thái đáng đóng viền, dùng chung cho hàng có ô tích (.chk) và
-   hàng sửa giờ ở tab Cả tuần / Tổng quan (.rem):
+/* CHỈ MỘT trạng thái được đóng viền: đã qua giờ mà chưa tích. Dùng chung
+   cho hàng có ô tích (.chk) và hàng sửa giờ ở tab Cả tuần / Tổng quan
+   (.rem.two).
 
-     vàng = đã qua giờ mà chưa tích — còn phải làm
-     xanh = xong rồi — không phải nghĩ tới nữa
+   Việc đã xong cố ý KHÔNG có viền gì. Nổi bật là để mắt dừng lại, mà việc
+   xong rồi thì không có gì để dừng — nó chỉ cần mờ đi và lùi ra sau. Đóng
+   viền cho cả xong lẫn chưa xong là mỗi hàng đều đòi được nhìn, tức là
+   chẳng hàng nào nổi bật nữa.
 
    Vàng chứ không đỏ: đỏ trong app này để dành cho việc trễ tính bằng NGÀY
    và việc chồng giờ. Quá giờ trong hôm nay nhẹ hơn một bậc, mà dùng chung
@@ -569,12 +572,7 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
   box-shadow:inset 3px 0 0 var(--warn),0 0 0 1px color-mix(in srgb,var(--warn) 30%,transparent);
   background:color-mix(in srgb,var(--warn) 8%,var(--bg2))}
 .chk.qua .tm{color:var(--warn)}
-.chk.off,.rem.two.done{border-color:color-mix(in srgb,var(--ok) 62%,var(--line));
-  box-shadow:inset 3px 0 0 var(--ok)}
-/* Hàng xong vốn mờ đi để lùi ra sau. Nhưng mờ tới .48 thì vệt xanh cũng mờ
-   theo và gần như biến mất, nên kéo lên một chút — vừa đủ thấy vệt, vẫn
-   nhạt hơn hẳn hàng chưa làm. */
-.chk.off{opacity:.62}
+.chk.off{opacity:.48}
 .chk .cb{margin-top:1px}
 .chk .row{gap:8px;align-items:center}
 .chk .tm{flex:none;font-size:13.5px;font-weight:750;letter-spacing:-.2px;

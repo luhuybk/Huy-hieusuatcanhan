@@ -405,26 +405,26 @@ Tab **Hôm nay** là một danh sách tích ô. Ô tích nằm bên trái để 
 
 Xong rồi thì hàng **gạch ngang và mờ đi**, vẫn nằm nguyên chỗ cũ chứ không biến mất — biến mất thì mình tưởng bấm hụt. Cột phải cho biết đang ở đâu so với bây giờ: **xong 09:09** · **tới giờ** · **quá giờ** · hoặc thời lượng nếu chưa tới.
 
-Hàng nào cần mắt dừng lại thì đóng viền, và chỉ hai màu:
+Đúng **một** trạng thái được đóng viền — **quá giờ mà chưa tích**:
 
 ```
 ┌ ─────────────────────────────────────────────────┐
-▌    12:30  Nghiên cứu sản phẩm            quá giờ │   vàng — còn phải làm
+▌    12:30  Nghiên cứu sản phẩm            quá giờ │   viền vàng
 ▌    30p → 13:00                                   │
 └ ─────────────────────────────────────────────────┘
 
-┌ ─────────────────────────────────────────────────┐
-▌ ✓  09:00  Trả lời tin nhắn khách       xong 09:09 │   xanh — hết việc
-└ ─────────────────────────────────────────────────┘
+  ✓  09:00  Trả lời tin nhắn khách       xong 09:09     xong rồi → để trơn, mờ đi
 ```
 
 Chữ *"quá giờ"* ở cột phải vốn đã có, nhưng nó nhỏ và nằm tận mép kia — lướt một danh sách mười việc rất dễ trượt qua. Đóng viền thì mắt bắt được ngay ở bước liếc đầu tiên, chưa cần đọc chữ nào.
 
 **Vàng chứ không đỏ.** Đỏ trong app này để dành cho việc trễ tính bằng **ngày** và việc **chồng giờ** — hai chuyện nặng hơn. Quá giờ trong hôm nay thì mới lỡ một buổi, dùng chung màu với chúng là cái nặng chìm lẫn vào cái nhẹ. Khối trên trục thời gian cũng đổi sang vàng theo: cùng một việc mà trục tô một màu, hàng tô màu khác thì trông như hai chuyện.
 
+Việc **đã xong** cố ý không có viền gì. Nổi bật là để mắt dừng lại, mà việc xong rồi thì không có gì để dừng — nó chỉ cần mờ đi và lùi ra sau. Đóng viền cho cả xong lẫn chưa xong thì mỗi hàng đều đòi được nhìn, tức là chẳng hàng nào nổi bật nữa.
+
 Ba trường hợp **không** đóng viền, cố ý:
 
-- **Đã tích** — trễ tới đâu cũng thôi, nó chuyển sang vệt xanh.
+- **Đã tích** — trễ tới đâu cũng thôi.
 - **Ngày khác hôm nay** — hàng của thứ Ba tuần sau mà viền vàng thì nó đang nói dối. Ngày mai có việc đúng giờ đó cũng vậy.
 - **Lịch nhập từ app khác** — chỉ tick được bên đó, tô ở đây chỉ làm mình lo một chuyện không tự xử lý được. Trục thời gian và dòng cảnh báo vốn đã bỏ qua chúng, giờ hàng cũng vậy.
 
