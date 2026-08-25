@@ -5,7 +5,7 @@
 
 const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
             dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
-            dashtab:'today', showDone:false, showStuck:false,
+            dashtab:'today', showDone:false, showStuck:false, showGiven:false,
             /* Lịch tháng: danh sách nhịp lặp mở sẵn, mục "ngày đã chọn" thu
                gọn — vào đây là để soi lịch định kỳ, không phải xem hôm nay. */
             showPlan:true, calList:false,
@@ -413,6 +413,8 @@ function editTask(id){
   const t = db.tasks.find(x => x.id === id);
   openForm({title:'Sửa việc', fields:taskFields(), values:t,
     extra:`${t.bestStreak>1?`<div class="dim" style="margin-bottom:10px">Chuỗi hiện tại ${t.streak||0} · kỷ lục ${t.bestStreak}</div>`:''}
+      <button type="button" class="btn full" style="margin-bottom:10px" data-act="handOffTask" data-id="${id}"
+        title="Chuyển thành thẻ việc đã giao, vẫn theo dõi được">→ Giao cho nhân viên</button>
       <button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delTask" data-id="${id}">Xoá việc này</button>`,
     onSave(v){
       /* Gõ thẳng giờ hay hạn trong biểu mẫu là nói về CẢ CHUỖI. Giữ lại mốc
@@ -570,7 +572,7 @@ function ideaReview(id, act){
 const cardFields = () => [
   {k:'title', label:'Đầu việc'},
   {k:'assignee', label:'Giao cho', type:'select', half:true,
-    opts:[['','— chưa giao —'], ...[...new Set([...staff().map(s=>s.name), ...cards().map(c=>c.assignee).filter(Boolean)])].map(n=>[n,n])]},
+    opts:[['','— chưa giao —'], ...assigneeNames().map(n=>[n,n])]},
   {k:'col',   label:'Cột', type:'select', half:true, opts:COLS.map(c=>[c.id,c.label])},
   {k:'areaId',label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
   {k:'due',   label:'Hạn chót', type:'date', half:true},
@@ -588,12 +590,32 @@ const cardFields = () => [
     hint:'để trống nghĩa là chưa trả'},
   {k:'desc',  label:'Mô tả / yêu cầu', type:'textarea', voice:true}
 ];
+/* Ai bấm "xong" — mình hay nhân viên. Bản trên máy nhân viên chạy ở chế độ
+   staff, nên phân biệt được bằng đúng một dòng. */
+const iAmOwner = () => db.settings.role !== 'staff';
+/* Thẻ vào cột Hoàn thành. Nhân viên bấm thì mới là "báo xong", còn phải chờ
+   mình kiểm; mình bấm thì là duyệt luôn — mình vừa nhìn thấy nó xong thì
+   không có gì để tự duyệt lại nữa. Rời khỏi cột Hoàn thành thì xoá cả hai
+   mốc, không thì thẻ quay lại cột Đang làm mà vẫn mang tiếng đã duyệt. */
+function cardDoneMark(c, prev){
+  if (c.col !== 'done'){ c.doneAt = ''; c.okAt = ''; return c; }
+  /* Chỉ đặt mốc duyệt đúng LÚC BƯỚC VÀO cột Hoàn thành. Thẻ đã nằm sẵn ở đó
+     thì giữ nguyên: mở thẻ ra sửa mỗi dòng mô tả rồi bấm Lưu mà thành duyệt
+     luôn thì cái đang chờ mình kiểm tự biến mất, và biến mất đúng lúc mình
+     chưa kiểm gì cả. Duyệt phải là một cú bấm nói rõ ra. */
+  const was = !!(prev && prev.col === 'done');
+  c.doneAt = (was && prev.doneAt) || c.doneAt || today();
+  c.okAt   = was ? (prev.okAt || '') : (iAmOwner() ? today() : '');
+  return c;
+}
 /* select trả về chuỗi, chuẩn hoá lại trước khi lưu */
 function normalizeCard(v, prev){
   v.extra = v.extra === 'yes' || v.extra === true;
-  /* mốc hoàn thành: chỉ đặt lần đầu chuyển sang cột Hoàn thành */
-  if (v.col === 'done') v.doneAt = (prev && prev.doneAt) || v.doneAt || today();
-  else v.doneAt = '';
+  /* Tên nào khớp hồ sơ nhân viên thì nối luôn bằng id — từ đó đổi tên trong
+     hồ sơ là thẻ đi theo, không phải sửa lại từng cái. */
+  const rec = v.assignee ? staffByName(v.assignee) : null;
+  v.staffId = rec ? rec.id : '';
+  cardDoneMark(v, prev);
   if (!v.extra){ v.extraPay = 0; v.extraPaidDate = ''; }
   v.progress = Math.max(0, Math.min(100, +v.progress || 0));
   v.remindBefore = Math.max(0, Math.min(60, +v.remindBefore || 0));
@@ -611,10 +633,22 @@ function openCard(id){
   const i = COLS.findIndex(x => x.id === c.col);
   openForm({title:'Thẻ việc', fields:cardFields(),
     values:Object.assign({}, c, {extra: c.extra ? 'yes' : ''}),
-    extra:`<div class="btns" style="margin-bottom:10px">
+    extra:`${c.col === 'done' && !c.okAt ? `<div class="dim" style="margin-bottom:10px;line-height:1.6;color:var(--warn)">
+        <b>Đang chờ bạn kiểm.</b> ${esc(cardWho(c) || 'Người nhận')} đã báo xong${
+          c.doneAt ? ' ' + fmtDate(c.doneAt) : ''} — việc chỉ đóng lại khi bạn duyệt.</div>
+      <div class="btns" style="margin-bottom:10px">
+        <button type="button" class="btn sm grow pri" data-act="okCard" data-id="${id}">✓ Đã kiểm, duyệt</button>
+        <button type="button" class="btn sm grow" data-act="redoCard" data-id="${id}">↩ Chưa đạt</button>
+      </div>` : ''}
+      ${c.okAt ? `<div class="dim" style="margin-bottom:10px">Bạn đã duyệt ${fmtDate(c.okAt)}.</div>` : ''}
+      ${c.handedAt ? `<div class="dim" style="margin-bottom:10px">Việc này bạn giao đi ${
+        fmtDate(c.handedAt)}${c.back && c.back.repeat ? ' · nhịp lặp cũ ' + esc(repeatText(c.back)) : ''}.</div>` : ''}
+      <div class="btns" style="margin-bottom:10px">
         ${i>0 ? `<button type="button" class="btn sm grow" data-act="mv" data-id="${id}" data-d="-1">‹ ${esc(COLS[i-1].label)}</button>`:''}
         ${i<COLS.length-1 ? `<button type="button" class="btn sm grow" data-act="mv" data-id="${id}" data-d="1">${esc(COLS[i+1].label)} ›</button>`:''}
       </div>
+      ${c.fromTask ? `<button type="button" class="btn full" style="margin-bottom:10px" data-act="takeBackCard" data-id="${id}"
+        title="Đóng thẻ này và đưa việc trở lại danh sách của mình">↩ Lấy về danh sách của mình</button>` : ''}
       <button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delCard" data-id="${id}">Xoá thẻ</button>`,
     onSave(v){ Object.assign(c, normalizeCard(v, c)); stamp(c); save(); render(); }});
 }
@@ -826,10 +860,18 @@ function editStaff(id){
     extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delStaff" data-id="${id}">Xoá nhân sự</button>`,
     onSave(v){
       Object.assign(s, v); stamp(s);
-      /* thẻ việc gắn theo tên, nên đổi tên phải cập nhật luôn các thẻ cũ */
+      /* Thẻ nối vào hồ sơ bằng id, nên đổi tên thì tự nó đã đúng trên màn
+         hình. Vẫn viết lại cái tên đang lưu trên thẻ: máy chủ dựng tin
+         Telegram từ trường đó và không biết gì về id, để nguyên thì bot nói
+         tên cũ trong khi app nói tên mới. Dò theo id chứ không theo tên —
+         thẻ nào lỡ mang tên cũ sai chính tả cũng được kéo về đúng. */
       if (v.name !== oldName){
         let n = 0;
-        db.cards.forEach(c => { if (c.assignee === oldName){ c.assignee = v.name; stamp(c); n++; } });
+        db.cards.forEach(c => {
+          if ((c.staffId && c.staffId === s.id) || (!c.staffId && c.assignee === oldName)){
+            c.assignee = v.name; c.staffId = s.id; stamp(c); n++;
+          }
+        });
         if (S.assignee === oldName) S.assignee = v.name;
         if (n) toast('Đã đổi tên trên ' + n + ' thẻ việc');
       }
@@ -1165,14 +1207,14 @@ function splitTask(id){
    Chuyển hẳn sang bảng thẻ việc để còn theo dõi được người ta làm tới đâu. */
 function handOffTask(id){
   const t = db.tasks.find(x => x.id === id); if (!t) return;
-  const names = [...new Set([...staff().map(s => s.name),
-                             ...cards().map(c => c.assignee).filter(Boolean)])];
+  const names = assigneeNames();
   openForm({title:'Giao việc: ' + (t.title || ''),
     top:`<div class="dim" style="margin:-6px 0 14px;line-height:1.65">
       Việc này sẽ rời danh sách của mình và thành một <b>thẻ việc đã giao</b>
       trong mục Công việc — vẫn theo dõi được, chỉ là không còn nằm trong
       ngày của mình nữa.</div>`,
-    fields:[{k:'assignee', label:'Giao cho', list:names, ph:'tên người nhận'},
+    fields:[{k:'assignee', label:'Giao cho', type:'select',
+             opts:[['','— chọn người nhận —'], ...names.map(n => [n, n])]},
             {k:'due', label:'Hạn chót', type:'date', half:true},
             {k:'desc', label:'Dặn thêm', type:'textarea', voice:true}],
     values:{due: String(t.due || '').slice(0,10) || today(), desc:''},
@@ -1182,9 +1224,65 @@ function handOffTask(id){
         title:t.title || 'Việc được giao', assignee:v.assignee || '', col:'assigned',
         areaId:t.areaId || '', due:v.due || '', remindAt:'', remindBefore:0,
         prio:t.prio || 'mid', progress:0, extra:'', extraPay:0, extraPaidDate:'',
-        desc:v.desc || '', checklist:[], createdAt:today()})));
+        desc:v.desc || '', checklist:[], createdAt:today(),
+        /* Nhớ nó từ đâu ra, và nhớ đủ để lấy lại được. Nhịp lặp và giờ nhắc
+           không có chỗ nào trên thẻ việc, mất ở đây là mất hẳn — người ta trả
+           lại việc thì mình phải ngồi đặt lại "mỗi thứ 7, 12:30" từ đầu. */
+        fromTask:t.id, handedAt:today(),
+        back:{repeat:t.repeat || '', remindAt:t.remindAt || '', mins:t.mins || 0,
+              note:t.note || '', remindBefore:t.remindBefore || 0}})));
       t.deleted = true; stamp(t); save(); render();
-      toast('Đã giao cho ' + (v.assignee || 'người nhận') + ' · xem trong Công việc');
+      toast('Đã giao cho ' + (v.assignee || 'người nhận') + ' · theo dõi ở mục Đã giao đi');
+    }});
+}
+
+/* ---- lấy việc về mình ----
+   Đường ngược của giao đi. Người ta trả lại, hoặc mình đổi ý — không có nút
+   này thì phải gõ lại từ đầu, và gõ lại thì mất nhịp lặp, mất giờ nhắc, mất
+   cả ước tính thời lượng. Lấy tiêu đề / hạn / mảng việc từ THẺ (chúng có thể
+   đã đổi trong lúc người ta cầm), còn mấy thứ thẻ không có chỗ để chứa thì
+   lấy từ bản chụp lúc giao. */
+function takeBackCard(id){
+  const c = db.cards.find(x => x.id === id); if (!c) return;
+  const b = c.back || {};
+  confirmBox('Lấy "' + (c.title || 'việc này') + '" về danh sách của mình?' +
+             (cardWho(c) ? ' Thẻ của ' + cardWho(c) + ' sẽ đóng lại.' : ''), () => {
+    db.tasks.push(stamp(normalizeTask({
+      title:c.title || 'Việc lấy lại', due:String(c.due || '').slice(0,10) || today(),
+      repeat:b.repeat || '', remindAt:b.remindAt || '', remindBefore:b.remindBefore || 0,
+      mins:b.mins || 0, prio:c.prio || 'mid', areaId:c.areaId || '',
+      note:[b.note, c.desc].filter(Boolean).join('\n') || '',
+      done:false, doneLog:[], exc:{}, pushes:0})));
+    c.deleted = true; stamp(c); save(); closeModal(); render();
+    toast('Đã lấy về · nằm trong Công việc' + (b.repeat ? ' · nhịp lặp giữ nguyên' : ''));
+  }, '↩ Lấy về');
+}
+/* Duyệt: nhân viên báo xong, mình kiểm rồi gật. Đây mới là lúc việc thật sự
+   đóng lại — cột Hoàn thành chỉ nói người ta đã làm xong phần của họ. */
+function okCard(id){
+  const c = db.cards.find(x => x.id === id); if (!c) return;
+  c.col = 'done'; c.progress = 100; c.doneAt = c.doneAt || today(); c.okAt = today();
+  stamp(c); save(); closeModal(); render();
+  toast('Đã duyệt · ' + (c.title || 'việc này') + ' đóng lại');
+}
+/* Chưa đạt: trả về cột Đang làm. Xoá cả hai mốc, không thì thẻ mang tiếng
+   đã xong trong khi nó đang được làm lại. */
+function redoCard(id){
+  const c = db.cards.find(x => x.id === id); if (!c) return;
+  openForm({title:'Trả lại: ' + (c.title || ''),
+    top:`<div class="dim" style="margin:-6px 0 14px;line-height:1.65">
+      Thẻ quay về cột <b>Đang làm</b>. Viết rõ chỗ chưa đạt thì lần sau khỏi
+      giải thích lại — dòng này nối vào phần yêu cầu của thẻ.</div>`,
+    fields:[{k:'why', label:'Chưa đạt ở chỗ nào', type:'textarea', voice:true,
+             ph:'thiếu ảnh sau khi dọn · sai giá ở 3 mã · chưa gọi lại khách'}],
+    values:{why:''}, submit:'Trả lại',
+    onSave(v){
+      const w = (v.why || '').trim();
+      if (w) c.desc = (c.desc ? c.desc + '\n\n' : '') +
+                      '↩ ' + fmtDate(today()) + ' — trả lại: ' + w;
+      c.col = 'doing'; c.doneAt = ''; c.okAt = ''; c.progress = Math.min(c.progress || 0, 90);
+      stamp(c); save(); render();
+      toast('Đã trả lại cho ' + (cardWho(c) || 'người nhận'));
     }});
 }
 
@@ -2018,9 +2116,10 @@ document.addEventListener('click', e => {
       const i = COLS.findIndex(x => x.id === c.col) + (+el.dataset.d);
       if (i >= 0 && i < COLS.length){
         c.col = COLS[i].id;
-        if (c.col === 'done'){ c.progress = 100; c.doneAt = c.doneAt || today(); c.snoozeUntil = ''; }
-        else c.doneAt = '';
-        stamp(c); save(); closeModal(); render(); toast('→ ' + COLS[i].label);
+        if (c.col === 'done'){ c.progress = 100; c.snoozeUntil = ''; }
+        cardDoneMark(c, null);
+        stamp(c); save(); closeModal(); render();
+        toast('→ ' + COLS[i].label + (c.col === 'done' && !c.okAt ? ' · chờ bạn duyệt' : ''));
       } break;
     }
     case 'payExtra': {
@@ -2180,6 +2279,10 @@ document.addEventListener('click', e => {
     case 'addJourney': addJourney(id); break;
     case 'splitTask':   splitTask(id); break;
     case 'handOffTask': handOffTask(id); break;
+    case 'takeBackCard': takeBackCard(id); break;
+    case 'okCard':   okCard(id); break;
+    case 'redoCard': redoCard(id); break;
+    case 'showGiven': S.showGiven = !S.showGiven; render(); break;
     case 'dropTask':    dropTask(id); break;
     case 'journeyCause': S.journeyCause = (S.journeyCause === id ? '' : id); render(); break;
     case 'viewJourney': viewJourney(id); break;

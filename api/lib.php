@@ -429,7 +429,12 @@ function doTaskDone(string $kind, string $id): array {
     $t['due']        = $rolled = nextRepeat($due, (string)$t['repeat']);
   }
   elseif ($kind === 'tasks') { $t['done'] = true;   $t['doneAt'] = date('Y-m-d'); }
-  else                       { $t['col']  = 'done'; $t['doneAt'] = date('Y-m-d'); }
+  else {
+    /* Thẻ giao việc: nút này nằm trong group của CHỦ, nên bấm nó vừa là
+       "xong" vừa là "mình duyệt". Thiếu mốc duyệt thì thẻ nằm lại mãi trong
+       mục Đã giao đi → Chờ bạn kiểm, trong khi chính mình vừa tick nó. */
+    $t['col'] = 'done'; $t['doneAt'] = date('Y-m-d'); $t['okAt'] = date('Y-m-d');
+  }
   $t['snoozeUntil'] = '';                 // xong rồi thì mốc dời cũ hết nghĩa
   itemPut($kind, $id, $t);
   return ['ok' => true, 'already' => false, 'rolled' => $rolled, 'streak' => $streak];

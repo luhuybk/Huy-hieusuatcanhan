@@ -199,6 +199,52 @@ Nút chỉ hiện khi có việc thật sự xếp lại được: hết cửa s
 
 Dòng vàng kể tên việc quá giờ ngăn nhau bằng **gạch đứng** chứ không phải dấu chấm giữa dòng: `12:30 Nghiên cứu | 14:00 Gọi khách`. Dấu chấm nhỏ quá, ba việc đọc lướt ra một cụm chữ dài chứ không ra ba việc; gạch đứng có nét dọc nên mắt tách được ngay, và hai bên nới rộng hẳn ra. Dòng *"nằm ngoài cửa sổ"* ngay dưới cũng vậy — hai dòng cùng màu cùng kiểu thì phải ngăn giống nhau.
 
+#### Đã giao đi — để không quên mất mình đang chờ ai
+
+Giao xong là việc rời danh sách của mình. Đúng — không thì giao để làm gì. Nhưng rời khỏi danh sách rất dễ thành **rời khỏi đầu**: ba tuần sau mới nhớ ra *"ủa cái đó giao cho ai rồi nhỉ"*.
+
+Mục **Đã giao đi** nằm trong tab Công việc, ngay dưới *Tồn đọng*. Ba nhóm, xếp theo thứ cần bạn động tay trước:
+
+```
+ĐÃ GIAO ĐI — 4 VIỆC
+Việc đã sang tay người khác. 2 việc nhân viên báo xong đang chờ bạn kiểm.
+
+Chờ bạn kiểm (2)
+┌──────────────────────────────────────────────────────────────┐
+│ VH  Dọn kho cuối tháng              [báo xong · chờ 3 ngày]  │
+│     Trần Văn Hải · Hoàn thành · mình giao 13/08              │
+│     [ ✓ Đã kiểm, duyệt ]        [ ↩ Chưa đạt ]               │
+└──────────────────────────────────────────────────────────────┘
+
+Đang ở tay người khác (2) · 1 trễ
+┌──────────────────────────────────────────────────────────────┐
+│ BN  Gọi lại 20 khách cũ                      [trễ 4 ngày]    │
+│     Ngô Bích Ngọc · Đang làm · mình giao 16/08 · 60%         │
+│     [ Mở thẻ ]                              [ ↩ Lấy về ]     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Nhóm *Chờ bạn kiểm* không bao giờ bị thu gọn.** Nó là lý do mục này tồn tại: người ta làm xong rồi, đang chờ bạn, mà chẳng có gì nhắc. Thu gọn nó đi thì lại quên đúng cái đang chờ mình. Hai nhóm dưới thì gấp lại còn 4 dòng.
+
+**Cột *Hoàn thành* không có nghĩa là xong.** Nó nói người ta đã làm xong phần của họ. Việc chỉ thật sự đóng lại khi bạn bấm **✓ Đã kiểm, duyệt** — app ghi riêng hai mốc: `doneAt` là ngày người ta báo, `okAt` là ngày bạn gật.
+
+- **Nhân viên** kéo thẻ sang Hoàn thành → có `doneAt`, chưa có `okAt` → vào nhóm *Chờ bạn kiểm*.
+- **Bạn** kéo sang Hoàn thành → hai mốc cùng lúc, không phải tự duyệt lại việc mình vừa nhìn thấy.
+- Bấm **✅ Xong** dưới tin Telegram cũng là duyệt: nút đó nằm trong group của bạn.
+- **Mở thẻ ra sửa rồi bấm Lưu thì KHÔNG thành duyệt.** Mốc duyệt chỉ đặt đúng lúc thẻ *bước vào* cột Hoàn thành. Không thì sửa mỗi dòng mô tả là cái đang chờ mình tự biến mất — biến mất đúng lúc mình chưa kiểm gì cả. Duyệt phải là một cú bấm nói rõ ra.
+
+**↩ Chưa đạt** trả thẻ về cột *Đang làm*, xoá cả hai mốc, và hỏi bạn chưa đạt ở chỗ nào — câu đó nối vào phần yêu cầu của thẻ, kèm ngày, để lần sau khỏi giải thích lại.
+
+**Thẻ cũ từ trước bản này** được coi như đã duyệt sẵn. Không thì mở app lên thấy cả đống việc từ năm ngoái đòi duyệt lại.
+
+#### Giao việc: đường đi và đường về
+
+**Đường đi.** Nút **→ Giao cho nhân viên** nằm trong biểu mẫu sửa việc — mở bất kỳ việc nào, một cú bấm. (Trước đây nút này chỉ hiện trong mục *Tồn đọng*, tức là việc phải trễ 3 ngày hoặc bị dời 3 lần thì mới được giao đi. Còn lúc bạn vừa nhận việc và biết ngay "cái này của Hà chứ không phải của mình" thì không có đường nào cả.)
+
+**Đường về.** Nút **↩ Lấy về** trên thẻ. Người ta trả lại, hoặc bạn đổi ý — không có nút này thì phải gõ lại từ đầu, mà gõ lại là **mất nhịp lặp, mất giờ nhắc, mất ước tính thời lượng**: thẻ việc không có chỗ nào chứa mấy thứ đó. Nên lúc giao đi, app chụp lại chúng vào thẻ; lúc lấy về thì tiêu đề / hạn / mảng việc lấy từ **thẻ** (chúng có thể đã đổi trong lúc người ta cầm), còn nhịp lặp và giờ nhắc lấy từ bản chụp. Nút chỉ hiện trên thẻ vốn sinh ra từ việc của bạn.
+
+**Thẻ nối vào hồ sơ nhân viên bằng id, không phải bằng tên.** Trước đây thẻ chỉ mang mỗi cái *tên*, và mọi thứ khớp bằng so sánh chuỗi y hệt nhau. Đổi *"Hà"* thành *"Thu Hà"* một cái là thẻ cũ mồ côi hàng loạt: **% đúng hạn về 0**, bảng mọc thêm một tab ma tên "Hà", **tiền công còn nợ biến mất** khỏi trang người đó — mà không có gì báo lỗi cả, nó chỉ lặng lẽ sai. Giờ id là gốc, tên chỉ là chỗ dựa cho người không có hồ sơ (thợ thời vụ, người ngoài). Thẻ cũ tự nối lại bằng cách dò tên một lần lúc nạp. Đổi tên trong hồ sơ thì app vẫn viết lại cái tên đang lưu trên thẻ — máy chủ dựng tin Telegram từ trường đó và không biết gì về id.
+
 #### Đang bị né — ba đường ra, không có đường thứ tư
 
 Dời một hai lần là bận. Dời tới lần thứ ba thì không phải bận nữa: đó là việc bạn không muốn làm, và mỗi ngày nó lại chiếm một dòng để bạn lướt qua. App đã đếm *"đã dời N lần"* từ trước, nhưng đếm xong thì bạn vẫn chỉ có mỗi nút **→ Mai**. Giờ có ba nút thật:

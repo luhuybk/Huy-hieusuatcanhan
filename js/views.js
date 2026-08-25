@@ -120,6 +120,80 @@ function stuckCard(t){
     </div>
   </div>`;
 }
+/* ---- một dòng của mục "Đã giao đi" ----
+   `mode` quyết định thẻ nói gì và cho bấm gì:
+     wait — nhân viên báo xong, chờ mình kiểm. Hai nút: duyệt, hoặc trả lại.
+     late — quá hạn mà chưa thấy báo. Không có nút "xong" ở đây: mình không
+            làm nên mình không tick hộ được, chỉ mở thẻ ra hỏi hoặc lấy về.
+     run  — còn trong hạn, chỉ cần biết nó tồn tại. */
+function givenRow(c, mode){
+  const who = cardWho(c), tre = c.due ? -dayDiff(c.due) : 0, cho = waitDays(c);
+  const chip = mode === 'wait'
+    ? `<span class="chip warn">báo xong${cho ? ' · chờ ' + cho + ' ngày' : ' hôm nay'}</span>`
+    : mode === 'late' ? `<span class="chip bad">trễ ${tre} ngày</span>`
+    : c.due ? `<span class="chip">${dueText(c.due)}</span>` : '';
+  const sub = [
+    who ? esc(who) : 'chưa giao',
+    (COLS.find(x => x.id === c.col) || {}).label,
+    c.handedAt ? 'mình giao ' + fmtDate(c.handedAt) : '',
+    mode !== 'wait' && c.progress ? c.progress + '%' : ''
+  ].filter(Boolean).join(' · ');
+  return `<div class="card${mode === 'wait' ? ' duck' : ''}" style="margin-bottom:8px">
+    <div class="row">
+      <div class="av sm" style="background:var(--${mode === 'late' ? 'bad' : mode === 'wait' ? 'warn' : 'acc'})"
+        >${esc(initials(who || '?'))}</div>
+      <div class="grow ell" style="font-weight:650" data-act="card" data-id="${c.id}">
+        ${areaDot(c.areaId)} ${esc(c.title || 'Thẻ chưa đặt tên')}</div>
+      ${chip}
+    </div>
+    <div class="dim" style="margin-top:6px">${sub}</div>
+    ${mode === 'wait' ? `<div class="btns" style="margin-top:10px">
+      <button class="btn sm grow pri" data-act="okCard" data-id="${c.id}"
+        title="Mình đã kiểm, việc đóng lại">✓ Đã kiểm, duyệt</button>
+      <button class="btn sm grow" data-act="redoCard" data-id="${c.id}"
+        title="Trả về cột Đang làm kèm lý do">↩ Chưa đạt</button>
+    </div>` : `<div class="btns" style="margin-top:10px">
+      <button class="btn sm grow" data-act="card" data-id="${c.id}">Mở thẻ</button>
+      ${c.fromTask ? `<button class="btn sm" data-act="takeBackCard" data-id="${c.id}"
+        title="Đưa lại vào danh sách việc của mình">↩ Lấy về</button>` : ''}
+    </div>`}
+  </div>`;
+}
+/* ---- mục "Đã giao đi" ----
+   Giao xong là việc rời danh sách của mình. Đúng — nhưng rời khỏi danh sách
+   rất dễ thành rời khỏi đầu. Mục này là chỗ duy nhất trả lời được câu "mình
+   đang chờ ai cái gì".
+
+   Nhóm CHỜ DUYỆT luôn hiện đủ, không bị thu gọn: nó là lý do mục này tồn
+   tại. Người ta làm xong rồi, đang chờ mình — mà thu gọn thì mình lại quên
+   đúng cái đang chờ mình. */
+function givenBlock(A){
+  const g = givenCards(A);
+  if (!g.n) return '';
+  /* So với mốc THU GỌN cố định, không so với `cap` đang thay đổi: lấy cap thì
+     mở ra xong nút tự biến mất, và không còn đường nào gấp lại. */
+  const FOLD = 4, foldable = g.late.length + g.run.length;
+  const cap = S.showGiven ? 99 : FOLD;
+  let h = secHd('Đã giao đi — ' + g.n + ' việc', foldable > FOLD
+    ? `<button data-act="showGiven">${S.showGiven ? '▲ Thu gọn' : '▼ Xem hết ' + foldable}</button>` : '');
+  h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
+    Việc đã sang tay người khác. ${g.wait.length
+      ? `<b style="color:var(--warn)">${g.wait.length} việc nhân viên báo xong đang chờ bạn kiểm.</b>`
+      : 'Chưa có việc nào chờ bạn duyệt.'}</div>`;
+  if (g.wait.length){
+    h += `<div class="dim" style="margin:0 0 8px;font-weight:650">Chờ bạn kiểm (${g.wait.length})</div>`;
+    h += g.wait.map(c => givenRow(c, 'wait')).join('');
+  }
+  const rest = g.late.map(c => [c, 'late']).concat(g.run.map(c => [c, 'run']));
+  if (rest.length){
+    h += `<div class="dim" style="margin:12px 0 8px;font-weight:650">Đang ở tay người khác (${
+      rest.length})${g.late.length ? ` · <span style="color:var(--bad)">${g.late.length} trễ</span>` : ''}</div>`;
+    h += rest.slice(0, cap).map(([c, m]) => givenRow(c, m)).join('');
+    if (rest.length > cap)
+      h += `<div class="dim" style="margin-top:4px">+${rest.length - cap} việc nữa đang chạy</div>`;
+  }
+  return h;
+}
 function dashDucked(A){
   const list = duckedTasks(A);
   if (!list.length) return '';
@@ -156,9 +230,9 @@ function dashToday(A){
   if (lcs.length){
     h += secHd('Việc đã giao đang trễ', `<button data-act="nav" data-id="board">Mở bảng</button>`);
     h += lcs.slice(0, 6).map(c => `<div class="item" data-act="card" data-id="${c.id}">
-        <div class="av sm" style="background:var(--bad)">${esc(initials(c.assignee||'?'))}</div>
+        <div class="av sm" style="background:var(--bad)">${esc(initials(cardWho(c)||'?'))}</div>
         <div class="grow"><div class="t ell">${esc(c.title)}</div>
-        <div class="s">${esc(c.assignee||'chưa giao')} · ${dueText(c.due)}</div></div>
+        <div class="s">${esc(cardWho(c)||'chưa giao')} · ${dueText(c.due)}</div></div>
         ${areaDot(c.areaId)}</div>`).join('');
   }
   /* Việc đến hạn mà KHÔNG lọt vào trục hôm nay — cùng một danh sách hiện hai
@@ -464,7 +538,15 @@ function vWork(){
   const all  = byArea(tasks(), A);
   const open = all.filter(t => !t.done);
   const done = all.filter(t => t.done).sort((a,b) => (b.doneAt||'').localeCompare(a.doneAt||''));
-  if (!all.length) return `<div class="empty"><b>Chưa có việc nào</b>Bấm + để thêm. Việc lặp lại (tập gym, đóng tiền nhà…) chỉ cần tạo một lần.</div>`;
+  /* Dựng trước phần "đã giao đi", vì nó phải sống sót qua cái màn hình rỗng
+     bên dưới: hôm nào mình giao hết việc đi thì danh sách việc của mình rỗng
+     thật, nhưng đó đúng là hôm mình cần nhìn thấy mình đang chờ ai cái gì
+     nhất. Trả về "Chưa có việc nào" lúc đó là giấu mất đúng thứ cần xem. */
+  const given = givenBlock(A);
+  if (!all.length) return given
+    ? given + `<div class="empty" style="margin-top:14px"><b>Việc của riêng mình thì đang trống</b>
+        Mấy việc trên đang ở tay người khác. Bấm + để thêm việc cho mình.</div>`
+    : `<div class="empty"><b>Chưa có việc nào</b>Bấm + để thêm. Việc lặp lại (tập gym, đóng tiền nhà…) chỉ cần tạo một lần.</div>`;
   const g = {late:[], today:[], soon:[], none:[]};
   for (const t of open){
     const day = taskSortDay(t);
@@ -495,6 +577,13 @@ function vWork(){
       h += `<div class="dim" style="margin-top:4px">+${stuck.length - cap} việc nữa cùng cảnh</div>`;
   }
   for (const k in g) g[k] = g[k].filter(t => !stuckIds.has(t.id));
+
+  /* ---- đã giao đi ----
+     Ngay dưới Tồn đọng, trên phần việc của mình. Thứ tự đó có lý: hai mục
+     trên cùng đều là việc ĐANG CHỜ MỘT QUYẾT ĐỊNH của mình — quyết định bỏ
+     hay chia nhỏ, và quyết định duyệt hay trả lại. Bốn mục dưới mới là việc
+     phải xắn tay ra làm. */
+  h += given;
 
   h += sec('Quá hạn', g.late.sort((a,b) => taskSortDay(a).localeCompare(taskSortDay(b))));
   h += sec('Hôm nay', byPrio(g.today));
@@ -577,18 +666,18 @@ function vIdeas(){
 function vBoard(){
   const isStaff = db.settings.role === 'staff';
   let list = byArea(cards(), S.area);
-  if (isStaff) list = list.filter(c => c.assignee === db.settings.staffName);
+  if (isStaff) list = list.filter(c => cardWho(c) === db.settings.staffName);
 
-  const names = [...new Set([...staff().map(s => s.name), ...cards().map(c => c.assignee).filter(Boolean)])];
+  const names = assigneeNames();
   let h = '';
   if (!isStaff){
     h += `<div class="tabs">
       <button class="tab ${S.assignee==='all'?'on':''}" data-act="asg" data-id="all">Tất cả <span class="n">${list.length}</span></button>` +
       names.map(n => `<button class="tab ${S.assignee===n?'on':''}" data-act="asg" data-id="${esc(n)}">${esc(n)}
-        <span class="n">${list.filter(c=>c.assignee===n).length}</span></button>`).join('') +
+        <span class="n">${list.filter(c=>cardWho(c)===n).length}</span></button>`).join('') +
       `<button class="tab" data-act="staffBox">＋ Nhân sự</button></div>`;
   }
-  if (S.assignee !== 'all') list = list.filter(c => c.assignee === S.assignee);
+  if (S.assignee !== 'all') list = list.filter(c => cardWho(c) === S.assignee);
 
   if (!cards().length)
     h += `<div class="empty"><b>Bảng còn trống</b>Tạo thẻ việc rồi chuyển dần qua các cột.
@@ -612,7 +701,7 @@ function vBoard(){
             <div class="t">${areaDot(c.areaId)} ${esc(c.title)}</div>
             ${c.desc ? `<div class="dim ell" style="margin-top:4px">${esc(c.desc)}</div>` : ''}
             <div class="meta">
-              <span class="chip">${esc(c.assignee || 'chưa giao')}</span>
+              <span class="chip">${esc(cardWho(c) || 'chưa giao')}</span>
               ${c.due ? `<span class="chip ${late?'bad':''}">${dueText(c.due)}</span>` : ''}
               ${c.prio === 'high' ? `<span class="chip bad">gấp</span>` : ''}
               ${c.remindAt && c.col !== 'done' && !snoozeOn(c) ? `<span class="chip">🔔 ${esc(c.remindAt)}</span>` : ''}
@@ -677,7 +766,7 @@ function vBoard(){
   if (!isStaff && names.length){
     h += secHd('Tiến độ theo người');
     h += names.map(n => {
-      const mine = byArea(cards(), S.area).filter(c => c.assignee === n);
+      const mine = byArea(cards(), S.area).filter(c => cardWho(c) === n);
       const dn = mine.filter(c => c.col === 'done').length;
       const late = mine.filter(c => c.col !== 'done' && c.due && dayDiff(c.due) < 0).length;
       const pct = mine.length ? Math.round(dn / mine.length * 100) : 0;
@@ -1176,7 +1265,7 @@ function vMoney(){
 function vStaff(){
   const s = staff().find(x => x.id === S.staffId);
   if (!s){ S.view = 'board'; return vBoard(); }
-  const st = staffStats(s.name);
+  const st = staffStats(s);
   const areaNames = (s.areaIds || []).map(i => areaOf(i)).filter(Boolean);
 
   const stat = (v, l, color) => `<div class="stat"><div class="v" style="${color?'color:'+color:''}">${v}</div>

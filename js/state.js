@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-24.5';
+const APP_BUILD = '2026-08-25.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -474,7 +474,32 @@ function ensure(){
                            if(!Array.isArray(c.checklist)) c.checklist=[];
                            if(c.remindAt===undefined) c.remindAt='';
                            if(c.snoozeUntil===undefined) c.snoozeUntil='';
-                           if(c.remindBefore===undefined) c.remindBefore=0; });
+                           if(c.remindBefore===undefined) c.remindBefore=0;
+                           /* Nối thẳng vào hồ sơ nhân viên bằng id. Trước đây chỉ có mỗi
+                              cái TÊN, và mọi thứ khớp bằng so sánh chuỗi y hệt nhau: đổi
+                              "Hà" thành "Thu Hà" một cái là thẻ cũ mồ côi hàng loạt — %
+                              đúng hạn về 0, bảng mọc thêm một tab ma, tiền công còn nợ
+                              biến mất khỏi trang người đó, mà không có gì báo lỗi cả.
+                              Tên vẫn giữ, làm chỗ dựa cho người không nằm trong danh sách
+                              nhân sự. Dò một lần lúc nạp, thẻ cũ tự nối. */
+                           if(c.staffId===undefined){
+                             const m = c.assignee ? staffByName(c.assignee) : null;
+                             c.staffId = m ? m.id : '';
+                             if (m) stamp(c);
+                           }
+                           /* Giao đi rồi thì vẫn nhớ nó sinh ra từ việc nào của mình, và
+                              nhớ đủ để lấy lại được — nhịp lặp, giờ nhắc, ước tính. */
+                           if(c.fromTask===undefined) c.fromTask='';
+                           if(c.handedAt===undefined) c.handedAt='';
+                           if(!c.back || typeof c.back!=='object') c.back={};
+                           /* Ngày MÌNH duyệt là xong thật. Rỗng khi thẻ đang ở cột Hoàn
+                              thành mà mình chưa xác nhận — tức là nhân viên báo xong, tới
+                              lượt mình kiểm. Thẻ từ bản cũ chưa có trường này thì coi như
+                              đã duyệt: không thì mở app lên thấy cả đống việc từ năm ngoái
+                              đòi mình duyệt lại. Sau lần đó trường luôn tồn tại, nên
+                              không bao giờ tự điền thêm lần nữa. */
+                           if(c.okAt===undefined) c.okAt = c.col==='done' ? (c.doneAt || today()) : '';
+                         });
   /* Lịch nhập từ app khác. Dữ liệu do bên ngoài đưa vào nên không tin gì cả:
      thiếu giờ hay thiếu ngày thì bỏ hẳn, chứ để lọt vào thì trục vẽ ra NaN. */
   db.feeds.forEach(f => { if(typeof f.src!=='string') f.src='';
@@ -566,10 +591,33 @@ function occasions(){ return alive(db.occasions); }
    ============================================================ */
 function extraCards(){ return cards().filter(c => c.extra); }
 function staffByName(name){ return staff().find(s2 => s2.name === name) || null; }
+/* ---- thẻ việc ↔ hồ sơ nhân viên ----
+   Một hàm duy nhất trả lời "thẻ này của ai". Ưu tiên id, tên chỉ là chỗ dựa
+   cho người không có hồ sơ (thợ thời vụ, người ngoài). Nhờ vậy đổi tên trong
+   hồ sơ là mọi thẻ cũ đổi theo — bảng, thống kê, tiền công đều đi cùng một
+   đường nên không có chỗ nào tụt lại. */
+function staffOfCard(c){
+  if (!c) return null;
+  return (c.staffId ? staff().find(s2 => s2.id === c.staffId) : null)
+         || (c.assignee ? staffByName(c.assignee) : null) || null;
+}
+const cardWho = c => { const s2 = staffOfCard(c); return s2 ? s2.name : (c && c.assignee) || ''; };
+const cardsOf = s2 => cards().filter(c => staffOfCard(c) === s2
+                                       || (!c.staffId && c.assignee === s2.name));
+/* Mọi cái tên đang xuất hiện trên bảng: nhân viên có hồ sơ, cộng những tên
+   trần còn sót lại trên thẻ cũ. */
+function assigneeNames(){
+  const out = staff().map(s2 => s2.name);
+  cards().forEach(c => { const n = cardWho(c); if (n && !out.includes(n)) out.push(n); });
+  return out;
+}
 
-/* toàn bộ số liệu của một nhân viên, dùng cho trang hồ sơ */
-function staffStats(name){
-  const mine = cards().filter(c => c.assignee === name);
+/* toàn bộ số liệu của một nhân viên, dùng cho trang hồ sơ.
+   Nhận hồ sơ chứ không nhận tên: tên đổi thì số liệu phải đi theo. */
+function staffStats(s2){
+  const rec = typeof s2 === 'string' ? staffByName(s2) : s2;
+  const name = typeof s2 === 'string' ? s2 : (s2 && s2.name) || '';
+  const mine = rec ? cardsOf(rec) : cards().filter(c => cardWho(c) === name);
   const done = mine.filter(c => c.col === 'done');
   const late = mine.filter(c => c.col !== 'done' && c.due && dayDiff(c.due) < 0);
   /* Chỉ chấm đúng hạn trên những thẻ có đủ cả mốc hoàn thành lẫn hạn chót.
@@ -600,7 +648,7 @@ function extraTotals(list){
 function extraByStaff(){
   const map = {};
   extraCards().forEach(c => {
-    const who = c.assignee || '— chưa giao —';
+    const who = cardWho(c) || '— chưa giao —';
     (map[who] = map[who] || []).push(c);
   });
   return Object.keys(map).map(who => Object.assign({who, items:map[who]}, extraTotals(map[who])))
@@ -724,6 +772,35 @@ function repeatPlan(areaId){
 }
 
 function lateCards(){ return cards().filter(c => c.col !== 'done' && c.due && dayDiff(c.due) < 0); }
+
+/* ---- việc mình đã giao đi ----
+   Giao xong là nó rời danh sách của mình — đúng, không thì giao để làm gì.
+   Nhưng rời khỏi danh sách rất dễ thành rời khỏi đầu: ba tuần sau mới nhớ ra
+   "ủa cái đó giao cho ai rồi nhỉ".
+
+   Ba nhóm, xếp theo thứ cần mình động tay trước:
+
+     chờ duyệt — nhân viên báo xong, tới lượt mình kiểm. Đây là nhóm dễ rơi
+       nhất: người ta làm xong rồi, mình thì chưa biết, mà cũng không có gì
+       nhắc. Xếp cái chờ lâu nhất lên đầu.
+     đang trễ — quá hạn mà chưa thấy báo gì.
+     đang chạy — còn trong hạn, chỉ cần biết là nó tồn tại.
+
+   Cột "Lên ý tưởng" không kể vào đây: nó chưa giao cho ai, mới là dự định. */
+function givenCards(areaId){
+  const list = byArea(cards(), areaId === undefined ? 'all' : areaId)
+    .filter(c => c.col !== 'idea' && (c.staffId || c.assignee));
+  const wait = list.filter(c => c.col === 'done' && !c.okAt)
+    .sort((a, b) => String(a.doneAt || '').localeCompare(String(b.doneAt || '')));
+  const rest = list.filter(c => c.col !== 'done');
+  const isLate = c => !!c.due && dayDiff(c.due) < 0;
+  const byDue = (a, b) => String(a.due || '9999').localeCompare(String(b.due || '9999'));
+  const late = rest.filter(isLate).sort(byDue);
+  const run  = rest.filter(c => !isLate(c)).sort(byDue);
+  return {wait, late, run, n: wait.length + late.length + run.length};
+}
+/* Nhân viên báo xong lúc nào — để nói được "chờ mình 3 ngày rồi" */
+const waitDays = c => c.doneAt ? Math.max(0, -dayDiff(c.doneAt)) : 0;
 function staleP(){
   return people().map(p => ({p, over: (p.lastContact ? -dayDiff(p.lastContact) : 999) - TIERS[p.tier].ping}))
                  .filter(x => x.over > 0).sort((a,b) => b.over - a.over);
@@ -1713,7 +1790,7 @@ function calendarMap(from, to, areaId){
   byArea(cards(), areaId || 'all').forEach(c => {
     if (c.due && c.due >= from && c.due <= to)
       put(c.due, {kind:'card', id:c.id, title:c.title, color:colorOf(c.areaId),
-                  done:c.col === 'done', who:c.assignee, canTick:true});
+                  done:c.col === 'done', who:cardWho(c), canTick:true});
   });
 
   occasions().forEach(o =>
@@ -1778,9 +1855,9 @@ function searchAll(q, limit){
       sub:(IDEA_ST[i.status]||'') + (areaName(i.areaId) ? ' · ' + areaName(i.areaId) : ''),
       color:(areaOf(i.areaId)||{}).color || 'var(--warn)'}); });
 
-  cards().forEach(c => { if (hit(c.title, c.desc, c.assignee, areaName(c.areaId)))
+  cards().forEach(c => { if (hit(c.title, c.desc, cardWho(c), areaName(c.areaId)))
     out.push({kind:'card', id:c.id, title:c.title,
-      sub:(COLS.find(x => x.id === c.col)||{}).label + (c.assignee ? ' · ' + c.assignee : ''),
+      sub:(COLS.find(x => x.id === c.col)||{}).label + (cardWho(c) ? ' · ' + cardWho(c) : ''),
       color:(areaOf(c.areaId)||{}).color || 'var(--acc)'}); });
 
   occasions().forEach(o => { if (hit(o.title, o.note)){
@@ -1826,7 +1903,7 @@ function cashFlow(from, to){
   cards().forEach(c => {
     if (c.extra && c.extraPaidDate && c.extraPaidDate >= from && c.extraPaidDate <= to && c.extraPay)
       out.push({date:c.extraPaidDate, group:'nhân viên', title:c.title,
-                who:c.assignee || 'chưa giao', amount:c.extraPay, cardId:c.id});
+                who:cardWho(c) || 'chưa giao', amount:c.extraPay, cardId:c.id});
   });
   out.sort((a,b) => b.date.localeCompare(a.date));
   inc.sort((a,b) => b.date.localeCompare(a.date));
