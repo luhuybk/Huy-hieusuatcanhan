@@ -572,6 +572,23 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
   box-shadow:inset 3px 0 0 var(--warn),0 0 0 1px color-mix(in srgb,var(--warn) 30%,transparent);
   background:color-mix(in srgb,var(--warn) 8%,var(--bg2))}
 .chk.qua .tm{color:var(--warn)}
+/* ---------- việc gấp ----------
+   Kênh riêng, cố ý KHÔNG đụng viền / nền / vệt trái: mấy thứ đó đã dành cho
+   trạng thái theo thời gian (vàng = quá giờ, xanh = xong). Ưu tiên là tính
+   chất của việc, quá giờ là tính chất của lúc này — hai chuyện độc lập và
+   hay xảy ra cùng lúc, dùng chung một kênh thì cái này che mất cái kia và
+   mình chỉ đọc được một nửa.
+
+   Nên độ ưu tiên nằm ở CHỮ: một tam giác đỏ trước tên, cộng tên đậm hơn một
+   nấc. Việc vừa gấp vừa quá giờ thì đọc được cả hai cùng lúc. */
+.hotm{color:var(--bad);font-size:10.5px;font-weight:900;vertical-align:1px;letter-spacing:0}
+.chk.hot .ti,.item.hot .t,.rem.two.hot .nm{font-weight:800}
+.tlblk.hot{border-width:2px}
+.tlblk.hot .tllbl{font-weight:800}
+/* Vạch trên thanh gọn chỉ rộng vài pixel, không nhét được ký tự nào. Cho nó
+   cao hết hàng thay vì thụt vào 3px trên dưới — cùng một hàng vạch thì cái
+   cao hơn nhảy ra ngay, mà không cần thêm màu nào. */
+.tlbar i.hot{top:0;bottom:0;border-width:1.5px}
 .chk.off{opacity:.48}
 .chk .cb{margin-top:1px}
 .chk .row{gap:8px;align-items:center}

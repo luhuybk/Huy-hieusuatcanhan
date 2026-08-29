@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-25.1';
+const APP_BUILD = '2026-08-25.2';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -1046,12 +1046,21 @@ function dayTasks(wd, areaId){
     return !t.done && !taskSkipped(t) && taskDay(t) === dstr;
   });
 }
+/* ---- việc gấp ----
+   Độ ưu tiên là tính chất của VIỆC; quá giờ là tính chất của LÚC NÀY. Hai
+   thứ độc lập và hay xảy ra cùng lúc, nên chúng phải dùng hai kênh nhìn khác
+   nhau — cùng tô viền thì cái này che mất cái kia, và mình chỉ đọc được một
+   nửa sự thật. Ở đây: trạng thái theo thời gian giữ viền / nền / vệt trái,
+   còn độ ưu tiên nằm ở CHỮ — một dấu ▲ đỏ trước tên và tên đậm hơn.
+
+   Xong rồi thì hết gấp: việc gấp đã làm xong không còn gì để giục. */
+const isHot = t => !!t && t.prio === 'high';
 function taskSlot(t, dstr){
   const due = taskDay(t);
   /* id có tiền tố để không đụng id của việc hằng ngày khi dò chồng giờ */
   return {kind:'task', id:'t_' + t.id, t, day:dstr, start:hhmm2min(taskAt(t)), mins:taskMins(t), on:true,
           exc:excText(t, String(t.due || '').slice(0,10), t.remindAt),
-          title:t.title || 'Việc cần làm', areaId:t.areaId || '',
+          title:t.title || 'Việc cần làm', areaId:t.areaId || '', hot:isHot(t),
           late:due < dstr, est:taskEst(t),
           done:taskDoneOn(t, dstr), doneTime:doneHhmm(t.doneTime, dstr)};
 }

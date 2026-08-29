@@ -508,24 +508,28 @@ function vPerson(){
 }
 
 /* ---------------- CÔNG VIỆC ---------------- */
+/* Dấu của việc gấp. Một ký tự, đứng ngay trước tên, ở mọi chỗ có tên việc —
+   chữ là kênh còn trống, viền và nền đã dành cho trạng thái theo thời gian. */
+const HOTM = '<b class="hotm" title="Ưu tiên cao">▲</b> ';
 function taskItem(t){
   /* Ngày HIỂN THỊ, không phải t.due: kỳ này có thể đã dời riêng hoặc bỏ qua.
      Lấy thẳng t.due thì thẻ ghi "quá hạn" cho một ngày mình đã dời đi rồi. */
   const day = taskSortDay(t);
   const d = day ? dayDiff(day) : null;
   const cls = t.done ? '' : d === null ? '' : d < 0 ? 'bad' : d === 0 ? 'warn' : '';
+  const hot = isHot(t) && !t.done;
   const meta = [
-    t.prio === 'high' && !t.done ? `<span class="chip bad">gấp</span>` : '',
     t.repeat ? `<span class="chip">↻ ${esc(repeatText(t))}</span>` : '',
     t.remindAt && !t.done && !snoozeOn(t) ? `<span class="chip">🔔 ${esc(t.remindAt)}</span>` : '',
     !t.done && snoozeOn(t) ? `<span class="chip warn">⏰ ${esc(snoozeText(t.snoozeUntil))}</span>` : '',
     t.streak > 1 ? `<span class="chip"><span class="streak">🔥 ${t.streak}</span></span>` : '',
     t.note ? `<span class="chip">${esc(t.note.slice(0,28))}</span>` : ''
   ].filter(Boolean).join('');
-  return `<div class="item">
+  return `<div class="item ${hot ? 'hot' : ''}">
     <div class="cb ${t.done?'on':''}" data-act="toggleTask" data-id="${t.id}">✓</div>
     <div class="grow" data-act="editTask" data-id="${t.id}">
-      <div class="t ell" style="${t.done?'text-decoration:line-through;opacity:.5':''}">${areaDot(t.areaId)} ${esc(t.title)}</div>
+      <div class="t ell" style="${t.done?'text-decoration:line-through;opacity:.5':''}">${areaDot(t.areaId)} ${
+        hot ? HOTM : ''}${esc(t.title)}</div>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
     </div>
     ${day && !t.done ? `<span class="chip ${cls}">${dueText(day)}</span>` : ''}
@@ -1062,11 +1066,12 @@ function vCalendar(){
       return `<div class="item">
         ${lead}
         <div class="grow" ${act}>
-          <div class="t ell" style="${e.done?'text-decoration:line-through;opacity:.55':''}">${esc(e.title)}</div>
+          <div class="t ell" style="${e.done?'text-decoration:line-through;opacity:.55':''}${
+            e.prio === 'high' && !e.done ? ';font-weight:800' : ''}">${
+            e.prio === 'high' && !e.done ? HOTM : ''}${esc(e.title)}</div>
           <div class="s">${KIND_LABEL[e.kind] || 'Sự kiện'}${note}${
             e.who ? ' · ' + esc(e.who) : ''}${e.cal === 'lunar' ? ' · âm lịch' : ''}</div>
         </div>
-        ${e.prio === 'high' && !e.done ? `<span class="chip bad">gấp</span>` : ''}
       </div>`;
     }).join('') : `<div class="empty" style="padding:22px">Ngày này trống.</div>`}
     <button class="btn sm full" style="margin-top:4px" data-act="addTaskOn" data-id="${sel}">
@@ -1551,10 +1556,12 @@ function tlBar(items, clash, wd){
   const now = tlNowAt(wd);
   return `<div class="tlbar-wrap">
     <div class="tlbar">${items.map(x => {
-      const c = tlColor(x);
+      const c = tlColor(x), hot = x.hot && !x.done;
       return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''} ${
-        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''} ${tlGone(x, now) ? 'qua' : ''}"
-        title="${esc(tlTip(x))}${tlGone(x, now) ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
+        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''} ${tlGone(x, now) ? 'qua' : ''} ${
+        hot ? 'hot' : ''}"
+        title="${esc(tlTip(x))}${hot ? '\n▲ ưu tiên cao' : ''}${
+          tlGone(x, now) ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
     }).join('')}${tlNowMark(wd, from, to, 0)}</div>
@@ -1593,18 +1600,20 @@ function tlTrack(items, clash, wd){
     const c = tlColor(x);
     /* Lịch nhập từ app khác không kéo được: bên kia mới là chủ của nó, kéo
        ở đây thì lần nhập sau là mất sạch. Bỏ luôn data-tlblk cho chắc. */
-    const fixed = x.kind === 'feed', qua = tlGone(x, now);
+    const fixed = x.kind === 'feed', qua = tlGone(x, now), hot = x.hot && !x.done;
     let row = `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
       ${grid}
       <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''} ${
-        qua ? 'qua' : ''}"
-        title="${esc(tlTip(x))}${qua ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
+        qua ? 'qua' : ''} ${hot ? 'hot' : ''}"
+        title="${esc(tlTip(x))}${hot ? '\n▲ ưu tiên cao' : ''}${
+          qua ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
         ${fixed ? '' : `data-tlblk="${x.id}" data-day="${day}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
         <span class="gr">${fixed ? '🔒' : '⠿'}</span>
-        <span class="tllbl">${qua ? '⚠ ' : ''}${esc(tlLabel(x))}</span>
+        <span class="tllbl">${hot ? '<b class="hotm">▲</b> ' : ''}${
+          qua ? '⚠ ' : ''}${esc(tlLabel(x))}</span>
       </div>
     </div>`;
     /* Khối gộp: trải ba mốc con thành ba hàng mảnh ngay bên dưới, mỗi hàng
@@ -1651,13 +1660,13 @@ function chkRow(o){
      từ màu chữ cột phải — hàng lịch nhập từ app khác vẫn ghi "quá giờ"
      nhưng không được đóng viền, y như nó không được tô trên trục. */
   return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''} ${
-    o.tick ? '' : 'ro'} ${o.qua ? 'qua' : ''}">
+    o.tick ? '' : 'ro'} ${o.qua ? 'qua' : ''} ${o.hot ? 'hot' : ''}">
     ${box}
     <div class="grow" ${o.open ? `data-act="${o.open}" data-id="${o.id}"` : ''}>
       <div class="row">
         <span class="tm">${esc(o.time)}</span>
         ${o.dot}
-        <span class="ti ell grow">${esc(o.title)}</span>
+        <span class="ti ell grow">${o.hot ? HOTM : ''}${esc(o.title)}</span>
         <span class="st ${st.c}">${esc(st.t)}</span>
       </div>
       <div class="dim sb">${o.sub}</div>
@@ -1776,7 +1785,7 @@ function taskDayRow(x, cl, nowMin){
   return chkRow({
     id:t.id, tick:'toggleTask', open:'editTask', done:x.done, dash:true,
     time:min2hhmm(x.start), dot:areaDot(t.areaId), title:x.title, state:chkState(x, nowMin),
-    qua:tlGone(x, nowMin),
+    qua:tlGone(x, nowMin), hot:isHot(t) && !x.done,
     sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
       tre ? `<span style="color:var(--bad)">việc lẻ, trễ ${tre} ngày</span>` : 'việc lẻ, hạn hôm nay'}${
       x.est ? '' : ' · chưa ước tính'}${doi ? ' · ' + doi : ''}${
@@ -1803,7 +1812,7 @@ function unschedRow(t, slot, dstr, live){
   return chkRow({
     id:t.id, tick:ro ? '' : 'toggleTask', open:'editTask', done:xong, dash:true,
     box:ro ? `<span class="cb mute ${xong ? 'on' : ''}" title="Chỉ tick được ở cột hôm nay">✓</span>` : '',
-    time:'--:--', dot:areaDot(t.areaId), title:t.title,
+    time:'--:--', dot:areaDot(t.areaId), title:t.title, hot:isHot(t) && !xong,
     state:chkState({done:xong, doneTime:doneHhmm(t.doneTime, d0), mins:taskMins(t),
                     est, start:null}, 0),
     sub:`${est ? '' : '~'}${fmtDur(taskMins(t))}${est ? '' : ' · chưa ước tính'} · ${
@@ -1914,11 +1923,13 @@ function dailyToday(A){
 function taskWeekRow(x, clash, past, live){
   const t = x.t, cl = clash.has(x.id), tre = x.late ? -dayDiff(taskDay(t)) : 0, doi = pushInfo(t);
   const key = String(t.due || '').slice(0,10);
+  const hot = isHot(t) && !x.done;
   return `<div class="rem two tsk ${x.done ? 'done' : ''} ${
-    tlGone(x, liveNow(live)) ? 'qua' : ''}">
+    tlGone(x, liveNow(live)) ? 'qua' : ''} ${hot ? 'hot' : ''}">
     <div class="row">
       ${weekCb(live, x.done, 'toggleTask', t.id)}
-      <div class="nm ell grow" data-act="editTask" data-id="${t.id}">${areaDot(t.areaId)} ${esc(x.title)}</div>
+      <div class="nm ell grow" data-act="editTask" data-id="${t.id}">${areaDot(t.areaId)} ${
+        hot ? HOTM : ''}${esc(x.title)}</div>
       ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
       ${x.done ? `<span class="chip ok">xong${x.doneTime ? ' ' + esc(x.doneTime) : ''}</span>`
                : `<span class="chip">việc lẻ</span>`}

@@ -482,6 +482,23 @@ Tab **Hôm nay** là một danh sách tích ô. Ô tích nằm bên trái để 
 
 Xong rồi thì hàng **gạch ngang và mờ đi**, vẫn nằm nguyên chỗ cũ chứ không biến mất — biến mất thì mình tưởng bấm hụt. Cột phải cho biết đang ở đâu so với bây giờ: **xong 09:09** · **tới giờ** · **quá giờ** · hoặc thời lượng nếu chưa tới.
 
+#### Việc gấp — dấu ▲
+
+Đặt **Ưu tiên: Cao** thì việc đó mang một tam giác đỏ ngay trước tên, ở mọi chỗ có tên nó: danh sách hôm nay, màn Công việc, tab Cả tuần, Lịch tháng, và cả hai kiểu trục thời gian. Tên cũng đậm hơn một nấc.
+
+```
+▌  ▲ 12:30  Gấp mà đã quá giờ                    quá giờ
+▌     30p → 13:00 · việc lẻ, hạn hôm nay
+```
+
+**Vì sao là dấu và chữ đậm, chứ không phải thêm một màu viền nữa.** Độ ưu tiên là tính chất của **việc**; quá giờ là tính chất của **lúc này**. Hai chuyện độc lập, và hay xảy ra cùng lúc — đúng cái việc gấp mới là cái mình để lỡ. Nếu cả hai cùng tô viền thì cái này che mất cái kia và bạn chỉ đọc được một nửa sự thật. Nên viền / nền / vệt trái giữ nguyên cho trạng thái theo thời gian, còn độ ưu tiên đi vào chữ. Hàng ở trên vừa có viền vàng vừa có ▲ đỏ: đọc được cả hai cùng lúc.
+
+Trên **trục đầy đủ**, khối việc gấp có viền dày gấp đôi và nhãn mang dấu ▲ — màu viền vẫn là màu mảng việc (hoặc vàng khi quá giờ), không bị chiếm chỗ. Trên **thanh gọn** ở tab Hôm nay, vạch chỉ rộng vài pixel nên không nhét được ký tự nào: vạch gấp **cao hết hàng** thay vì thụt vào trên dưới. Cùng một hàng vạch thì cái cao hơn nhảy ra ngay, mà không cần thêm màu nào.
+
+**Xong rồi thì hết gấp.** Việc gấp đã làm xong không còn gì để giục, nên dấu biến mất cùng lúc với vệt gạch ngang.
+
+Trước đây "gấp" là một chip đỏ nhỏ nằm lẫn trong đám chip phụ (nhịp lặp, chuông nhắc, chuỗi 🔥, ghi chú) ở dòng thứ hai — có, nhưng phải tìm mới thấy. Giờ nó đứng trước tên, và trục thời gian thì trước nay chẳng có gì cả.
+
 Đúng **một** trạng thái được đóng viền — **quá giờ mà chưa tích**:
 
 ```
