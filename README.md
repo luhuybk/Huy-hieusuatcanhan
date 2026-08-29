@@ -482,22 +482,41 @@ Tab **Hôm nay** là một danh sách tích ô. Ô tích nằm bên trái để 
 
 Xong rồi thì hàng **gạch ngang và mờ đi**, vẫn nằm nguyên chỗ cũ chứ không biến mất — biến mất thì mình tưởng bấm hụt. Cột phải cho biết đang ở đâu so với bây giờ: **xong 09:09** · **tới giờ** · **quá giờ** · hoặc thời lượng nếu chưa tới.
 
-#### Việc gấp — dấu ▲
+#### Ba dấu của một đầu việc
 
-Đặt **Ưu tiên: Cao** thì việc đó mang một tam giác đỏ ngay trước tên, ở mọi chỗ có tên nó: danh sách hôm nay, màn Công việc, tab Cả tuần, Lịch tháng, và cả hai kiểu trục thời gian. Tên cũng đậm hơn một nấc.
+Đứng ngay trước tên việc, ở mọi chỗ có tên nó: danh sách hôm nay, màn Công việc, tab Cả tuần, Lịch tháng, mục Lịch định kỳ, và cả hai kiểu trục thời gian.
+
+| Dấu | Nghĩa | Khi nào |
+|---|---|---|
+| **▲** đỏ | Ưu tiên cao | bạn chọn *Ưu tiên: Cao* lúc tạo việc |
+| **‼** vàng | Trễ hạn | hạn đã qua, tính bằng **ngày** |
+| **⚑** đỏ | Tồn đọng | trễ từ **3 ngày**, hoặc đã bấm dời từ **3 lần** |
 
 ```
-▌  ▲ 12:30  Gấp mà đã quá giờ                    quá giờ
-▌     30p → 13:00 · việc lẻ, hạn hôm nay
+▲‼⚑ Đủ cả ba              ← vừa gấp, vừa trễ, vừa tồn đọng
+ ‼⚑ Trễ 1 ngày + dời 4 lần ← mới trễ một hôm nhưng đã né bốn lần
+ ‼  Chỉ trễ 1 ngày
+ ▲  Chỉ gấp
+    Bình thường
 ```
 
-**Vì sao là dấu và chữ đậm, chứ không phải thêm một màu viền nữa.** Độ ưu tiên là tính chất của **việc**; quá giờ là tính chất của **lúc này**. Hai chuyện độc lập, và hay xảy ra cùng lúc — đúng cái việc gấp mới là cái mình để lỡ. Nếu cả hai cùng tô viền thì cái này che mất cái kia và bạn chỉ đọc được một nửa sự thật. Nên viền / nền / vệt trái giữ nguyên cho trạng thái theo thời gian, còn độ ưu tiên đi vào chữ. Hàng ở trên vừa có viền vàng vừa có ▲ đỏ: đọc được cả hai cùng lúc.
+**Hình nói đó là chuyện gì, màu nói nặng tới đâu.** Ba dấu độc lập nhau và hiện cùng lúc được — cái việc vừa gấp vừa trễ vừa bị né chính là cái đáng nhìn nhất, mà chỉ cho hiện một dấu thì nó trông y hệt cái chỉ trễ một hôm.
 
-Trên **trục đầy đủ**, khối việc gấp có viền dày gấp đôi và nhãn mang dấu ▲ — màu viền vẫn là màu mảng việc (hoặc vàng khi quá giờ), không bị chiếm chỗ. Trên **thanh gọn** ở tab Hôm nay, vạch chỉ rộng vài pixel nên không nhét được ký tự nào: vạch gấp **cao hết hàng** thay vì thụt vào trên dưới. Cùng một hàng vạch thì cái cao hơn nhảy ra ngay, mà không cần thêm màu nào.
+**Vì sao ⚑ không nuốt luôn ‼.** Nhìn qua thì ⚑ đã hàm ý trễ rồi, bỏ ‼ cho gọn. Nhưng *tồn đọng* còn có đường vào thứ hai là **dời nhiều lần** — một việc mới trễ một hôm mà đã né bốn lần vẫn cắm cờ. Giấu ‼ đi thì hai hàng cùng mang ⚑ trông giống hệt nhau, trong khi một cái trễ nửa tháng còn cái kia thì không.
 
-**Xong rồi thì hết gấp.** Việc gấp đã làm xong không còn gì để giục, nên dấu biến mất cùng lúc với vệt gạch ngang.
+**Toàn ký tự chữ, không dùng emoji.** Emoji tự mang màu của nó, CSS đổi không được — mà cả hệ này sống bằng mã màu. (Đã dựng canvas vẽ thử từng ký tự với hai màu khác nhau để chắc; ⏳ và 🚩 rớt đúng vì lý do đó, và cũng kiểm luôn không ký tự nào bị vẽ thành ô vuông.)
 
-Trước đây "gấp" là một chip đỏ nhỏ nằm lẫn trong đám chip phụ (nhịp lặp, chuông nhắc, chuỗi 🔥, ghi chú) ở dòng thứ hai — có, nhưng phải tìm mới thấy. Giờ nó đứng trước tên, và trục thời gian thì trước nay chẳng có gì cả.
+**Vì sao là dấu, chứ không phải thêm một màu viền nữa.** Độ ưu tiên là tính chất của **việc**; quá giờ là tính chất của **lúc này**. Hai chuyện độc lập, và hay xảy ra cùng lúc — đúng cái việc gấp mới là cái mình để lỡ. Nếu cả hai cùng tô viền thì cái này che mất cái kia và bạn chỉ đọc được một nửa sự thật. Nên viền / nền / vệt trái giữ nguyên cho trạng thái theo thời gian, còn ba dấu này đi vào chữ. Một hàng vừa có viền vàng vừa có ▲ đỏ đọc được cả hai cùng lúc.
+
+**Xong rồi, hoặc kỳ này đã bỏ qua, thì sạch dấu** — không còn gì để giục.
+
+**Kỳ lặp tương lai chỉ giữ ▲.** Ưu tiên là tính chất của việc nên kỳ nào cũng có; còn *trễ* và *tồn đọng* là chuyện của kỳ này, cắm lên kỳ tháng sau là nói dối.
+
+**Thẻ trong mục Tồn đọng chỉ mang ▲.** ‼ và ⚑ chính là lý do nó đang nằm ở đó — cắm lại lên từng thẻ thì cả mục cái nào cũng giống cái nào, mà dòng ngay dưới đã ghi rõ *"trễ 9 ngày · đã dời 5 lần"* bằng số.
+
+Trên **trục đầy đủ**, nhãn khối mang đủ ba dấu, và khối việc gấp có viền dày gấp đôi — màu viền vẫn là màu mảng việc (hoặc vàng khi quá giờ), không bị chiếm chỗ. Rê chuột lên khối thì chú thích kể tên từng dấu. Trên **thanh gọn** ở tab Hôm nay, vạch chỉ rộng vài pixel nên không nhét được ký tự nào: vạch gấp **cao hết hàng** thay vì thụt vào trên dưới. Cùng một hàng vạch thì cái cao hơn nhảy ra ngay, mà không cần thêm màu nào.
+
+Trước đây "gấp" là một chip đỏ nhỏ nằm lẫn trong đám chip phụ (nhịp lặp, chuông nhắc, chuỗi 🔥, ghi chú) ở dòng thứ hai — có, nhưng phải tìm mới thấy; còn trễ thì chỉ nằm ở con số ngày bên phải, và tồn đọng thì phải mở đúng mục mới biết. Giờ cả ba đứng trước tên, và trục thời gian trước nay chẳng có gì cả.
 
 Đúng **một** trạng thái được đóng viền — **quá giờ mà chưa tích**:
 

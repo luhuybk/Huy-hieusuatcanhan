@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-25.2';
+const APP_BUILD = '2026-08-25.3';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -718,11 +718,39 @@ function taskSortDay(t){
    ý thức — mình nhìn thấy việc đó rồi cố ý đẩy đi; còn trễ thì có khi chỉ
    là quên. Hai thứ không nặng như nhau. */
 const stuckScore = t => stuckLate(t) + (t.pushes || 0) * 3;
+/* Luật "tồn đọng" viết một chỗ: mục Tồn đọng và dấu ⚑ trên từng hàng phải
+   nói cùng một chuyện, không thì nhìn thấy cờ mà mở mục ra không có nó. */
+const isStuck = t => !!t && !t.done && !taskSkipped(t)
+                  && ((t.pushes || 0) >= PUSH_LIMIT || stuckLate(t) >= STUCK_DAYS);
 function stuckTasks(areaId){
   return byArea(tasks(), areaId === undefined ? 'all' : areaId)
-    .filter(t => !t.done && !taskSkipped(t)
-                 && ((t.pushes || 0) >= PUSH_LIMIT || stuckLate(t) >= STUCK_DAYS))
+    .filter(isStuck)
     .sort((a, b) => stuckScore(b) - stuckScore(a) || String(a.title).localeCompare(String(b.title)));
+}
+
+/* ---- ba dấu của một đầu việc ----
+   Hình dạng nói ĐÓ LÀ CHUYỆN GÌ, màu nói NẶNG TỚI ĐÂU:
+
+     ▲ đỏ   gấp      — mình đặt ưu tiên cao. Tính chất của VIỆC.
+     ‼ vàng trễ      — hạn đã qua, tính bằng ngày. Tính chất của LÚC NÀY.
+     ⚑ đỏ   tồn đọng — trễ từ 3 ngày, hoặc đã bấm dời từ 3 lần.
+
+   Ba dấu độc lập nhau và hiện cùng lúc được. Có thể nói ⚑ đã hàm ý trễ rồi,
+   bỏ bớt ‼ cho gọn — nhưng "tồn đọng" còn có đường vào thứ hai là dời nhiều
+   lần, nên một việc mới trễ một hôm mà đã dời bốn lần vẫn cắm cờ. Giấu ‼ đi
+   thì hai hàng cùng mang ⚑ trông giống hệt nhau trong khi một cái trễ nửa
+   tháng còn cái kia thì không. Hiện đủ, để mắt tự đọc ra mức.
+
+   Việc đã xong hoặc kỳ này đã bỏ qua thì không mang dấu nào: xong rồi thì
+   không còn gì để giục. */
+const TASK_FLAGS = ['hot', 'late', 'stuck'];
+function taskFlags(t){
+  if (!t || t.done || taskSkipped(t)) return [];
+  const out = [];
+  if (isHot(t))         out.push('hot');
+  if (stuckLate(t) > 0) out.push('late');
+  if (isStuck(t))       out.push('stuck');
+  return out;
 }
 /* Vì sao nó nằm trong danh sách tồn đọng — nói thẳng con số, đừng bắt đoán */
 function stuckWhy(t){
@@ -1782,8 +1810,11 @@ function calendarMap(from, to, areaId){
     taskDatesIn(t, from, to).forEach(d => {
       seen.add(d);
       const ghost = !!t.repeat && d !== t.due;   // kỳ lặp trong tương lai
+      /* Mang theo cả bản ghi để lịch vẽ được ba dấu ▲ ‼ ⚑ — nhưng CHỈ ở kỳ
+         hiện tại. Kỳ lặp tháng sau mà cắm cờ "trễ" thì nó nói dối: cái trễ
+         là kỳ này, không phải kỳ đó. */
       put(d, {kind:'task', id:t.id, title:t.title, color:colorOf(t.areaId),
-              done:t.done, prio:t.prio, repeat:t.repeat, ghost,
+              done:t.done, prio:t.prio, repeat:t.repeat, ghost, t: ghost ? null : t,
               canTick: !ghost});                 // chỉ tick được kỳ hiện tại
     });
     /* việc lặp không giữ trạng thái "done", nên lấy lịch sử hoàn thành

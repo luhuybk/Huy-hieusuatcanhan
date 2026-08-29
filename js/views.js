@@ -102,7 +102,12 @@ function stuckCard(t){
   return `<div class="card duck" style="margin-bottom:10px">
     <div class="row">
       <div class="grow ell" style="font-weight:650" data-act="editTask" data-id="${t.id}">
-        ${areaDot(t.areaId)} ${esc(t.title || 'Việc chưa đặt tên')}</div>
+        ${areaDot(t.areaId)} ${
+        /* Chỉ dấu ▲ ở đây. ‼ và ⚑ là lý do việc này đang nằm trong mục Tồn
+           đọng — cắm lại lên từng thẻ thì cả mục cái nào cũng giống cái nào,
+           mà dòng ngay dưới đã ghi rõ "trễ 5 ngày · đã dời 4 lần" bằng số.
+           Còn ưu tiên cao thì không có chỗ nào khác trong thẻ nói ra. */
+        isHot(t) && !t.done ? markHtml(['hot']) + ' ' : ''}${esc(t.title || 'Việc chưa đặt tên')}</div>
       ${n >= PUSH_LIMIT ? `<span class="chip bad">đã dời ${n} lần</span>`
         : tre ? `<span class="chip bad">trễ ${tre} ngày</span>` : ''}
     </div>
@@ -508,16 +513,31 @@ function vPerson(){
 }
 
 /* ---------------- CÔNG VIỆC ---------------- */
-/* Dấu của việc gấp. Một ký tự, đứng ngay trước tên, ở mọi chỗ có tên việc —
-   chữ là kênh còn trống, viền và nền đã dành cho trạng thái theo thời gian. */
-const HOTM = '<b class="hotm" title="Ưu tiên cao">▲</b> ';
+/* ---- ba dấu, vẽ ở mọi chỗ có tên đầu việc ----
+   Luật ở state.js — taskFlags(). Đây chỉ là bảng hình.
+
+   Toàn ký tự chữ, không dùng emoji: emoji tự mang màu của nó, CSS đổi không
+   được, mà cả hệ này sống bằng mã màu. (Đã dựng canvas vẽ thử từng ký tự
+   với hai màu khác nhau để chắc — ⏳ và 🚩 rớt vì lý do đó.)
+
+   Đứng ngay TRƯỚC tên chứ không nằm trong đám chip ở dòng dưới: dòng dưới là
+   chỗ đọc khi đã dừng lại ở một hàng, còn mấy dấu này là để không phải dừng. */
+const MARKS = {
+  hot:   {ch:'▲', tip:'Ưu tiên cao'},
+  late:  {ch:'‼', tip:'Trễ hạn'},
+  stuck: {ch:'⚑', tip:'Tồn đọng — trễ nhiều ngày hoặc đã dời nhiều lần'}
+};
+const markHtml = ks => (ks || []).map(k => MARKS[k]
+  ? `<b class="mk ${k}" title="${esc(MARKS[k].tip)}">${MARKS[k].ch}</b>` : '').join('');
+/* Chuỗi dấu của một đầu việc, kèm dấu cách cuối — dán thẳng trước tên. */
+const taskMarks = t => { const h = markHtml(taskFlags(t)); return h ? h + ' ' : ''; };
 function taskItem(t){
   /* Ngày HIỂN THỊ, không phải t.due: kỳ này có thể đã dời riêng hoặc bỏ qua.
      Lấy thẳng t.due thì thẻ ghi "quá hạn" cho một ngày mình đã dời đi rồi. */
   const day = taskSortDay(t);
   const d = day ? dayDiff(day) : null;
   const cls = t.done ? '' : d === null ? '' : d < 0 ? 'bad' : d === 0 ? 'warn' : '';
-  const hot = isHot(t) && !t.done;
+  const marks = taskMarks(t), hot = isHot(t) && !t.done;
   const meta = [
     t.repeat ? `<span class="chip">↻ ${esc(repeatText(t))}</span>` : '',
     t.remindAt && !t.done && !snoozeOn(t) ? `<span class="chip">🔔 ${esc(t.remindAt)}</span>` : '',
@@ -529,7 +549,7 @@ function taskItem(t){
     <div class="cb ${t.done?'on':''}" data-act="toggleTask" data-id="${t.id}">✓</div>
     <div class="grow" data-act="editTask" data-id="${t.id}">
       <div class="t ell" style="${t.done?'text-decoration:line-through;opacity:.5':''}">${areaDot(t.areaId)} ${
-        hot ? HOTM : ''}${esc(t.title)}</div>
+        marks}${esc(t.title)}</div>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
     </div>
     ${day && !t.done ? `<span class="chip ${cls}">${dueText(day)}</span>` : ''}
@@ -938,7 +958,7 @@ function planRow(o){
   return `<div class="item">
     ${areaDot(t.areaId)}
     <div class="grow" data-act="editTask" data-id="${t.id}">
-      <div class="t ell">${esc(t.title || 'Việc chưa đặt tên')}</div>
+      <div class="t ell">${taskMarks(t)}${esc(t.title || 'Việc chưa đặt tên')}</div>
       <div class="s">${day ? 'lần tới ' + fmtDate(day) : 'chưa có hạn'}${
         at ? ' · ' + esc(at) : ' · chưa đặt giờ'} · ${fmtDur(taskMins(t))}</div>
     </div>
@@ -1068,7 +1088,8 @@ function vCalendar(){
         <div class="grow" ${act}>
           <div class="t ell" style="${e.done?'text-decoration:line-through;opacity:.55':''}${
             e.prio === 'high' && !e.done ? ';font-weight:800' : ''}">${
-            e.prio === 'high' && !e.done ? HOTM : ''}${esc(e.title)}</div>
+            e.kind === 'task' && e.t ? taskMarks(e.t)
+              : e.prio === 'high' && !e.done ? markHtml(['hot']) + ' ' : ''}${esc(e.title)}</div>
           <div class="s">${KIND_LABEL[e.kind] || 'Sự kiện'}${note}${
             e.who ? ' · ' + esc(e.who) : ''}${e.cal === 'lunar' ? ' · âm lịch' : ''}</div>
         </div>
@@ -1560,7 +1581,8 @@ function tlBar(items, clash, wd){
       return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''} ${
         x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''} ${tlGone(x, now) ? 'qua' : ''} ${
         hot ? 'hot' : ''}"
-        title="${esc(tlTip(x))}${hot ? '\n▲ ưu tiên cao' : ''}${
+        title="${esc(tlTip(x))}${(x.kind === 'task' ? taskFlags(x.t) : [])
+          .map(k => '\n' + MARKS[k].ch + ' ' + MARKS[k].tip).join('')}${
           tlGone(x, now) ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
@@ -1601,19 +1623,21 @@ function tlTrack(items, clash, wd){
     /* Lịch nhập từ app khác không kéo được: bên kia mới là chủ của nó, kéo
        ở đây thì lần nhập sau là mất sạch. Bỏ luôn data-tlblk cho chắc. */
     const fixed = x.kind === 'feed', qua = tlGone(x, now), hot = x.hot && !x.done;
+    /* Trên trục chỉ có việc lẻ mới mang được dấu — lời nhắc hằng ngày không
+       có ưu tiên lẫn hạn, còn lịch app khác thì mình không quản. */
+    const mks = x.kind === 'task' ? markHtml(taskFlags(x.t)) : '';
     let row = `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
       ${grid}
       <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''} ${
         qua ? 'qua' : ''} ${hot ? 'hot' : ''}"
-        title="${esc(tlTip(x))}${hot ? '\n▲ ưu tiên cao' : ''}${
+        title="${esc(tlTip(x))}${taskFlags(x.t).map(k => '\n' + MARKS[k].ch + ' ' + MARKS[k].tip).join('')}${
           qua ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
         ${fixed ? '' : `data-tlblk="${x.id}" data-day="${day}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
         <span class="gr">${fixed ? '🔒' : '⠿'}</span>
-        <span class="tllbl">${hot ? '<b class="hotm">▲</b> ' : ''}${
-          qua ? '⚠ ' : ''}${esc(tlLabel(x))}</span>
+        <span class="tllbl">${mks}${mks ? ' ' : ''}${qua ? '⚠ ' : ''}${esc(tlLabel(x))}</span>
       </div>
     </div>`;
     /* Khối gộp: trải ba mốc con thành ba hàng mảnh ngay bên dưới, mỗi hàng
@@ -1666,7 +1690,7 @@ function chkRow(o){
       <div class="row">
         <span class="tm">${esc(o.time)}</span>
         ${o.dot}
-        <span class="ti ell grow">${o.hot ? HOTM : ''}${esc(o.title)}</span>
+        <span class="ti ell grow">${o.marks || ''}${esc(o.title)}</span>
         <span class="st ${st.c}">${esc(st.t)}</span>
       </div>
       <div class="dim sb">${o.sub}</div>
@@ -1785,7 +1809,7 @@ function taskDayRow(x, cl, nowMin){
   return chkRow({
     id:t.id, tick:'toggleTask', open:'editTask', done:x.done, dash:true,
     time:min2hhmm(x.start), dot:areaDot(t.areaId), title:x.title, state:chkState(x, nowMin),
-    qua:tlGone(x, nowMin), hot:isHot(t) && !x.done,
+    qua:tlGone(x, nowMin), hot:isHot(t) && !x.done, marks:taskMarks(t),
     sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
       tre ? `<span style="color:var(--bad)">việc lẻ, trễ ${tre} ngày</span>` : 'việc lẻ, hạn hôm nay'}${
       x.est ? '' : ' · chưa ước tính'}${doi ? ' · ' + doi : ''}${
@@ -1812,7 +1836,7 @@ function unschedRow(t, slot, dstr, live){
   return chkRow({
     id:t.id, tick:ro ? '' : 'toggleTask', open:'editTask', done:xong, dash:true,
     box:ro ? `<span class="cb mute ${xong ? 'on' : ''}" title="Chỉ tick được ở cột hôm nay">✓</span>` : '',
-    time:'--:--', dot:areaDot(t.areaId), title:t.title, hot:isHot(t) && !xong,
+    time:'--:--', dot:areaDot(t.areaId), title:t.title, hot:isHot(t) && !xong, marks:taskMarks(t),
     state:chkState({done:xong, doneTime:doneHhmm(t.doneTime, d0), mins:taskMins(t),
                     est, start:null}, 0),
     sub:`${est ? '' : '~'}${fmtDur(taskMins(t))}${est ? '' : ' · chưa ước tính'} · ${
@@ -1929,7 +1953,7 @@ function taskWeekRow(x, clash, past, live){
     <div class="row">
       ${weekCb(live, x.done, 'toggleTask', t.id)}
       <div class="nm ell grow" data-act="editTask" data-id="${t.id}">${areaDot(t.areaId)} ${
-        hot ? HOTM : ''}${esc(x.title)}</div>
+        taskMarks(t)}${esc(x.title)}</div>
       ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
       ${x.done ? `<span class="chip ok">xong${x.doneTime ? ' ' + esc(x.doneTime) : ''}</span>`
                : `<span class="chip">việc lẻ</span>`}
