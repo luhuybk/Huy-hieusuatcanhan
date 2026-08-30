@@ -199,6 +199,41 @@ Nút chỉ hiện khi có việc thật sự xếp lại được: hết cửa s
 
 Dòng vàng kể tên việc quá giờ ngăn nhau bằng **gạch đứng** chứ không phải dấu chấm giữa dòng: `12:30 Nghiên cứu | 14:00 Gọi khách`. Dấu chấm nhỏ quá, ba việc đọc lướt ra một cụm chữ dài chứ không ra ba việc; gạch đứng có nét dọc nên mắt tách được ngay, và hai bên nới rộng hẳn ra. Dòng *"nằm ngoài cửa sổ"* ngay dưới cũng vậy — hai dòng cùng màu cùng kiểu thì phải ngăn giống nhau.
 
+#### Lịch của nhân viên
+
+Trục thời gian vốn chỉ vẽ ngày của bạn. Giờ nó vẽ được ngày của **bất kỳ ai** — mở hồ sơ một nhân viên là thấy ngay tuần của họ, cùng bộ máy trục, cùng khối *Cửa sổ / Kín / Trống*, cùng cách bắt chồng giờ.
+
+```
+Trần Văn Hải · Thợ chính
+┌────┬────┬────┬────┬────┬────┬────┐
+│ T2 │ T3 │ T4 │ T5 │ T6 │ T7 │ CN │
+│50p │50p │50p │50p │50p │50p │2h50│   ← cột cao = ngày dồn
+└────┴────┴────┴────┴────┴────┴────┘
+CHỦ NHẬT 30/08 — 4 VIỆC
+▮▮  ▮        ▮▮▮▮        ▮▮      ▮       ▲ bây giờ 09:26
+
+Cửa sổ 08:30–24:00 · Kín 2h20 · Trống 13h10
+▌ 07:00  Mở cửa quét dọn                         quá giờ
+  11:30  Kiểm kê kho phụ kiện                        xong
+```
+
+**Hai loại việc vào lịch đó — đúng hai thứ bạn giao:**
+
+| Loại | Ở đâu | Ví dụ |
+|---|---|---|
+| **Lặp đi lặp lại** | nút **+ Việc lặp** trên hồ sơ | mở cửa quét dọn 07:00 mỗi ngày, lau gương chốt ca 21:00 |
+| **Một lần** | nút **+ Giao việc** (thẻ việc) | kiểm kê kho hôm nay, gọi lại 20 khách cũ |
+
+**Việc lặp của nhân viên dùng đúng bộ máy "Việc hằng ngày" của bạn** — nó đã có thứ trong tuần, giờ, thời lượng, nhật ký hoàn thành và bảng *dời riêng*. Chỉ thêm một trường: **giao cho ai**. Dựng một mô hình lặp thứ hai cho nhân viên là dựng sẵn chỗ để hai bên lệch nhau, mà lệch thì đúng lúc so lịch mới lòi ra và lúc đó không biết tin bên nào.
+
+**Thẻ việc giờ có thời lượng.** Trước nay thẻ chỉ có hạn chót và giờ nhắc Telegram; thêm số phút là nó lên được trục. Giờ hẹn dùng lại **đúng ô giờ vốn để nhắn Telegram** — không đẻ thêm một trường mới cho cùng một khái niệm. Chưa điền giờ thì thẻ xuống mục *Chưa hẹn giờ* chứ không bị vứt đi.
+
+**Lịch của bạn và lịch của thợ không dính vào nhau.** Nhịp đã giao cho ai thì rời khỏi màn *Việc hằng ngày* của bạn, rời khỏi con số trên menu, rời khỏi *Lịch định kỳ*, và **bot không nhắn nó vào group của bạn nữa** — không chặn chỗ đó thì mỗi sáng group nhận cả chục tin về việc mình không làm.
+
+**Nhân viên mở link riêng thì thấy đúng lịch đó.** Màn **◷ Lịch của tôi** là màn đầu tiên khi họ mở app — câu hỏi đầu của một ca làm là *"giờ này làm gì"*, không phải *"mình đang có bao nhiêu việc"*. Họ tick ngay trên lịch; tick xong thì thẻ vào mục **Chờ bạn kiểm** của bạn, đúng luật duyệt đã có.
+
+**Chưa có:** giờ làm riêng cho từng người. Lịch của thợ hiện dùng chung **cửa sổ làm việc của tiệm** (Cài đặt → Cửa sổ làm việc), nên con số *Trống* là trống theo giờ tiệm chứ không theo ca của người đó.
+
 #### Đã giao đi — để không quên mất mình đang chờ ai
 
 Giao xong là việc rời danh sách của mình. Đúng — không thì giao để làm gì. Nhưng rời khỏi danh sách rất dễ thành **rời khỏi đầu**: ba tuần sau mới nhớ ra *"ủa cái đó giao cho ai rồi nhỉ"*.

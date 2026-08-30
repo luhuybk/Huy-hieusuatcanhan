@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-08-25.3';
+const APP_BUILD = '2026-08-26.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -453,6 +453,12 @@ function ensure(){
                                  và bắt trùng giờ. Bản cũ chưa có, cho tạm 15 phút. */
                               if(r.mins===undefined) r.mins = 15;
                               if(r.areaId===undefined) r.areaId = '';
+                              /* Giao nhịp lặp này cho ai; rỗng = của mình. Việc lặp của
+                                 nhân viên (mở cửa, lau sàn, chốt ca) dùng đúng bộ máy này —
+                                 nó đã có thứ trong tuần, giờ, thời lượng, nhật ký hoàn
+                                 thành và bảng ngoại lệ. Dựng một mô hình lặp thứ hai cho
+                                 nhân viên là dựng chỗ để hai bên lệch nhau. */
+                              if(r.staffId===undefined) r.staffId = '';
                               /* lần tick gần nhất, "YYYY-MM-DD HH:MM" — chỉ để hiện "xong 09:09".
                                  Để riêng khỏi doneLog vì doneLog là nguồn tính chuỗi 🔥, đổi
                                  định dạng của nó là đụng cả luật chuỗi lẫn bên PHP. */
@@ -475,6 +481,10 @@ function ensure(){
                            if(c.remindAt===undefined) c.remindAt='';
                            if(c.snoozeUntil===undefined) c.snoozeUntil='';
                            if(c.remindBefore===undefined) c.remindBefore=0;
+                           /* Việc này ngốn bao lâu — không có thì thẻ không lên trục được.
+                              0 = chưa ước tính, trục tạm tính 30 phút và ghi rõ là số đoán,
+                              đúng như việc lẻ của mình. */
+                           if(c.mins===undefined) c.mins=0;
                            /* Nối thẳng vào hồ sơ nhân viên bằng id. Trước đây chỉ có mỗi
                               cái TÊN, và mọi thứ khớp bằng so sánh chuỗi y hệt nhau: đổi
                               "Hà" thành "Thu Hà" một cái là thẻ cũ mồ côi hàng loạt — %
@@ -774,7 +784,7 @@ const cadenceOf = code => (CADENCE.find(c => c[2].includes(String(code))) || [])
 function repeatPlan(areaId){
   const A = areaId === undefined ? 'all' : areaId;
   const reps = byArea(tasks(), A).filter(t => !t.done && t.repeat && !t.deleted);
-  const rems = byArea(reminders(), A).filter(r => r.enabled && (r.days || []).length);
+  const rems = byArea(myRems(), A).filter(r => r.enabled && (r.days || []).length);
   const groups = CADENCE.map(([id, label]) => ({id, label,
     items: reps.filter(t => cadenceOf(t.repeat) === id)
                .sort((a, b) => String(taskDay(a)).localeCompare(String(taskDay(b))))}));
@@ -860,6 +870,11 @@ const WDAYS = [[1,'T2'],[2,'T3'],[3,'T4'],[4,'T5'],[5,'T6'],[6,'T7'],[0,'CN']];
 const WDAY_NAME = {0:'Chủ nhật',1:'Thứ 2',2:'Thứ 3',3:'Thứ 4',4:'Thứ 5',5:'Thứ 6',6:'Thứ 7'};
 
 function reminders(){ return alive(db.reminders); }
+/* Nhịp lặp của RIÊNG mình. Mấy con số của mình — badge trên menu, lịch định
+   kỳ, bản tóm tắt — phải trừ việc của thợ ra, không thì mở app lên thấy
+   "còn 14 việc" trong khi 9 cái là của tiệm chứ không phải của mình. */
+const myRems   = () => reminders().filter(r => !r.staffId);
+const remsOf   = sid => reminders().filter(r => String(r.staffId || '') === String(sid || ''));
 
 function daysText(days){
   const d = (days || []).slice().sort((a,b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b));
@@ -958,9 +973,20 @@ const snap5 = m => Math.max(0, Math.min(Math.round(m / TL_SNAP) * TL_SNAP, 23 * 
 /* `dstr` là ngày thật ứng với thứ đó. Bỏ trống thì lấy ngày trong tuần này,
    nhưng bên gọi mà đang xem một ngày ngoài tuần thì phải truyền vào — mốc
    dời riêng gắn với NGÀY, suy từ thứ là ra nhầm tuần. */
-function dayItems(wd, areaId, dstr){
-  const day = String(dstr || wdDate(wd)).slice(0,10);
+/* ---- ngày này là của AI ----
+   `who` rỗng hoặc 'me' = ngày của mình; còn lại là id một nhân viên. Cùng
+   một bộ máy dựng trục cho cả hai — không tách ra làm hai bản, vì hai bản
+   thì đúng lúc cần so lịch mình với lịch thợ mới lòi ra chúng đếm khác nhau.
+
+   Của mình gồm: nhịp lặp không giao cho ai, việc lẻ của mình, lịch app khác.
+   Của nhân viên gồm: nhịp lặp giao cho người đó, và thẻ việc đã có giờ. */
+const MINE = 'me';
+const whoId = who => (who === undefined || who === null || who === MINE) ? '' : String(who);
+const isMine = who => whoId(who) === '';
+function dayItems(wd, areaId, dstr, who){
+  const day = String(dstr || wdDate(wd)).slice(0,10), sid = whoId(who);
   return byArea(reminders(), areaId === undefined ? 'all' : areaId)
+    .filter(r => String(r.staffId || '') === sid)
     .map(r => ({id:r.id, r, day, start:hhmm2min(remTimeOn(r, day)), mins:remMins(r),
                 on:!!r.enabled, title:r.title || 'Không tên', areaId:r.areaId || '',
                 exc:excText(r, day, r.time)}))
@@ -1092,18 +1118,43 @@ function taskSlot(t, dstr){
           late:due < dstr, est:taskEst(t),
           done:taskDoneOn(t, dstr), doneTime:doneHhmm(t.doneTime, dstr)};
 }
-function dayAll(wd, areaId){
-  const dstr = wdDate(wd);
-  const out = dayItems(wd, areaId).map(x => Object.assign({kind:'rem'}, x, {
+/* Thẻ việc đã giao, xếp lên trục của người nhận. Ngày là HẠN CHÓT, giờ là
+   giờ hẹn — cùng một ô giờ vốn dùng để nhắn Telegram, không đẻ thêm trường
+   mới cho cùng một khái niệm. Chưa điền giờ thì nó xuống danh sách "chưa xếp
+   giờ" như việc lẻ của mình, chứ không bị vứt đi. */
+const cardMins = c => cleanMins(c && c.mins, 30);
+const cardEst  = c => cleanMins(c && c.mins, 0) > 0;
+function cardSlot(c, dstr){
+  return {kind:'card', id:'c_' + c.id, c, day:dstr, start:hhmm2min(c.remindAt),
+          mins:cardMins(c), on:true, exc:'',
+          title:c.title || 'Việc được giao', areaId:c.areaId || '',
+          est:cardEst(c), late:String(c.due || '') < dstr,
+          done:c.col === 'done', doneTime:''};
+}
+function dayCards(wd, areaId, dstr, who){
+  const sid = whoId(who), day = String(dstr || wdDate(wd)).slice(0,10);
+  if (sid === '') return [];                 /* thẻ việc luôn là của người khác */
+  return byArea(cards(), areaId === undefined ? 'all' : areaId)
+    .filter(c => c.col !== 'idea' && String(c.due || '').slice(0,10) === day
+                 && (c.staffId ? c.staffId === sid : false));
+}
+function dayAll(wd, areaId, who){
+  const dstr = wdDate(wd), mine = isMine(who);
+  const out = dayItems(wd, areaId, dstr, who).map(x => Object.assign({kind:'rem'}, x, {
     done:remDoneOn(x.r, dstr), doneTime:doneHhmm(x.r.doneTime, dstr)}));
-  dayTasks(wd, areaId).forEach(t => {
+  if (mine) dayTasks(wd, areaId).forEach(t => {
     const s = taskSlot(t, dstr);
     if (s.start !== null) out.push(s);              /* chưa xếp giờ → xuống danh sách riêng */
   });
+  else dayCards(wd, areaId, dstr, who).forEach(c => {
+    const s = cardSlot(c, dstr);
+    if (s.start !== null) out.push(s);
+  });
   /* Lịch nhập từ app khác chỉ hiện khi đang xem tất cả các mảng: nó không
      thuộc mảng nào của mình nên lọc theo mảng thì nó biến mất mà không rõ
-     vì sao. */
-  if (areaId === undefined || areaId === 'all') feedDay(wd, dstr).forEach(x => out.push(x));
+     vì sao. Và nó là lịch của MÌNH, không phải của thợ. */
+  if (mine && (areaId === undefined || areaId === 'all'))
+    feedDay(wd, dstr).forEach(x => out.push(x));
   return out.sort((a,b) => a.start - b.start || String(a.title).localeCompare(b.title));
 }
 
@@ -1391,12 +1442,14 @@ function feedDay(wd, dstr){
 }
 /* Việc đến hạn mà chưa đặt giờ: chưa lên được trục, nhưng vẫn ngốn thời gian
    thật, nên vẫn phải kể ra kèm tổng ước tính. */
-function dayUnsched(wd, areaId){
+function dayUnsched(wd, areaId, who){
+  if (!isMine(who))
+    return dayCards(wd, areaId, wdDate(wd), who).filter(c => hhmm2min(c.remindAt) === null);
   return dayTasks(wd, areaId).filter(t => hhmm2min(taskAt(t)) === null)
     .sort((a,b) => (a.due || '').localeCompare(b.due || ''));
 }
-function todayItems(areaId){ return dayAll(new Date().getDay(), areaId); }
-function todayUnscheduled(areaId){ return dayUnsched(new Date().getDay(), areaId); }
+function todayItems(areaId, who){ return dayAll(new Date().getDay(), areaId, who); }
+function todayUnscheduled(areaId, who){ return dayUnsched(new Date().getDay(), areaId, who); }
 
 /* ---- khoảng trống ----
    Gộp các khoảng bận (kể cả chồng nhau) rồi lấy phần hở ở giữa. Chỉ tính
@@ -1583,7 +1636,7 @@ function nextFreeSlot(items, mins, wd){
 
 /* Còn mấy việc chưa tick hôm nay — con số trên menu */
 function dailyLeft(){
-  return reminders().filter(r => r.enabled && remOnDay(r, today()) && !remDoneToday(r)).length;
+  return myRems().filter(r => r.enabled && remOnDay(r, today()) && !remDoneToday(r)).length;
 }
 
 /* ============================================================

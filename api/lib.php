@@ -547,6 +547,7 @@ function todaySlots(): array {
   $out = [];
   foreach (itemsOf('reminders') as $r) {
     if (empty($r['enabled'])) continue;
+    if (trim((string)($r['staffId'] ?? '')) !== '') continue;   /* nhịp của thợ, không phải ngày của mình */
     $st = hhmmMin((string)remTimeOnPhp($r, $today));
     if ($st === null) continue;
     $out[] = ['start' => $st, 'mins' => remMinutes($r), 'title' => (string)($r['title'] ?? ''),
@@ -1397,6 +1398,10 @@ function runSchedule(bool $dry = false): array {
   /* --- lời nhắc lặp lại --- */
   foreach (itemsOf('reminders') as $r) {
     if (empty($r['enabled'])) continue;
+    /* Nhịp lặp đã giao cho nhân viên thì không bắn vào group của chủ: họ xem
+       trong lịch riêng của họ. Không chặn ở đây thì mỗi sáng group nhận cả
+       chục tin về việc mình không làm. */
+    if (trim((string)($r['staffId'] ?? '')) !== '') continue;
     /* Giờ đã áp mốc dời riêng của hôm nay; null = hôm nay không có lần nào */
     $time = (string)remTimeOnPhp($r, $today);
     if (!preg_match('/^(\d{1,2}):(\d{2})$/', $time, $m)) continue;

@@ -25,6 +25,7 @@ const TITLES = {
   board:['Giao việc','Bảng tiến độ nhân viên'],
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
   journey:['Hành trình phát triển','Lỗi lầm, bài học, và thứ rút ra được'],
+  myday:['Lịch của tôi','Việc trong ngày — theo giờ'],
   settings:['Cài đặt','Dữ liệu, nhắc nhở, đồng bộ']
 };
 
@@ -53,6 +54,7 @@ function render(){
     else if (v === 'calendar') html = vCalendar();
     else if (v === 'inbox')    html = vInbox();
     else if (v === 'staff')    html = vStaff();
+    else if (v === 'myday')    html = vMyDay();
     else if (v === 'money')    html = vMoney();
     else                       html = vSettings();
   } catch(e){ panic(e); return; }
@@ -76,7 +78,7 @@ function render(){
     const a = areaOf(S.area);
     $('#sub').textContent = TITLES[v][1] + (a && v !== 'people' && v !== 'settings' ? ' · lọc: ' + a.name : '');
   }
-  $('#fab').style.display = ['person','staff','settings','review','occasions','calendar','money'].includes(v) ? 'none' : 'grid';
+  $('#fab').style.display = ['person','staff','settings','review','occasions','calendar','money','myday'].includes(v) ? 'none' : 'grid';
 
   const q = $('#q');
   if (q) q.oninput = e => {
@@ -580,6 +582,8 @@ const cardFields = () => [
    hint:'đúng ngày hạn chót, để trống thì không nhắn'},
   {k:'remindBefore', label:'Báo trước (ngày)', type:'number', half:true, ph:'0',
    hint:'thêm một tin sớm cho việc lớn; 0 = chỉ nhắc đúng hạn'},
+  {k:'mins',  label:'Mất bao lâu (phút)', type:'number', half:true, ph:'45',
+   hint:'có giờ và số phút thì việc này lên được lịch trong ngày của người nhận'},
   {k:'prio',  label:'Ưu tiên', type:'select', half:true, opts:Object.entries(PRIO), def:'mid'},
   {k:'progress', label:'Tiến độ (%)', type:'number', half:true, ph:'0-100'},
   {k:'extra', label:'Loại việc', type:'select', half:true,
@@ -619,6 +623,7 @@ function normalizeCard(v, prev){
   if (!v.extra){ v.extraPay = 0; v.extraPaidDate = ''; }
   v.progress = Math.max(0, Math.min(100, +v.progress || 0));
   v.remindBefore = Math.max(0, Math.min(60, +v.remindBefore || 0));
+  v.mins = cleanMins(v.mins, 0);      /* 0 = chưa ước tính, trục ghi rõ là số đoán */
   return v;
 }
 function addCard(col){
@@ -916,6 +921,11 @@ function staffLink(id){
 /* ---------------- nhắc lặp lại qua Telegram ---------------- */
 const remFields = () => [
   {k:'title', label:'Việc gì', ph:'Tập gym, trả lời tin khách, chốt sổ…'},
+  /* Giao nhịp này cho ai. Chọn một người là nó rời lịch của mình và sang lịch
+     của người đó — cùng bộ máy lặp, chỉ khác chủ. */
+  {k:'staffId', label:'Ai làm', type:'select', half:true,
+   opts:[['','— mình làm —'], ...staff().map(s2 => [s2.id, s2.name])],
+   hint:'giao cho thợ thì việc rời lịch của mình, và bot không nhắn vào group nữa'},
   {k:'time',  label:'Lúc mấy giờ', type:'time', half:true},
   {k:'mins',  label:'Mất bao lâu (phút)', type:'number', half:true, ph:'45',
    hint:'để xếp lên dòng thời gian và bắt việc chồng giờ'},
@@ -951,15 +961,25 @@ function normalizeRem(v){
   if (!/^\d{1,2}:\d{2}$/.test(v.time || '')) v.time = '08:00';
   return v;
 }
-function addRem(){
-  openForm({title:'Việc hằng ngày mới', fields:remFields(),
-    values:{time:'08:00', mins:15, days:[1,2,3,4,5], enabled:'yes',
+/* `sid` rỗng = việc lặp của mình. Có id thì mở sẵn với người đó, và lưu
+   xong ở lại đúng trang người đó chứ không nhảy về màn Việc hằng ngày —
+   đang xếp lịch cho thợ mà bị đá sang lịch của mình thì mất mạch. */
+function addRem(sid){
+  const s2 = sid ? staff().find(x => x.id === sid) : null;
+  openForm({title: s2 ? 'Việc lặp cho ' + s2.name : 'Việc hằng ngày mới', fields:remFields(),
+    values:{time:'08:00', mins:15, days:[1,2,3,4,5], enabled:'yes', staffId: s2 ? s2.id : '',
             areaId: S.area === 'all' ? '' : S.area},
-    top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.6">
-      Máy chủ sẽ gửi tin vào Telegram đúng giờ này, kể cả khi bạn không mở app.</div>`,
+    top:`<div class="dim" style="margin:-8px 0 12px;line-height:1.6">${s2
+      ? `Việc này lặp lại theo thứ trong tuần và nằm trên <b>lịch của ${esc(s2.name)}</b>.
+         Bot không nhắn nó vào group của bạn.`
+      : 'Máy chủ sẽ gửi tin vào Telegram đúng giờ này, kể cả khi bạn không mở app.'}</div>`,
     onSave(v){
-      db.reminders.push(stamp(normalizeRem(v)));
-      save(); S.view = 'daily'; render(); toast('Lần tới: ' + reminderNextText(v));
+      const r = stamp(normalizeRem(v));
+      db.reminders.push(r);
+      save();
+      if (r.staffId){ S.view = 'staff'; S.staffId = r.staffId; }
+      else S.view = 'daily';
+      render(); toast('Lần tới: ' + reminderNextText(v));
     }});
 }
 function editRem(id){
@@ -1228,6 +1248,7 @@ function handOffTask(id){
         /* Nhớ nó từ đâu ra, và nhớ đủ để lấy lại được. Nhịp lặp và giờ nhắc
            không có chỗ nào trên thẻ việc, mất ở đây là mất hẳn — người ta trả
            lại việc thì mình phải ngồi đặt lại "mỗi thứ 7, 12:30" từ đầu. */
+        mins:t.mins || 0,
         fromTask:t.id, handedAt:today(),
         back:{repeat:t.repeat || '', remindAt:t.remindAt || '', mins:t.mins || 0,
               note:t.note || '', remindBefore:t.remindBefore || 0}})));
@@ -1927,6 +1948,13 @@ function excDrop(kind, id, day){
    cột đang kéo — mốc dời riêng gắn với ngày, thiếu nó thì ghi nhầm hôm. */
 function setSlotTime(id, hhmm, day){
   const s = String(id), d = String(day || today()).slice(0,10);
+  /* Thẻ việc đã giao: một lần, không lặp, nên kéo là đổi thẳng — không có
+     "kỳ này hay mọi kỳ" nào để hỏi. */
+  if (s.slice(0, 2) === 'c_'){
+    const c = db.cards.find(x => x.id === s.slice(2)); if (!c) return render();
+    c.remindAt = hhmm; stamp(c); save(); render();
+    return toast(c.title + ' → ' + hhmm);
+  }
   if (s.slice(0, 2) === 't_'){
     const t = db.tasks.find(x => x.id === s.slice(2)); if (!t) return render();
     const due = String(t.due || '').slice(0,10);
@@ -2011,6 +2039,12 @@ document.addEventListener('change', e => {
   const m = e.target.closest('[data-tlm]');
   if (m){
     const id = String(m.dataset.tlm);
+    if (id.slice(0, 2) === 'c_'){
+      const c = db.cards.find(x => x.id === id.slice(2)); if (!c) return;
+      c.mins = cleanMins(m.value, 30);
+      stamp(c); save(); render();
+      return;
+    }
     if (id.slice(0, 2) === 't_'){
       const tk = db.tasks.find(x => x.id === id.slice(2)); if (!tk) return;
       tk.mins = cleanMins(m.value, 30);
@@ -2110,6 +2144,7 @@ document.addEventListener('click', e => {
     /* thẻ */
     case 'addCard': addCard(id); break;
     case 'addCardFor': { S.assignee = id; addCard('assigned'); break; }
+    case 'addRemFor':  addRem(id); break;
     case 'card':    openCard(id); break;
     case 'mv': {
       const c = db.cards.find(x => x.id === id);
@@ -2142,10 +2177,16 @@ document.addEventListener('click', e => {
     }
     case 'toggleCard': {
       const c = db.cards.find(x => x.id === id);
-      if (c.col === 'done'){ c.col = 'doing'; c.doneAt = ''; if (c.progress === 100) c.progress = 90; }
-      else { c.col = 'done'; c.progress = 100; c.doneAt = today(); c.snoozeUntil = ''; }
+      /* Qua cardDoneMark() chứ không tự set cột: chỗ này trước đây bỏ quên
+         mốc duyệt, nên tick thẻ ngay trên lịch xong nó vẫn nằm trong "Chờ
+         bạn kiểm" — chờ chính người vừa tick nó. */
+      if (c.col === 'done'){ c.col = 'doing'; if (c.progress === 100) c.progress = 90; }
+      else { c.col = 'done'; c.progress = 100; c.snoozeUntil = ''; }
+      cardDoneMark(c, null);
       stamp(c); save(); render();
-      toast(c.col === 'done' ? 'Đã hoàn thành: ' + c.title : 'Mở lại: ' + c.title);
+      toast(c.col === 'done'
+        ? 'Đã hoàn thành: ' + c.title + (c.okAt ? '' : ' · chờ chủ duyệt')
+        : 'Mở lại: ' + c.title);
       break;
     }
     case 'delCard': closeModal(); confirmBox('Xoá thẻ này?', () => {
@@ -2672,7 +2713,11 @@ function boot(){
     setTimeout(resetReport, 900);
   }
   applyTheme();
-  if (db.settings.role === 'staff') S.view = 'board';
+  /* Nhân viên mở app ra là thấy lịch hôm nay của chính mình, không phải bảng
+     thẻ: câu hỏi đầu tiên của một ca làm là "giờ này làm gì", không phải
+     "mình đang có bao nhiêu việc". */
+  if (db.settings.role === 'staff')
+    S.view = staffByName(db.settings.staffName) ? 'myday' : 'board';
   /* mở kèm ?demo để nạp sẵn dữ liệu mẫu (chỉ khi còn trống, không đè dữ liệu thật) */
   const wantDemo = /[?&]demo\b/.test(location.search);
   const isEmpty  = COLLECTIONS.every(k => !alive(db[k]).length);

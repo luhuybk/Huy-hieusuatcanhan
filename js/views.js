@@ -36,8 +36,13 @@ function renderSide(){
   const nStale = staleP().length;
   const isStaff = db.settings.role === 'staff';
 
+  /* Nhân viên mở link riêng: thêm màn lịch của chính họ. Trước nay họ chỉ
+     thấy bảng thẻ — biết có những việc gì, nhưng không biết hôm nay xếp ra
+     sao, cái nào trước cái nào. */
+  const me = isStaff ? staffByName(db.settings.staffName) : null;
   const navs = isStaff
-    ? [['board','▦','Việc của tôi', nLate]]
+    ? (me ? [['myday','◷','Lịch của tôi', 0], ['board','▦','Việc của tôi', nLate]]
+          : [['board','▦','Việc của tôi', nLate]])
     : [['dash','◉','Tổng quan', nDue + nLate],
        ['inbox','✎','Hộp ghi nhanh', inboxOpen().length],
        ['calendar','▤','Lịch tháng', 0],
@@ -1288,6 +1293,86 @@ function vMoney(){
 }
 
 /* ---------------- HỒ SƠ NHÂN VIÊN ---------------- */
+/* ---- lịch trong ngày của một nhân viên ----
+   Dùng lại nguyên bộ máy trục của mình: cùng hàm dựng ngày, cùng thanh trục,
+   cùng khối Cửa sổ / Kín / Trống, cùng cách bắt chồng giờ. Viết một bản riêng
+   cho thợ thì đúng lúc cần so lịch mình với lịch thợ mới lòi ra hai bên đếm
+   khác nhau — mà lúc đó thì tin bên nào?
+
+   Hai loại việc vào đây: NHỊP LẶP giao cho người đó (mở cửa, lau sàn, chốt
+   ca) và THẺ VIỆC một lần đã có giờ hẹn. Đúng hai thứ bạn giao. */
+function staffDay(s){
+  const wd = S.dailyDay, dstr = wdDate(wd), t0 = today();
+  const A = S.area;
+  const wk = WDAYS.map(([d]) => { const it = dayAll(d, A, s.id);
+                                  return {wd:d, items:it, load:dayLoad(it)}; });
+  const busiest = Math.max(1, ...wk.map(d => d.load.mins));
+  const items = dayAll(wd, A, s.id), un = dayUnsched(wd, A, s.id);
+  const clash = dayClash(items);
+  const nowD = new Date(), nowMin = nowD.getHours() * 60 + nowD.getMinutes();
+
+  let h = secHd('Lịch trong tuần', `<button data-act="addRemFor" data-id="${s.id}">+ Việc lặp</button>`);
+  h += `<div class="dim" style="margin:-4px 0 10px;line-height:1.6">
+    Việc <b>lặp đi lặp lại</b> của ${esc(s.name)} (mở cửa, lau sàn, chốt ca) và
+    <b>thẻ việc một lần</b> đã có giờ hẹn — cùng nằm trên một trục, nên nhìn ra ngay
+    hôm nào dồn và hôm nào còn chỗ.</div>`;
+  h += `<div class="tlweek">` + wk.map(d => `<button class="tlday ${d.wd === wd ? 'on' : ''} ${
+      wdDate(d.wd) < t0 ? 'past' : ''}" data-act="dailyDay" data-id="${d.wd}"
+      title="${esc(fmtDate(wdDate(d.wd)))}">
+      <span class="d">${WDAYS.find(x => x[0] === d.wd)[1]}</span>
+      <span class="cbar"><i style="height:${Math.round((d.load.mins / busiest) * 100)}%"></i></span>
+      <span class="t">${d.load.mins ? fmtDur(d.load.mins) : '—'}</span>
+      <span class="c">${d.load.count} việc</span>
+      ${d.load.clash ? `<span class="cl">⚠ ${d.load.clash}</span>` : ''}
+    </button>`).join('') + `</div>`;
+
+  h += secHd(WDAY_NAME[wd] + ' ' + fmtDate(dstr) + ' — ' + items.length + ' việc');
+  if (!items.length && !un.length)
+    return h + `<div class="empty" style="padding:22px"><b>Ngày này ${esc(s.name)} chưa có việc nào</b>
+      Bấm <b>+ Việc lặp</b> cho việc hằng tuần, hoặc <b>+ Giao việc</b> ở trên cho việc một lần.</div>`;
+
+  if (items.length){
+    h += tlBar(items, clash, wd);
+    h += gapBlock(items, clash, '', wd);
+    h += items.map(x => dailyRow(x, clash, wdDate(wd) === t0 ? nowMin : 0)).join('');
+  }
+  if (un.length){
+    h += secHd('Chưa hẹn giờ — ' + un.length + ' việc');
+    h += `<div class="dim" style="margin:-4px 0 10px">Có hạn hôm nay nhưng chưa đặt giờ,
+      nên chưa lên được trục. Mở thẻ điền giờ là nó vào đúng chỗ.</div>`;
+    h += un.map(c => `<div class="item">
+      <div class="cb ${c.col === 'done' ? 'on' : ''}" data-act="toggleCard" data-id="${c.id}">✓</div>
+      <div class="grow" data-act="card" data-id="${c.id}">
+        <div class="t ell">${areaDot(c.areaId)} ${
+          c.prio === 'high' && c.col !== 'done' ? markHtml(['hot']) + ' ' : ''}${esc(c.title)}</div>
+        <div class="s">${cardEst(c) ? '' : '~'}${fmtDur(cardMins(c))}${
+          cardEst(c) ? '' : ' · chưa ước tính'}</div>
+      </div>
+    </div>`).join('');
+  }
+  return h;
+}
+
+/* Màn của chính nhân viên, mở từ link riêng. Cùng khối lịch với trang hồ sơ
+   mà chủ nhìn thấy — hai bên nhìn cùng một thứ thì không có chuyện "em tưởng
+   hôm nay không có ca". */
+function vMyDay(){
+  const me = staffByName(db.settings.staffName);
+  if (!me) return `<div class="empty"><b>Chưa nhận ra bạn là ai</b>
+    Vào Cài đặt điền đúng tên như trên thẻ việc, hoặc mở lại link chủ gửi.</div>`;
+  let h = `<div class="card" style="margin-bottom:12px">
+    <div class="row">
+      <div class="av" style="background:var(--acc);color:#fff">${esc(initials(me.name))}</div>
+      <div class="grow">
+        <div style="font-size:17px;font-weight:700">${esc(me.name)}</div>
+        <div class="dim">${esc(me.role || 'chưa ghi vai trò')}</div>
+      </div>
+      <button class="btn sm" data-act="nav" data-id="board">Xem bảng việc</button>
+    </div>
+  </div>`;
+  return h + staffDay(me);
+}
+
 function vStaff(){
   const s = staff().find(x => x.id === S.staffId);
   if (!s){ S.view = 'board'; return vBoard(); }
@@ -1328,6 +1413,10 @@ function vStaff(){
     ${stat(st.doneN, 'Đã xong', 'var(--ok)')}
     ${stat(st.lateN, 'Đang trễ', st.lateN ? 'var(--bad)' : '')}
   </div>`;
+
+  /* Lịch đặt ngay sau mấy con số, trước phần tiền và danh sách thẻ: mở trang
+     một người ra là để biết hôm nay họ làm gì, chứ không phải để đọc thống kê. */
+  h += staffDay(s);
 
   h += `<div class="card" style="margin-top:10px">
     <div class="row"><div class="grow">
@@ -1736,9 +1825,26 @@ function feedRow(x, cl, nowMin){
       </div>`).join('') + `</div>` : ''
   });
 }
+/* Hàng của một thẻ việc đã giao, trên lịch của người nhận. Nét đứt như việc
+   lẻ — nó cũng là việc một lần, chỉ khác là của người khác. */
+function cardDayRow(x, cl, nowMin){
+  const c = x.c, tre = x.late ? -dayDiff(c.due) : 0;
+  return chkRow({
+    id:c.id, tick:'toggleCard', open:'card', done:x.done, dash:true,
+    time:min2hhmm(x.start), dot:areaDot(c.areaId), title:x.title,
+    state:chkState(x, nowMin), qua:tlGone(x, nowMin),
+    marks:c.prio === 'high' && !x.done ? markHtml(['hot']) + ' ' : '',
+    sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
+      tre ? `<span style="color:var(--bad)">trễ ${tre} ngày</span>` : 'hạn hôm nay'}${
+      x.est ? '' : ' · chưa ước tính'}${
+      c.col === 'done' && !c.okAt ? ` · <span style="color:var(--warn)">chờ chủ duyệt</span>` : ''}${
+      cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}`
+  });
+}
 function dailyRow(x, clash, nowMin){
   const cl = clash.has(x.id);
   if (x.kind === 'feed') return feedRow(x, cl, nowMin);
+  if (x.kind === 'card') return cardDayRow(x, cl, nowMin);
   if (x.kind === 'task') return taskDayRow(x, cl, nowMin);
   const r = x.r, chuoi = remStreak(r);
   return chkRow({
@@ -1944,6 +2050,33 @@ function dailyToday(A){
 /* Việc lẻ trong tab Cả tuần. Giống hàng việc hằng ngày ở chỗ sửa thẳng giờ
    và số phút, khác ở chỗ giờ này là của riêng nó — sửa không đụng ngày khác.
    Nét đứt và chữ "việc lẻ" để phân biệt ngay khi liếc. */
+/* Hàng sửa giờ của thẻ việc, trên lịch tuần của người nhận. Cùng khuôn với
+   việc lẻ: ô giờ, ô phút, kéo được trên trục. Không lặp nên không có chip
+   "dời riêng" và không hỏi "kỳ này hay mọi kỳ". */
+function cardWeekRow(x, clash, past, live){
+  const c = x.c, cl = clash.has(x.id), tre = x.late ? -dayDiff(c.due) : 0;
+  const cho = c.col === 'done' && !c.okAt;
+  return `<div class="rem two tsk ${x.done ? 'done' : ''} ${
+    tlGone(x, liveNow(live)) ? 'qua' : ''} ${c.prio === 'high' && !x.done ? 'hot' : ''}">
+    <div class="row">
+      ${weekCb(live, x.done, 'toggleCard', c.id)}
+      <div class="nm ell grow" data-act="card" data-id="${c.id}">${areaDot(c.areaId)} ${
+        c.prio === 'high' && !x.done ? markHtml(['hot']) + ' ' : ''}${esc(x.title)}</div>
+      ${cl ? `<span class="chip bad">⚠ trùng giờ</span>` : ''}
+      ${cho ? `<span class="chip warn">chờ chủ duyệt</span>`
+            : x.done ? `<span class="chip ok">xong</span>` : `<span class="chip">được giao</span>`}
+    </div>
+    <div class="row" style="margin-top:9px;gap:8px">
+      <input class="tlin" type="time" value="${esc(min2hhmm(x.start))}" data-tlt="c_${c.id}"
+        data-day="${esc(x.day || '')}" title="Giờ hẹn làm việc này">
+      <span class="tlmin"><input type="number" min="1" max="720" value="${cardMins(c)}"
+        data-tlm="c_${c.id}" title="Ước tính làm mất bao lâu"><i>phút → ${
+        esc(min2hhmm(x.start + x.mins))}</i></span>
+      <span class="grow dim ell" style="text-align:right">${
+        tre ? `<span style="color:var(--bad)">trễ ${tre} ngày</span>` : 'hạn hôm nay'}</span>
+    </div>
+  </div>`;
+}
 function taskWeekRow(x, clash, past, live){
   const t = x.t, cl = clash.has(x.id), tre = x.late ? -dayDiff(taskDay(t)) : 0, doi = pushInfo(t);
   const key = String(t.due || '').slice(0,10);
@@ -2023,6 +2156,7 @@ function dailyWeek(A, embed){
     h += tlTrack(sel.items, clash, sel.wd);
     const live = dstr === t0;
     h += sel.items.map(x => x.kind === 'feed' ? feedRow(x, clash.has(x.id), 0)
+                          : x.kind === 'card' ? cardWeekRow(x, clash, past, live)
                           : x.kind === 'task' ? taskWeekRow(x, clash, past, live)
                           : dailyEditRow(x, clash, live)).join('');
   } else {
@@ -2059,7 +2193,7 @@ function feedNote(){
 
 function vDaily(){
   const A = S.area;
-  const all = byArea(reminders(), A);
+  const all = byArea(myRems(), A);       /* màn này là nhịp của MÌNH */
   const ti = todayItems(A), un = todayUnscheduled(A);
   if (!all.length && !ti.length && !un.length) return `<div class="empty"><b>Chưa có việc hằng ngày nào</b>
     Những việc lặp đi lặp lại: tập gym, trả lời tin khách, chốt sổ cuối ngày.
@@ -2341,7 +2475,9 @@ function vJourney(){
 
 function tgBlock(){
   const t = TG || {};
-  const list = reminders().slice().sort((a,b) =>
+  /* Máy chủ chỉ bắn nhịp lặp của mình vào group — việc của thợ họ xem trong
+     lịch riêng của họ, đẩy hết vào một group thì mỗi sáng cả chục tin. */
+  const list = myRems().slice().sort((a,b) =>
     (b.enabled?1:0) - (a.enabled?1:0) || (a.time||'').localeCompare(b.time||''));
   const live = t.enabled && t.hasToken && t.chatId;
 

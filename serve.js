@@ -166,6 +166,7 @@ function todaySlots(atMs){
   const out = [];
   for (const r of itemsOf('reminders')){
     if (!r.enabled) continue;
+    if (String(r.staffId || '') !== '') continue;   /* nhịp của thợ, không phải ngày của mình */
     const st = hhmmMin(remTimeOnJs(r, today)); if (st === null) continue;
     out.push({start:st, mins:remMinutes(r), title:r.title || '',
               done:remDoneTodayJs(r, today), est:true});
@@ -695,6 +696,8 @@ function runSchedule(dry, atMs){
 
   for (const r of itemsOf('reminders')){
     if (!r.enabled) continue;
+    /* nhịp đã giao cho nhân viên thì không bắn vào group của chủ */
+    if (String(r.staffId || '') !== '') continue;
     /* giờ đã áp mốc dời riêng của hôm nay; null = hôm nay không có lần nào */
     const rt = remTimeOnJs(r, today);
     const m = /^(\d{1,2}):(\d{2})$/.exec(String(rt || '')); if (!m) continue;
