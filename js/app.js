@@ -2430,6 +2430,29 @@ document.addEventListener('click', e => {
                       go, '🧹 Dọn sạch');
       break;
     }
+    /* Quét dải khác hẳn hai nút kia: nó không tra sổ mà bảo Telegram xoá cả
+       một dải số hiệu. Đó là đường duy nhất với tới đống tin cũ, cũng là
+       đường duy nhất động tới tin không phải của bot — nên câu hỏi phải nói
+       thẳng cái giá, chứ không phải một câu "bạn chắc chứ?" cho có. */
+    case 'tgSweep':
+      confirmBox('Quét ' + TG_SWEEP_BACK + ' tin gần nhất trong group và xoá mọi thứ '
+               + 'Telegram cho phép. Nếu bot đang là quản trị viên thì tin bạn tự gõ '
+               + 'và tin ở nhánh khác cũng bị xoá. Việc trong app thì không đụng tới.',
+        () => {
+          toast('Đang quét…');
+          Server.call('tg_clean', {run:1, sweep:1})
+            .then(d => tgLoad().then(() => {
+              render();
+              /* Xoá theo dải thì Telegram lặng lẽ bỏ qua cái nào không xoá
+                 được, không đếm giúp. Nên chỉ nói đúng thứ mình biết chắc:
+                 đã quét bao nhiêu số hiệu. Bịa ra "đã xoá N tin" ở đây là
+                 nói điều mình không biết. */
+              toast(!d.scanned ? 'Không quét được số hiệu nào'
+                : 'Đã quét ' + d.scanned + ' số hiệu — mở group xem còn gì');
+            }))
+            .catch(err => toast(err.message));
+        }, '🧹 Quét');
+      break;
     case 'webhookOn':
       toast('Đang bật…');
       Server.call('tg_webhook_enable')

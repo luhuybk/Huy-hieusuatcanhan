@@ -2477,6 +2477,8 @@ function vJourney(){
    trong tài liệu: người dùng sẽ bấm "Dọn sạch" vào cuối tuần, thấy quá nửa
    số tin vẫn nằm nguyên, rồi tưởng nút hỏng. */
 const CLEAN_KEEP = [[0,'Tắt'], [12,'cũ hơn 12 giờ'], [24,'cũ hơn 1 ngày'], [36,'cũ hơn 1 ngày rưỡi']];
+/* phải khớp với TG_SWEEP_BACK trong api/lib.php — chỉ dùng để ghi nhãn nút */
+const TG_SWEEP_BACK = 2000;
 function tgCleanRow(t){
   const n = t.msgLogged || 0, keep = t.cleanHours || 0;
   return `<div class="dim" style="margin-top:14px;line-height:1.65">
@@ -2486,6 +2488,15 @@ function tgCleanRow(t){
     mới bấm thì tin từ đầu tuần đã quá tuổi, xoá không được nữa. Muốn group
     lúc nào cũng gọn thì bật <b>tự dọn</b> — máy chủ ghé mỗi tiếng một lần và
     dọn trước khi tin hết hạn xoá.
+    </div>
+    <div class="dim" style="margin-top:10px;line-height:1.65">
+      ${n < 20 ? `<b>Group đầy tin mà con số trên nhỏ?</b> Đúng vậy — bot chỉ
+        bắt đầu ghi số hiệu <b>từ bản này</b>, mọi tin gửi trước đó nó không
+        biết là tin nào để mà xoá. ` : ''}Muốn với tới đống cũ thì bấm
+      <b>Quét cả tin cũ</b>: bot dò ngược ${TG_SWEEP_BACK} số hiệu gần nhất
+      trong group thay vì tra sổ. Đổi lại, nó xoá mọi thứ trong dải mà
+      Telegram cho phép — bot đã làm quản trị viên thì <b>cả tin bạn tự gõ và
+      tin ở nhánh khác</b> cũng đi, vì số hiệu đếm chung cả group.
     </div>
     <div class="fgrid" style="margin-top:10px">
       <div class="f half" style="margin-bottom:0"><label>Tự dọn tin</label>
@@ -2497,6 +2508,9 @@ function tgCleanRow(t){
     <div class="btns" style="margin-top:10px;flex-wrap:wrap">
       <button class="btn sm grow" data-act="tgClean">Dọn tin cũ hơn 12 giờ</button>
       <button class="btn sm grow dngr" data-act="tgWipe">Dọn sạch tất cả</button>
+    </div>
+    <div class="btns" style="margin-top:8px">
+      <button class="btn sm grow dngr" data-act="tgSweep">Quét cả tin cũ (${TG_SWEEP_BACK} tin gần nhất)</button>
     </div>`;
 }
 

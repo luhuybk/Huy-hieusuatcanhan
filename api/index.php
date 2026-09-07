@@ -480,6 +480,16 @@ switch ($action) {
     if (empty($in['run']))
       out(['ok' => true, 'n' => tgOutCount(), 'cleanHours' => (int)confGet('tg_clean_h', '0')]);
 
+    /* Quét dải: không dựa vào bảng nhớ, nên đây là đường duy nhất dọn được
+       đống tin gửi trước khi có tính năng này. Cũng là đường duy nhất động
+       tới tin không phải của bot — nên phải là một nút riêng, người dùng
+       chủ động bấm, chứ không lẫn vào nút dọn thường. */
+    if (!empty($in['sweep'])) {
+      $s = tgSweep();
+      if (empty($s['ok'])) fail($s['error'] ?: 'Không quét được', 502);
+      out($s + ['n' => tgOutCount(), 'cleanHours' => (int)confGet('tg_clean_h', '0')]);
+    }
+
     $keep = isset($in['keepHours']) ? max(0, min(240, (int)$in['keepHours'])) : 0;
     $r = tgClean($keep * 3600);
     /* Không xoá nổi cái nào mà lại có lỗi thì đó là lỗi thật (hết quyền,

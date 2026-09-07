@@ -1253,8 +1253,22 @@ function tgLogOut(array $res): void {
      số "đang nhớ N tin" phồng lên và lượt dọn sau chậm đi. */
   db()->prepare('DELETE FROM tgout WHERE at < ?')->execute([time() - TG_KEEP_DAYS * 86400]);
 }
+/* Bảng tgout chỉ bắt đầu ghi từ bản có tính năng dọn — mọi tin gửi trước
+   đó không có số hiệu nào được nhớ, nên nút dọn nhìn vào một cái group đầy
+   tin mà báo "không có tin nào để dọn".
+
+   Vét lại được một phần: bảng tgmsg đã nhớ số hiệu của các tin CÓ NÚT từ
+   30 ngày nay, và nó chỉ giữ những tin CHƯA tick (tick xong là tgForget
+   xoá). Tức là đúng cái đống đang chất đống. Chạy một lần, có cờ chặn. */
+function tgSeedOut(): void {
+  if (confGet('tg_out_seeded')) return;
+  confSet('tg_out_seeded', '1');
+  db()->exec('INSERT OR IGNORE INTO tgout (msg, at)
+              SELECT msg, at FROM tgmsg WHERE msg IS NOT NULL AND at > 0');
+}
 /* Còn bao nhiêu tin đủ tuổi để dọn. $older = 0 nghĩa là tính tất cả. */
 function tgOutCount(int $older = 0): int {
+  tgSeedOut();
   $st = db()->prepare('SELECT COUNT(*) c FROM tgout WHERE at <= ?');
   $st->execute([time() - $older]);
   return (int)$st->fetch()['c'];
@@ -1268,6 +1282,7 @@ function tgDrop(array $ids): void {
   db()->prepare("DELETE FROM tgmsg WHERE msg IN ($q)")->execute($ids);
 }
 function tgClean(int $older = 0, int $max = TG_CLEAN_MAX): array {
+  tgSeedOut();
   $token = (string)confGet('tg_token', '');
   $chat  = (string)confGet('tg_chat', '');
   $out = ['ok' => false, 'gone' => 0, 'kept' => 0, 'left' => 0, 'error' => ''];
@@ -1314,6 +1329,48 @@ function tgClean(int $older = 0, int $max = TG_CLEAN_MAX): array {
     $out['kept'] += count($bad);
   }
   $out['left'] = tgOutCount($older);
+  return $out;
+}
+
+/* Quét theo DẢI SỐ HIỆU — đường duy nhất với tới đống tin gửi trước khi có
+   bảng nhớ. Số hiệu tin trong một group là số đếm tăng dần, nên biết số mới
+   nhất là suy ra được cả dải phía sau, không cần nhớ gì trước đó.
+
+   Đánh đổi phải nói thẳng ra trước khi bấm, vì nó khác hẳn tgClean(): xoá
+   theo dải là bảo Telegram xoá MỌI số hiệu trong dải mà bot có quyền động
+   tới. Bot thường thì Telegram chỉ cho xoá tin của chính nó và lặng lẽ bỏ
+   qua phần còn lại — vô hại. Nhưng bot đã làm quản trị viên group thì nó
+   xoá được cả tin bạn tự gõ, và cả tin ở nhánh khác, vì số hiệu đếm chung
+   cho cả group chứ không riêng từng nhánh. */
+const TG_SWEEP_BACK = 2000;
+function tgSweep(int $back = TG_SWEEP_BACK): array {
+  $token = (string)confGet('tg_token', '');
+  $chat  = (string)confGet('tg_chat', '');
+  $out = ['ok' => false, 'scanned' => 0, 'top' => 0, 'low' => 0, 'error' => ''];
+  if ($token === '' || $chat === '') { $out['error'] = 'Chưa cài Telegram'; return $out; }
+
+  /* Gửi một tin mốc để biết số hiệu mới nhất. Telegram không có cách hỏi
+     thẳng "tin cuối cùng số mấy", nên phải tự tạo ra một cái. Nó nằm ngay
+     đầu dải nên bị xoá trong chính lượt này — và nếu lượt này hỏng thì nó
+     tự giải thích mình là gì, thay vì để lại một dấu chổi bí ẩn. */
+  $res = tgSend('🧹 <i>Đang dọn tin cũ…</i>');
+  $top = (int)($res['result']['message_id'] ?? 0);
+  if ($top <= 0) { $out['error'] = (string)($res['error'] ?? 'Không gửi được tin mốc'); return $out; }
+
+  $low = max(1, $top - max(1, $back));
+  $out['ok'] = true; $out['top'] = $top; $out['low'] = $low;
+  $stop = time() + TG_CLEAN_SECS;
+  for ($hi = $top; $hi >= $low; $hi -= 100) {
+    if (time() >= $stop) { $out['low'] = $hi; break; }
+    $lot = range(max($low, $hi - 99), $hi);
+    $r = httpPostJson("https://api.telegram.org/bot$token/deleteMessages",
+                      ['chat_id' => $chat, 'message_ids' => $lot], 10);
+    /* Cả lô hỏng thì đi tiếp chứ đừng dừng: dải này phần lớn là số hiệu
+       trống hoặc quá tuổi, lô sau vẫn có thể trúng. */
+    if (empty($r['ok'])) { $out['error'] = $out['error'] ?: (string)($r['error'] ?? ''); continue; }
+    $out['scanned'] += count($lot);
+    tgDrop($lot);
+  }
   return $out;
 }
 

@@ -1306,6 +1306,9 @@ function api(req, res, body){
         confSet('tg_clean_h', (ch >= 0 && ch <= 240) ? ch : 0);
       }
       /* máy chủ thử không gọi ra Telegram thật — không có tin nào để xoá */
+      if (inp.sweep)
+        return send({ok:true, scanned:0, top:0, low:0, n:0, error:'', simulated:true,
+                     cleanHours:+confGet('tg_clean_h','0')});
       return send({ok:true, gone:0, kept:0, left:0, n:0, error:'', simulated:true,
                    cleanHours:+confGet('tg_clean_h','0')});
     }
