@@ -2034,6 +2034,15 @@ document.addEventListener('pointerdown', e => {
 /* ô giờ và ô phút ngay trong danh sách — sửa xong là ghi luôn, không cần mở
    biểu mẫu. Kéo cho nhanh, gõ ô này khi cần đúng phút. */
 document.addEventListener('change', e => {
+  const cl = e.target.closest('[data-tgclean]');
+  if (cl){
+    const v = +cl.value || 0;
+    Server.call('tg_clean', {cleanHours:v})
+      .then(() => tgLoad()).then(() => { render();
+        toast(v ? 'Sẽ tự dọn tin cũ hơn ' + v + ' giờ' : 'Đã tắt tự dọn'); })
+      .catch(err => toast(err.message));
+    return;
+  }
   const t = e.target.closest('[data-tlt]');
   if (t){ if (hhmm2min(t.value) !== null) setSlotTime(t.dataset.tlt, t.value, t.dataset.day); else render(); return; }
   const m = e.target.closest('[data-tlm]');
@@ -2398,6 +2407,29 @@ document.addEventListener('click', e => {
                                  : `Đã gửi tổng kết cho ${d.people} người`))
         .catch(err => toast(err.message));
       break;
+    case 'tgClean':
+    case 'tgWipe': {
+      const keep = a === 'tgClean' ? 12 : 0;
+      const go = () => {
+        toast('Đang dọn…');
+        Server.call('tg_clean', {run:1, keepHours:keep})
+          .then(d => tgLoad().then(() => {
+            render();
+            /* Nói đủ ba con số: xoá được bao nhiêu, Telegram từ chối bao
+               nhiêu, còn tồn bao nhiêu. Chỉ khoe con số đầu thì lần sau mở
+               group ra thấy tin cũ vẫn nằm đó, không hiểu vì sao. */
+            toast(!d.gone && !d.kept ? 'Không có tin nào để dọn'
+              : 'Đã xoá ' + d.gone + ' tin'
+                + (d.kept ? ' · ' + d.kept + ' tin quá 48 giờ, Telegram không cho xoá' : '')
+                + (d.left ? ' · còn ' + d.left + ', bấm lại lần nữa' : ''));
+          }))
+          .catch(err => toast(err.message));
+      };
+      if (keep) go();
+      else confirmBox('Xoá toàn bộ tin bot đã gửi trong group, kể cả tin hôm nay?',
+                      go, '🧹 Dọn sạch');
+      break;
+    }
     case 'webhookOn':
       toast('Đang bật…');
       Server.call('tg_webhook_enable')

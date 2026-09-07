@@ -2473,6 +2473,33 @@ function vJourney(){
   return h + `<div style="height:56px"></div>`;
 }
 
+/* Dọn tin trong group. Con số 48 giờ phải nói ngay ở đây chứ không giấu
+   trong tài liệu: người dùng sẽ bấm "Dọn sạch" vào cuối tuần, thấy quá nửa
+   số tin vẫn nằm nguyên, rồi tưởng nút hỏng. */
+const CLEAN_KEEP = [[0,'Tắt'], [12,'cũ hơn 12 giờ'], [24,'cũ hơn 1 ngày'], [36,'cũ hơn 1 ngày rưỡi']];
+function tgCleanRow(t){
+  const n = t.msgLogged || 0, keep = t.cleanHours || 0;
+  return `<div class="dim" style="margin-top:14px;line-height:1.65">
+    <b>🧹 Dọn tin trong group.</b> Bot đang nhớ số hiệu của <b>${n}</b> tin nó đã gửi —
+    dọn là xoá đúng những tin đó, tin bạn tự gõ vẫn còn.
+    Telegram chỉ cho bot xoá tin trong vòng <b>48 giờ</b>, nên đợi tới cuối tuần
+    mới bấm thì tin từ đầu tuần đã quá tuổi, xoá không được nữa. Muốn group
+    lúc nào cũng gọn thì bật <b>tự dọn</b> — máy chủ ghé mỗi tiếng một lần và
+    dọn trước khi tin hết hạn xoá.
+    </div>
+    <div class="fgrid" style="margin-top:10px">
+      <div class="f half" style="margin-bottom:0"><label>Tự dọn tin</label>
+        <select data-tgclean>${CLEAN_KEEP.map(([v,lbl]) =>
+          `<option value="${v}"${keep === v ? ' selected' : ''}>${esc(lbl)}</option>`).join('')}</select>
+        <div class="hint">${keep ? 'Cần cron chạy đều thì mới tự dọn được.'
+                                 : 'Đang tắt — chỉ dọn khi bạn bấm nút.'}</div></div>
+    </div>
+    <div class="btns" style="margin-top:10px;flex-wrap:wrap">
+      <button class="btn sm grow" data-act="tgClean">Dọn tin cũ hơn 12 giờ</button>
+      <button class="btn sm grow dngr" data-act="tgWipe">Dọn sạch tất cả</button>
+    </div>`;
+}
+
 function tgBlock(){
   const t = TG || {};
   /* Máy chủ chỉ bắn nhịp lặp của mình vào group — việc của thợ họ xem trong
@@ -2523,6 +2550,7 @@ function tgBlock(){
       <button class="btn sm grow" data-act="staffNow">Gửi tổng kết nhân sự ngay</button>
       <button class="btn sm grow" data-act="tgWhy">Vì sao chưa gửi?</button>
     </div>` : ''}
+    ${live ? tgCleanRow(t) : ''}
     ${live ? `<div class="dim" style="margin-top:12px;line-height:1.65">
       <b>Nút bấm dưới tin nhắc:</b> "✅ Xong" đánh dấu việc xong, còn
       "⏰ 4 giờ / 12 giờ / 1 ngày / 3 ngày" dời lời nhắc lại — cả hai đều

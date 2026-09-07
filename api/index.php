@@ -104,6 +104,9 @@ function tgState(): array {
     'workTo'     => confGet('work_to', '24:00'),
     'workWeek'   => json_decode((string)confGet('work_week', '{}'), true) ?: [],
     'enddayHour' => (int)confGet('tg_endday_hour', '22'),
+    /* Dọn tin trong group: mốc tự dọn, và bot đang nhớ bao nhiêu tin */
+    'cleanHours' => (int)confGet('tg_clean_h', '0'),
+    'msgLogged'  => tgOutCount(),
     'cron'       => '/usr/bin/php ' . __DIR__ . '/cron.php',
     'cronUrl'    => $base . '/cron.php?key=' . cronKey()];
 }
@@ -463,6 +466,26 @@ switch ($action) {
       'lastError' => (string)($r['last_error_message'] ?? ''),
       'lastErrorAt' => !empty($r['last_error_date']) ? date('H:i d/m', (int)$r['last_error_date']) : '',
     ]);
+  }
+
+  /* Dọn tin bot đã gửi trong group. Không gửi 'run' thì chỉ đặt mốc tự dọn
+     và trả về con số — cố ý tách hai việc, để cái nút gạt mốc không kéo
+     theo một lượt xoá mà người dùng chưa bấm. */
+  case 'tg_clean': {
+    requireAuth();
+    if (isset($in['cleanHours'])) {
+      $ch = (int)$in['cleanHours'];
+      confSet('tg_clean_h', ($ch >= 0 && $ch <= 240) ? $ch : 0);
+    }
+    if (empty($in['run']))
+      out(['ok' => true, 'n' => tgOutCount(), 'cleanHours' => (int)confGet('tg_clean_h', '0')]);
+
+    $keep = isset($in['keepHours']) ? max(0, min(240, (int)$in['keepHours'])) : 0;
+    $r = tgClean($keep * 3600);
+    /* Không xoá nổi cái nào mà lại có lỗi thì đó là lỗi thật (hết quyền,
+       sai group), báo hẳn ra chứ đừng khoe "đã xoá 0 tin". */
+    if ($r['gone'] === 0 && $r['kept'] === 0 && $r['error'] !== '') fail($r['error'], 502);
+    out($r + ['n' => tgOutCount(), 'cleanHours' => (int)confGet('tg_clean_h', '0')]);
   }
 
   case 'tg_webhook_disable': {

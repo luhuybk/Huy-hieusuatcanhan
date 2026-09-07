@@ -86,6 +86,11 @@ function db(): PDO {
   /* tin đã gửi kèm nút bấm — nhớ message_id để sau còn gỡ nút xuống */
   $pdo->exec('CREATE TABLE IF NOT EXISTS tgmsg (
       k TEXT PRIMARY KEY, msg INTEGER, txt TEXT, at INTEGER)');
+  /* mọi tin bot đã gửi — để còn dọn group cho sạch. Chỉ giữ số hiệu tin và
+     giờ gửi: muốn dọn thì cần biết xoá cái nào, chứ không cần biết trong đó
+     viết gì. */
+  $pdo->exec('CREATE TABLE IF NOT EXISTS tgout (msg INTEGER PRIMARY KEY, at INTEGER NOT NULL)');
+  $pdo->exec('CREATE INDEX IF NOT EXISTS tgout_at ON tgout(at)');
   return $pdo;
 }
 
@@ -167,7 +172,9 @@ function tgSend(string $text, $topic = null, ?array $keyboard = null): array {
   if ($thread !== '' && ctype_digit($thread)) $body['message_thread_id'] = (int)$thread;
   if ($keyboard !== null) $body['reply_markup'] = ['inline_keyboard' => $keyboard];
 
-  return httpPostJson("https://api.telegram.org/bot$token/sendMessage", $body);
+  $res = httpPostJson("https://api.telegram.org/bot$token/sendMessage", $body);
+  tgLogOut($res);
+  return $res;
 }
 
 /* Nút dưới tin nhắc — chỉ đính kèm khi đã bật webhook, nếu không bấm vào
@@ -1224,6 +1231,92 @@ function tgSettleDone(string $kind, string $id, string $note): bool {
   return tgSettle(tgMsgKey($kind, $id), $note);
 }
 
+/* ---------------- dọn tin cũ trong group ----------------
+   Mỗi ngày dăm ba lời nhắc, một tuần là group trôi mất chỗ. Muốn xoá thì
+   phải biết xoá tin nào, nên mọi tin bot gửi đều ghi số hiệu vào bảng tgout.
+
+   Giới hạn của Telegram, phải nói thẳng: bot chỉ xoá được tin trong vòng
+   48 GIỜ. Cho bot làm quản trị viên group thì cửa rộng hơn, nhưng không có
+   gì bảo đảm. Nghĩa là dọn mỗi tuần một lần thì tin từ đầu tuần đã quá
+   tuổi — bấm cũng không xoá được nữa. Cách chắc ăn là bật "tự dọn": cron
+   ghé mỗi tiếng, tin nào đủ tuổi thì cho đi trước khi hết hạn xoá. */
+const TG_CLEAN_MAX  = 600;    /* trần một lượt dọn — sáu lượt gọi, đủ nhanh */
+const TG_KEEP_DAYS  = 7;      /* quá tuần thì thôi, không nhớ nữa */
+const TG_CLEAN_SECS = 20;     /* và đừng để một lượt dọn treo cả yêu cầu */
+
+function tgLogOut(array $res): void {
+  $id = $res['result']['message_id'] ?? null;
+  if (empty($res['ok']) || !$id) return;
+  db()->prepare('INSERT OR REPLACE INTO tgout (msg, at) VALUES (?, ?)')
+      ->execute([(int)$id, time()]);
+  /* Quá một tuần thì chắc chắn ngoài tầm xoá của bot, giữ lại chỉ làm con
+     số "đang nhớ N tin" phồng lên và lượt dọn sau chậm đi. */
+  db()->prepare('DELETE FROM tgout WHERE at < ?')->execute([time() - TG_KEEP_DAYS * 86400]);
+}
+/* Còn bao nhiêu tin đủ tuổi để dọn. $older = 0 nghĩa là tính tất cả. */
+function tgOutCount(int $older = 0): int {
+  $st = db()->prepare('SELECT COUNT(*) c FROM tgout WHERE at <= ?');
+  $st->execute([time() - $older]);
+  return (int)$st->fetch()['c'];
+}
+/* Quên hẳn một số hiệu tin: cả bảng dọn lẫn bảng nhớ nút. Xoá tin rồi mà
+   vẫn còn trong tgmsg thì lần tick sau máy chủ đi sửa một tin không còn. */
+function tgDrop(array $ids): void {
+  if (!$ids) return;
+  $q = implode(',', array_fill(0, count($ids), '?'));
+  db()->prepare("DELETE FROM tgout WHERE msg IN ($q)")->execute($ids);
+  db()->prepare("DELETE FROM tgmsg WHERE msg IN ($q)")->execute($ids);
+}
+function tgClean(int $older = 0, int $max = TG_CLEAN_MAX): array {
+  $token = (string)confGet('tg_token', '');
+  $chat  = (string)confGet('tg_chat', '');
+  $out = ['ok' => false, 'gone' => 0, 'kept' => 0, 'left' => 0, 'error' => ''];
+  if ($token === '' || $chat === '') { $out['error'] = 'Chưa cài Telegram'; return $out; }
+
+  /* Tin MỚI đi trước. Lấy tin cũ trước thì mấy cái quá 48 giờ luôn xếp đầu
+     hàng: cái chốt "hỏng năm lần liên tiếp" bên dưới sẽ nổ ngay ở tình
+     huống bình thường nhất, và những tin mới — thứ duy nhất còn xoá được —
+     không bao giờ tới lượt. */
+  $st = db()->prepare('SELECT msg FROM tgout WHERE at <= ? ORDER BY at DESC LIMIT ' . (int)$max);
+  $st->execute([time() - $older]);
+  $ids = array_map('intval', array_column($st->fetchAll(), 'msg'));
+
+  $out['ok'] = true;
+  $stop = time() + TG_CLEAN_SECS;
+  foreach (array_chunk($ids, 100) as $lot) {
+    if (time() >= $stop) break;
+    /* Xoá cả lô một lần. Tin nào Telegram không xoá được thì nó bỏ qua chứ
+       không làm hỏng cả lô — nên đường này gần như luôn trót lọt. */
+    $res = httpPostJson("https://api.telegram.org/bot$token/deleteMessages",
+                        ['chat_id' => $chat, 'message_ids' => $lot], 10);
+    if (!empty($res['ok'])) { $out['gone'] += count($lot); tgDrop($lot); continue; }
+    $out['error'] = $out['error'] ?: (string)($res['error'] ?? '');
+
+    /* Cả lô hỏng thì thử từng cái: những tin còn lại vẫn đi được. */
+    $good = []; $bad = [];
+    foreach ($lot as $m) {
+      if (time() >= $stop) break;
+      $r1 = httpPostJson("https://api.telegram.org/bot$token/deleteMessage",
+                         ['chat_id' => $chat, 'message_id' => $m], 6);
+      if (!empty($r1['ok'])) $good[] = $m;
+      else { $bad[] = $m; $out['error'] = $out['error'] ?: (string)($r1['error'] ?? ''); }
+      /* Năm cái hỏng liên tiếp mà chưa xoá nổi cái nào thì không phải chuyện
+         của từng tin — hết quyền, hoặc sai group. Dừng và nói ra, đừng đốt
+         hết bảng nhớ vào một lỗi cấu hình. */
+      if (count($bad) >= 5 && !$good) break;
+    }
+    tgDrop($good);
+    $out['gone'] += count($good);
+    if (count($bad) >= 5 && !$good) { $out['left'] = tgOutCount($older); return $out; }
+    /* Quên cả những cái xoá không được: hỏng vì quá tuổi thì lần sau cũng
+       thế, giữ lại chỉ làm bảng phình ra và lượt dọn sau chậm đi. */
+    tgDrop($bad);
+    $out['kept'] += count($bad);
+  }
+  $out['left'] = tgOutCount($older);
+  return $out;
+}
+
 /* ---------------- vì sao lời nhắc chưa chạy ----------------
    Trả lời thẳng cho từng đầu việc có hẹn giờ, thay vì để người dùng
    đoán mò giữa: máy chủ chưa có dữ liệu, sai ngày hạn, chưa tới giờ,
@@ -1390,6 +1483,20 @@ function runSchedule(bool $dry = false): array {
      Telegram đang tắt hoặc không có gì để gửi. */
   if (!$dry) confSet('last_cron', (string)time());
   if (!confGet('tg_enabled')) return ['skipped' => 'Telegram đang tắt'];
+
+  /* --- tự dọn tin cũ trong group ---
+     Mỗi tiếng một lượt là đủ, và làm TRƯỚC phần gửi: dọn sau thì tin vừa
+     gửi xong lại nằm ngay trong tầm quét của chính lượt cron này. */
+  $keepH = (int)confGet('tg_clean_h', '0');
+  if (!$dry && $keepH > 0) {
+    $ckey = 'clean:' . date('Y-m-d-H');
+    if (!alreadySent($ckey)) {
+      markSent($ckey);
+      $c = tgClean($keepH * 3600, 200);
+      if ($c['gone'] || $c['kept'])
+        $done[] = ['clean' => $c['gone'], 'kept' => $c['kept'], 'error' => $c['error'] ?: null];
+    }
+  }
 
   $now   = time();
   $today = date('Y-m-d');

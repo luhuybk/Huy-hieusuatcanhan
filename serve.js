@@ -1225,6 +1225,8 @@ function api(req, res, body){
         workFrom: confGet('work_from','08:30'), workTo: confGet('work_to','24:00'),
         workWeek: (() => { try { return JSON.parse(confGet('work_week','') || '{}'); } catch(e){ return {}; } })(),
         enddayHour: +confGet('tg_endday_hour','22'),
+        cleanHours: +confGet('tg_clean_h','0'),
+        msgLogged: 0,
         cron: '/usr/bin/php ' + path.join(__dirname, 'api/cron.php'),
         cronUrl: 'http://localhost:' + PORT + '/api/cron.php?key=' + confGet('cron_key','')});
     }
@@ -1296,6 +1298,16 @@ function api(req, res, body){
       const url = 'http://localhost:' + PORT + '/api/webhook.php';
       console.log('[telegram thử] đã "đăng ký" webhook giả lập tại ' + url);
       return send({ok:true, url});
+    }
+    case 'tg_clean': {
+      if (!need()) return;
+      if (inp.cleanHours != null){
+        const ch = +inp.cleanHours;
+        confSet('tg_clean_h', (ch >= 0 && ch <= 240) ? ch : 0);
+      }
+      /* máy chủ thử không gọi ra Telegram thật — không có tin nào để xoá */
+      return send({ok:true, gone:0, kept:0, left:0, n:0, error:'', simulated:true,
+                   cleanHours:+confGet('tg_clean_h','0')});
     }
     case 'tg_webhook_disable': {
       if (!need()) return;
