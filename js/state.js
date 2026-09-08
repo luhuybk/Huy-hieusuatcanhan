@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-09-07.2';
+const APP_BUILD = '2026-09-08.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -1592,6 +1592,41 @@ const minNow = () => { const d = new Date(); return d.getHours() * 60 + d.getMin
 function slipToday(items){
   const n = minNow();
   return (items || []).filter(x => x.on !== false && overdueAt(x, n));
+}
+
+/* ---- quá giờ: HAI trạng thái, không phải một ----
+   Viền vàng cho việc quá giờ có một chỗ hỏng chỉ lộ ra với người không tick
+   đều. Đo trên một ngày 8 việc, không tick cái nào: 8h sáng 1/7 dòng vàng,
+   6h chiều 4/7, 9h tối 6/7, 11h đêm 7/7. Tô sáng tất cả thì bằng không tô
+   gì — đúng lúc tối mở app ra xem còn gì thì nó hết tác dụng.
+
+   Chỗ sai nằm ở khái niệm chứ không ở màu. "07:00 mở cửa" lúc 21:00 không
+   phải quá giờ, nó LỠ HẲN — hôm nay không làm được nữa, hét lên cũng vô
+   ích. "20:00 làm sổ" lúc 21:00 thì quá giờ nhưng CÒN KỊP, đây mới là thứ
+   đáng hét. Tách ra thì số dòng vàng tự rơi về vài cái, và vài cái đó đúng
+   là những việc làm được ngay bây giờ.
+
+   Hai tiếng là ranh giới: đủ rộng để một việc lỡ buổi sáng vẫn kịp cứu
+   trong buổi, đủ hẹp để cuối ngày danh sách vàng không phình lại. */
+const SLIP_HOT = 120;
+const slipMins = (x, now) => overdueAt(x, now) ? now - (x.start + x.mins) : null;
+/* '' chưa quá giờ · 'qua' quá giờ còn kịp · 'lo' đã lỡ hôm nay */
+const slipState = (x, now) => {
+  const m = slipMins(x, now);
+  return m === null ? '' : m <= SLIP_HOT ? 'qua' : 'lo';
+};
+/* Tách danh sách quá giờ làm hai. reflowPlan() vẫn ăn cả hai qua
+   slipToday(): việc lỡ hẳn chính là thứ cần xếp lại nhất, chỉ là không cần
+   hét lên — hét hay không là chuyện của cách vẽ, không phải của cách xếp. */
+function slipSplit(items){
+  const n = minNow(), out = {qua:[], lo:[], all:[]};
+  (items || []).forEach(x => {
+    if (x.on === false) return;
+    const s = slipState(x, n);
+    if (!s) return;
+    out[s].push(x); out.all.push(x);
+  });
+  return out;
 }
 
 /* ---- xếp lại những việc đã lỡ giờ ----

@@ -1652,9 +1652,13 @@ function tlNowMark(wd, from, to, reserve){
       style="left:${p}%">${reserve ? `<b>${min2hhmm(n)}</b>` : ''}</div>
   </div>`;
 }
-/* Luật "đã qua giờ mà chưa tích" nằm ở state.js — overdueAt() — vì nút xếp
-   lại cũng phải hỏi đúng câu đó. Ở đây chỉ đặt lại tên cho hợp ngữ cảnh vẽ. */
-const tlGone = overdueAt;
+/* Luật quá giờ nằm ở state.js — slipState() — vì nút xếp lại cũng phải hỏi
+   đúng câu đó. Ở đây chỉ đặt lại tên cho hợp ngữ cảnh vẽ.
+   Trả về '' | 'qua' (còn kịp) | 'lo' (đã lỡ), dùng thẳng làm tên lớp CSS. */
+const tlSlip = slipState;
+const SLIP_TIP  = {qua:'\n⚠ quá giờ mà chưa tích — còn kịp làm',
+                   lo: '\n◦ đã lỡ hôm nay — xếp lại hoặc để mai'};
+const SLIP_MARK = {qua:'⚠ ', lo:''};
 /* Phút hiện tại, nhưng chỉ khi ngày đang xem là hôm nay. */
 const liveNow = live => live ? minNow() : null;
 
@@ -1668,11 +1672,10 @@ function tlBar(items, clash, wd){
     <div class="tlbar">${items.map(x => {
       const c = tlColor(x), hot = x.hot && !x.done;
       return `<i class="${clash.has(x.id) ? 'cl' : ''} ${x.kind === 'task' ? 'tsk' : ''} ${
-        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''} ${tlGone(x, now) ? 'qua' : ''} ${
+        x.kind === 'feed' ? 'fd' : ''} ${x.done ? 'dn' : ''} ${tlSlip(x, now)} ${
         hot ? 'hot' : ''}"
         title="${esc(tlTip(x))}${(x.kind === 'task' ? taskFlags(x.t) : [])
-          .map(k => '\n' + MARKS[k].ch + ' ' + MARKS[k].tip).join('')}${
-          tlGone(x, now) ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
+          .map(k => '\n' + MARKS[k].ch + ' ' + MARKS[k].tip).join('')}${SLIP_TIP[tlSlip(x, now)] || ''}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 55%, transparent);border-color:${c}"></i>`;
     }).join('')}${tlNowMark(wd, from, to, 0)}</div>
@@ -1711,22 +1714,22 @@ function tlTrack(items, clash, wd){
     const c = tlColor(x);
     /* Lịch nhập từ app khác không kéo được: bên kia mới là chủ của nó, kéo
        ở đây thì lần nhập sau là mất sạch. Bỏ luôn data-tlblk cho chắc. */
-    const fixed = x.kind === 'feed', qua = tlGone(x, now), hot = x.hot && !x.done;
+    const fixed = x.kind === 'feed', slip = tlSlip(x, now), hot = x.hot && !x.done;
     /* Trên trục chỉ có việc lẻ mới mang được dấu — lời nhắc hằng ngày không
        có ưu tiên lẫn hạn, còn lịch app khác thì mình không quản. */
     const mks = x.kind === 'task' ? markHtml(taskFlags(x.t)) : '';
     let row = `<div class="tlrow ${x.on ? '' : 'off'} ${x.done ? 'dn' : ''}">
       ${grid}
       <div class="tlblk ${clash.has(x.id) ? 'cl' : ''} ${fixed ? 'fd' : ''} ${x.done ? 'dn' : ''} ${
-        qua ? 'qua' : ''} ${hot ? 'hot' : ''}"
+        slip} ${hot ? 'hot' : ''}"
         title="${esc(tlTip(x))}${taskFlags(x.t).map(k => '\n' + MARKS[k].ch + ' ' + MARKS[k].tip).join('')}${
-          qua ? '\n⚠ đã qua giờ mà chưa tích' : ''}"
+          SLIP_TIP[slip] || ''}"
         ${fixed ? '' : `data-tlblk="${x.id}" data-day="${day}"`}
         data-start="${x.start}" data-span="${span}" data-from="${from}"
         style="left:${pct(x.start).toFixed(3)}%;width:${Math.max((x.mins/span)*100, 1.2).toFixed(3)}%;
                background:color-mix(in srgb, ${c} 26%, transparent);border-color:${c}">
         <span class="gr">${fixed ? '🔒' : '⠿'}</span>
-        <span class="tllbl">${mks}${mks ? ' ' : ''}${qua ? '⚠ ' : ''}${esc(tlLabel(x))}</span>
+        <span class="tllbl">${mks}${mks ? ' ' : ''}${SLIP_MARK[slip] || ''}${esc(tlLabel(x))}</span>
       </div>
     </div>`;
     /* Khối gộp: trải ba mốc con thành ba hàng mảnh ngay bên dưới, mỗi hàng
@@ -1756,7 +1759,10 @@ function chkState(x, nowMin){
   /* >= chứ không > : đúng phút kết thúc là việc đã hết giờ. Trục thời gian và
      dòng cảnh báo dưới ô Cửa sổ vốn đã tính vậy — lệch một phút giữa ba chỗ
      là lúc nhìn thấy viền đỏ mà cột phải vẫn ghi "tới giờ". */
-  if (nowMin >= x.start + x.mins) return {t:'quá giờ', c:'late'};
+  /* Cột phải phải nói cùng một chuyện với cái viền, nếu không hàng mờ đi mà
+     chữ vẫn hô "quá giờ" thì người đọc không biết tin cái nào. */
+  if (nowMin >= x.start + x.mins)
+    return nowMin - (x.start + x.mins) > SLIP_HOT ? {t:'đã lỡ', c:'miss'} : {t:'quá giờ', c:'late'};
   if (nowMin >= x.start)         return {t:'tới giờ', c:'now'};
   return {t:dur, c:''};
 }
@@ -1773,7 +1779,7 @@ function chkRow(o){
      từ màu chữ cột phải — hàng lịch nhập từ app khác vẫn ghi "quá giờ"
      nhưng không được đóng viền, y như nó không được tô trên trục. */
   return `<div class="chk ${o.done ? 'off' : ''} ${o.dash ? 'tsk' : ''} ${
-    o.tick ? '' : 'ro'} ${o.qua ? 'qua' : ''} ${o.hot ? 'hot' : ''}">
+    o.tick ? '' : 'ro'} ${o.slip || ''} ${o.hot ? 'hot' : ''}">
     ${box}
     <div class="grow" ${o.open ? `data-act="${o.open}" data-id="${o.id}"` : ''}>
       <div class="row">
@@ -1832,7 +1838,7 @@ function cardDayRow(x, cl, nowMin){
   return chkRow({
     id:c.id, tick:'toggleCard', open:'card', done:x.done, dash:true,
     time:min2hhmm(x.start), dot:areaDot(c.areaId), title:x.title,
-    state:chkState(x, nowMin), qua:tlGone(x, nowMin),
+    state:chkState(x, nowMin), slip:tlSlip(x, nowMin),
     marks:c.prio === 'high' && !x.done ? markHtml(['hot']) + ' ' : '',
     sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
       tre ? `<span style="color:var(--bad)">trễ ${tre} ngày</span>` : 'hạn hôm nay'}${
@@ -1849,7 +1855,7 @@ function dailyRow(x, clash, nowMin){
   const r = x.r, chuoi = remStreak(r);
   return chkRow({
     id:r.id, tick:'remDone', open:'editRem', done:x.done, time:min2hhmm(x.start),
-    dot:areaDot(r.areaId), title:x.title, state:chkState(x, nowMin), qua:tlGone(x, nowMin),
+    dot:areaDot(r.areaId), title:x.title, state:chkState(x, nowMin), slip:tlSlip(x, nowMin),
     sub:`${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))}${
       chuoi > 1 ? ` · <span class="streak">🔥 ${chuoi}</span>` : ''}${
       cl ? ` · <span style="color:var(--bad)">⚠ trùng giờ</span>` : ''}${
@@ -1874,7 +1880,7 @@ function weekCb(live, done, act, id){
 function dailyEditRow(x, clash, live){
   const r = x.r, cl = clash.has(x.id);
   return `<div class="rem two ${r.enabled ? '' : 'off'} ${x.done ? 'done' : ''} ${
-    tlGone(x, liveNow(live)) ? 'qua' : ''}">
+    tlSlip(x, liveNow(live))}">
     <div class="row">
       ${weekCb(live, x.done, 'remDone', r.id)}
       <div class="nm ell grow" data-act="editRem" data-id="${r.id}">${areaDot(r.areaId)} ${esc(x.title)}</div>
@@ -1915,7 +1921,7 @@ function taskDayRow(x, cl, nowMin){
   return chkRow({
     id:t.id, tick:'toggleTask', open:'editTask', done:x.done, dash:true,
     time:min2hhmm(x.start), dot:areaDot(t.areaId), title:x.title, state:chkState(x, nowMin),
-    qua:tlGone(x, nowMin), hot:isHot(t) && !x.done, marks:taskMarks(t),
+    slip:tlSlip(x, nowMin), hot:isHot(t) && !x.done, marks:taskMarks(t),
     sub:`${x.est ? '' : '~'}${fmtDur(x.mins)} → ${esc(min2hhmm(x.start + x.mins))} · ${
       tre ? `<span style="color:var(--bad)">việc lẻ, trễ ${tre} ngày</span>` : 'việc lẻ, hạn hôm nay'}${
       x.est ? '' : ' · chưa ước tính'}${doi ? ' · ' + doi : ''}${
@@ -1975,6 +1981,10 @@ function gapBlock(items, clash, prog, wd){
      những việc đã qua giờ mà chưa tích. Ngày khác thì cả hai đều vô nghĩa. */
   const live = wdDate(wd === undefined ? new Date().getDay() : wd) === today();
   const slip = live ? slipToday(items) : [];
+  /* Gộp "còn kịp" với "đã lỡ" vào một câu thì cuối ngày ra "7 việc đã quá
+     giờ" — đúng nhưng vô dụng, vì trong bảy cái đó chỉ hai cái còn làm
+     được. Tách ra thì câu đầu là việc-làm-ngay, câu sau là việc-quyết-định. */
+  const sp = live ? slipSplit(items) : {qua:[], lo:[], all:[]};
   /* Xếp lại được mấy việc — tính luôn ở đây để cái nút biết mình có việc gì
      để làm không. Ngày nghỉ thì không có cửa sổ nào để xếp vào. */
   const rf = slip.length && !w.off ? reflowPlan(S.area) : null;
@@ -1986,11 +1996,13 @@ function gapBlock(items, clash, prog, wd){
     ${live && !w.off ? `<div class="dim" style="margin-top:7px">
       Từ bây giờ tới ${winText(w.to)} còn trống <b style="color:var(--ok)">${
         fmtDur(freeAhead(items))}</b> — đó mới là chỗ thật sự còn nhét được.</div>` : ''}
-    ${slip.length ? `<div class="dim" style="margin-top:7px;color:var(--warn)">
-      ${slip.length} việc đã qua giờ mà chưa tích: ${
-        slip.slice(0, 3).map(x => `<b style="font-weight:650">${
+    ${sp.qua.length ? `<div class="dim" style="margin-top:7px;color:var(--warn)">
+      ${sp.qua.length} việc quá giờ mà còn kịp làm: ${
+        sp.qua.slice(0, 3).map(x => `<b style="font-weight:650">${
           esc(min2hhmm(x.start))}</b> ${esc(x.title)}`).join(SEP)}${
-        slip.length > 3 ? ' …' : ''}</div>` : ''}
+        sp.qua.length > 3 ? ' …' : ''}</div>` : ''}
+    ${sp.lo.length ? `<div class="dim" style="margin-top:5px">
+      ${sp.lo.length} việc đã lỡ hôm nay — xếp lại vào chỗ trống, hoặc để mai.</div>` : ''}
     ${rf && rf.move.length ? `<div class="btns" style="margin-top:10px">
       <button class="btn sm pri" data-act="reflowBox">↻ Xếp lại ${rf.move.length} việc quá giờ${
         rf.stuck.length ? ' (còn ' + rf.stuck.length + ' không đủ chỗ)' : ''}</button></div>` : ''}
@@ -2057,7 +2069,7 @@ function cardWeekRow(x, clash, past, live){
   const c = x.c, cl = clash.has(x.id), tre = x.late ? -dayDiff(c.due) : 0;
   const cho = c.col === 'done' && !c.okAt;
   return `<div class="rem two tsk ${x.done ? 'done' : ''} ${
-    tlGone(x, liveNow(live)) ? 'qua' : ''} ${c.prio === 'high' && !x.done ? 'hot' : ''}">
+    tlSlip(x, liveNow(live))} ${c.prio === 'high' && !x.done ? 'hot' : ''}">
     <div class="row">
       ${weekCb(live, x.done, 'toggleCard', c.id)}
       <div class="nm ell grow" data-act="card" data-id="${c.id}">${areaDot(c.areaId)} ${
@@ -2082,7 +2094,7 @@ function taskWeekRow(x, clash, past, live){
   const key = String(t.due || '').slice(0,10);
   const hot = isHot(t) && !x.done;
   return `<div class="rem two tsk ${x.done ? 'done' : ''} ${
-    tlGone(x, liveNow(live)) ? 'qua' : ''} ${hot ? 'hot' : ''}">
+    tlSlip(x, liveNow(live))} ${hot ? 'hot' : ''}">
     <div class="row">
       ${weekCb(live, x.done, 'toggleTask', t.id)}
       <div class="nm ell grow" data-act="editTask" data-id="${t.id}">${areaDot(t.areaId)} ${

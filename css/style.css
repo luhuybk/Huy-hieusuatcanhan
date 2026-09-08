@@ -154,8 +154,22 @@ a{color:var(--acc);text-decoration:none}
 .item .meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
 .item .meta .chip{padding:2px 8px;font-size:11px}
 
+/* Ô tick là thứ bấm nhiều nhất trong app mà lại là mục tiêu nhỏ nhất: 23px,
+   trong khi Apple lẫn Google đều lấy 44px làm mức tối thiểu — nút ＋ ít dùng
+   hơn nhiều thì lại 54px. Nới VÙNG BẤM chứ không vẽ to ra: vẽ to thì cả danh
+   sách nặng nề, mà thứ cần sửa là ngón cái bấm không trượt.
+   Nới lệch — rộng về bên trái (mép đó chỉ có lề), hẹp về bên phải để không
+   nuốt cú chạm mở việc ngay cạnh. 13+23+8 = 44 ngang, 11+23+11 = 45 dọc. */
 .cb{width:23px;height:23px;border-radius:8px;border:2px solid var(--line);flex:none;
-  display:grid;place-items:center;font-size:13px;color:transparent}
+  display:grid;place-items:center;font-size:13px;color:transparent;position:relative}
+/* Ghi thẳng width/height chứ KHÔNG căng bằng bốn cạnh inset: .cb là grid có
+   place-items:center, mà con tuyệt đối của grid container thì thuộc tính căn
+   lề vẫn áp lên — hộp bị co về fit-content (rỗng = 0×0) rồi căn giữa, và
+   vùng bấm biến mất trong im lặng. Đo bằng elementFromPoint mới lòi ra. */
+.cb::after{content:'';position:absolute;width:44px;height:45px;left:-14px;top:-13px}
+/* Ô không bấm được thì đừng chừa vùng bấm — để nguyên thì cú chạm rơi vào
+   khoảng trống thay vì mở việc như người dùng mong đợi. */
+.cb.ro::after,.cb.mute::after{display:none}
 .cb.on{background:var(--ok);border-color:var(--ok);color:#0b1a12}
 
 .pg{height:5px;border-radius:5px;background:var(--bg3);overflow:hidden;margin-top:8px}
@@ -572,6 +586,18 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
   box-shadow:inset 3px 0 0 var(--warn),0 0 0 1px color-mix(in srgb,var(--warn) 30%,transparent);
   background:color-mix(in srgb,var(--warn) 8%,var(--bg2))}
 .chk.qua .tm{color:var(--warn)}
+/* ---------- đã lỡ hôm nay ----------
+   Quá giờ lâu tới mức hôm nay không cứu được nữa. Cố ý KHÔNG viền, KHÔNG
+   nền: nếu nó cũng hét lên thì cuối ngày cả danh sách lại vàng rực, đúng
+   cái bệnh vừa chữa. Chỉ một vệt xám bên trái và mờ đi — đủ để phân biệt
+   với việc chưa tới giờ, mà không tranh chỗ với việc còn kịp làm.
+   Vẫn tick được, vẫn mở được: lỡ không phải là xong. */
+.chk.lo,.rem.two.lo{box-shadow:inset 3px 0 0 var(--tx3)}
+.chk.lo,.rem.two.lo{opacity:.66}
+.chk.lo .tm{color:var(--tx3)}
+.chk .st.miss{color:var(--tx3)}
+.tlblk.lo{opacity:.42}
+.tlbar i.lo{opacity:.38}
 /* ---------- việc gấp ----------
    Kênh riêng, cố ý KHÔNG đụng viền / nền / vệt trái: mấy thứ đó đã dành cho
    trạng thái theo thời gian (vàng = quá giờ, xanh = xong). Ưu tiên là tính
