@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-09-27.3';
+const APP_BUILD = '2026-09-27.5';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -549,6 +549,8 @@ function ensure(){
   db.insights.forEach(o => {
     ['text','why','areaId','jId','offWhy','createdAt'].forEach(k => { if (typeof o[k] !== 'string') o[k] = ''; });
     o.lv = INSIGHT_LV[o.lv] ? +o.lv : 2;
+    /* vị trí tự xếp trong module; không có = chưa từng xếp, nằm cuối theo ngày ghi */
+    if (typeof o.ord !== 'number' || !isFinite(o.ord)) delete o.ord;
     o.off = !!o.off;
     /* bản đầu có hẹn ngày và "hiện lúc giao việc", đã bỏ — dọn khỏi bản ghi */
     ['when','from','to','days','giao'].forEach(k => delete o[k]);
@@ -1838,17 +1840,22 @@ const monthName = m => 'Tháng ' + (+String(m).slice(5, 7)) + '/' + String(m).sl
 const INSIGHT_LV = {1:'Quan trọng nhất', 2:'Quan trọng', 3:'Nên nhớ'};
 function insights(){ return alive(db.insights); }
 
-/* Module 1 trước. Trong cùng module: câu ghi trước nằm trên — số thứ tự
-   của một câu không nhảy lung tung mỗi lần sửa chữ.
-   Câu không gắn mảng nào là câu dùng chung — đang lọc Barbershop thì nó
+/* Module 1 trước. Trong cùng module: theo thứ tự mình tự xếp (ord); câu
+   chưa từng xếp — vừa ghi, hay vừa chuyển module — nằm cuối, theo ngày ghi.
+   Không xếp theo lần sửa gần nhất: sửa một chữ mà câu nhảy chỗ thì số thứ
+   tự vô nghĩa. */
+const insightOrd = o => typeof o.ord === 'number' ? o.ord : 1e9;
+const insightCmp = (a, b) => (a.lv - b.lv) || (insightOrd(a) - insightOrd(b))
+  || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
+  || String(a.id).localeCompare(String(b.id));
+/* Câu không gắn mảng nào là câu dùng chung — đang lọc Barbershop thì nó
    vẫn phải hiện, chứ không biến mất. */
 function insightList(areaId, off){
   const A = areaId === undefined ? 'all' : areaId;
   return insights()
     .filter(o => A === 'all' || !o.areaId || o.areaId === A)
     .filter(o => !!o.off === !!off)
-    .sort((a, b) => (a.lv - b.lv) || String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
-                 || String(a.id).localeCompare(String(b.id)));
+    .sort(insightCmp);
 }
 /* Mục hành trình này đã được đưa sang sổ chưa */
 const insightOfJourney = jid => insights().find(o => o.jId === jid) || null;

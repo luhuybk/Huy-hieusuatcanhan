@@ -97,8 +97,10 @@ const Sync = (() => {
     while (guard++ < 400){
       const d = await Server.pull(after);
       if (typeof d.cursor !== 'number') return srvPullOld(changed);   /* máy chủ bản cũ */
+      /* máy chủ vừa dựng lại / khôi phục: đẩy lại toàn bộ ở lượt sau */
+      if (d.reset) db.meta.srvHealed = false;
       d.rows.forEach(r => { changed += absorb(r); });
-      after = Math.max(after, d.cursor);
+      after = d.cursor;
       if (!d.more || !d.rows.length) break;
     }
     db.meta.srvSeq = after;

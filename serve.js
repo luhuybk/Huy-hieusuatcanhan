@@ -1138,10 +1138,12 @@ function api(req, res, body){
     case 'pull': {
       if (!need()) return;
       if (inp.after !== undefined){
-        const after = Math.max(0, parseInt(inp.after, 10) || 0);
+        let after = Math.max(0, parseInt(inp.after, 10) || 0);
+        const top = db().prepare('SELECT IFNULL(MAX(seq), 0) m FROM items').get().m;
+        const reset = after > top; if (reset) after = 0;
         const rows = db().prepare(`SELECT kind, item_id, data, updated_at, deleted, seq FROM items
                                    WHERE seq > ? ORDER BY seq ASC LIMIT ${PULL_LIMIT}`).all(after);
-        return send({ok:true, now:iso(), more: rows.length >= PULL_LIMIT,
+        return send({ok:true, now:iso(), more: rows.length >= PULL_LIMIT, reset,
           cursor: rows.reduce((m, r) => Math.max(m, Number(r.seq)), after),
           rows: rows.map(r => ({kind:r.kind, item_id:r.item_id, data:JSON.parse(r.data),
                                 updated_at:r.updated_at, deleted:!!r.deleted}))});

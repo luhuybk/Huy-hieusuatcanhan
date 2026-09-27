@@ -2505,7 +2505,26 @@ function journeyToInsight(o){
    để đọc câu kết luận, lý do chỉ cần khi muốn nhớ vì đâu mà ra câu đó. Câu
    không ghi lý do thì bấm vào là mở luôn form sửa, không có gì để thả ra.
    Mở/đóng chỉ là chuyện của màn hình đang xem, không lưu, không đồng bộ. */
-function insightRow(o, i){
+/* Chế độ sắp xếp: mỗi dòng có ↑ ↓, và dòng không thả "Vì sao" nữa — bấm
+   nhầm vào chữ lúc đang xếp thì chẳng có gì bung ra làm xô lệch cả danh sách.
+   Mũi tên chỉ tắt ở hai đầu mút của cả sổ: đầu Module 1 và đáy Module 3. */
+function insightSortRow(o, i, list){
+  const top = i === 0 && o.lv === 1, bot = i === list.length - 1 && o.lv === 3;
+  const nxt = (d, off) => off ? '' : (d < 0 && i === 0) ? ' title="Lên cuối Module ' + (o.lv - 1) + '"'
+                         : (d > 0 && i === list.length - 1) ? ' title="Xuống đầu Module ' + (o.lv + 1) + '"' : '';
+  return `<div class="irow sorting${S.movedInsight === o.id ? ' moved' : ''}">
+    <div class="ihd">
+      <span class="in">${i + 1}</span>
+      <span class="it grow">${nl(o.text)}</span>
+      <button class="imv" data-act="moveInsight" data-id="${o.id}" data-d="-1"${top ? ' disabled' : nxt(-1)}
+        aria-label="Đưa lên">↑</button>
+      <button class="imv" data-act="moveInsight" data-id="${o.id}" data-d="1"${bot ? ' disabled' : nxt(1)}
+        aria-label="Đưa xuống">↓</button>
+    </div>
+  </div>`;
+}
+function insightRow(o, i, list){
+  if (S.sortInsight && !o.off) return insightSortRow(o, i, list);
   const open = !!S.openWhy[o.id], has = !!(o.why || o.off);
   return `<div class="irow${open ? ' open' : ''}${o.off ? ' off' : ''}">
     <div class="ihd" data-act="${has ? 'insightWhy' : 'editInsight'}" data-id="${o.id}"${
@@ -2536,7 +2555,12 @@ function vInsights(){
     Ví dụ: <i>“Giao việc lớn trong 3 ngày sau khi nhận lương — lúc đó nhân viên làm hăng nhất.”</i>
     <div class="btns" style="justify-content:center;margin-top:14px">${addBtn}</div></div>`;
 
-  let h = `<div class="btns" style="margin-bottom:4px">${addBtn.replace('btn pri', 'btn pri grow')}</div>`;
+  const sortBtn = live.length > 1 ? `<button class="btn${S.sortInsight ? ' pri' : ''}" data-act="sortInsight">${
+    S.sortInsight ? '✓ Xong' : '⇅ Sắp xếp'}</button>` : '';
+  let h = S.sortInsight
+    ? `<div class="btns" style="margin-bottom:4px"><div class="dim grow" style="align-self:center;line-height:1.5">
+        Bấm ↑ ↓ để đổi thứ tự. Lên khỏi đầu module là sang module trên.</div>${sortBtn}</div>`
+    : `<div class="btns" style="margin-bottom:4px">${addBtn.replace('btn pri', 'btn pri grow')}${sortBtn}</div>`;
   [1, 2, 3].forEach(lv => {
     const list = live.filter(o => o.lv === lv);
     if (!list.length) return;
@@ -2544,7 +2568,7 @@ function vInsights(){
     h += insightBlock(list).replace('card ilist', 'card ilist lv' + lv);
   });
   if (!live.length) h += `<div class="empty" style="padding:22px">Mọi câu trong mảng này đều đã cất đi.</div>`;
-  if (off.length){
+  if (off.length && !S.sortInsight){
     h += secHd('Không còn đúng — ' + off.length,
       `<button data-act="showOffInsight">${S.showOffInsight ? 'Thu gọn ▲' : 'Xem ▼'}</button>`);
     if (S.showOffInsight) h += insightBlock(off);

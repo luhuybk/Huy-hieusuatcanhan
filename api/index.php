@@ -188,6 +188,13 @@ switch ($action) {
     /* Kéo theo số thứ tự máy chủ cấp — xem itemsSeq() trong lib.php */
     if (isset($in['after'])) {
       $after = max(0, (int)$in['after']);
+      /* Máy đang giữ số lớn hơn mọi thứ máy chủ có: cơ sở dữ liệu vừa được
+         dựng lại hay khôi phục từ bản sao lưu. Giữ nguyên số đó thì máy ấy
+         im lặng không nhận gì nữa — kéo lại từ đầu, và báo để nó đẩy lại
+         toàn bộ những gì nó có mà máy chủ vừa mất. */
+      $top = (int)db()->query('SELECT IFNULL(MAX(seq), 0) m FROM items')->fetch()['m'];
+      $reset = $after > $top;
+      if ($reset) $after = 0;
       $st = db()->prepare('SELECT kind, item_id, data, updated_at, deleted, seq FROM items
                            WHERE seq > ? ORDER BY seq ASC LIMIT ' . PULL_LIMIT);
       $st->execute([$after]);
@@ -200,7 +207,7 @@ switch ($action) {
         $r['deleted'] = (bool)$r['deleted'];
       }
       unset($r);
-      out(['ok' => true, 'rows' => $rows, 'cursor' => $cursor,
+      out(['ok' => true, 'rows' => $rows, 'cursor' => $cursor, 'reset' => $reset,
            'more' => count($rows) >= PULL_LIMIT, 'now' => isoNow()]);
     }
     /* Đường cũ theo mốc giờ — chỉ còn cho bản app cũ đang nằm trong bộ nhớ

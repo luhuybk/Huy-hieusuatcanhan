@@ -9,7 +9,7 @@ const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assi
             /* Lịch tháng: danh sách nhịp lặp mở sẵn, mục "ngày đã chọn" thu
                gọn — vào đây là để soi lịch định kỳ, không phải xem hôm nay. */
             showPlan:true, calList:false,
-            reviewMonth:'', showOffInsight:false, openWhy:{},
+            reviewMonth:'', showOffInsight:false, openWhy:{}, sortInsight:false, movedInsight:'',
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -80,7 +80,9 @@ function render(){
     const a = areaOf(S.area);
     $('#sub').textContent = TITLES[v][1] + (a && v !== 'people' && v !== 'settings' ? ' · lọc: ' + a.name : '');
   }
-  $('#fab').style.display = ['person','staff','settings','review','occasions','calendar','money','myday'].includes(v) ? 'none' : 'grid';
+  /* đang sắp xếp sổ bài học thì nút nổi đè lên ↑ ↓ của dòng cuối — cất đi */
+  $('#fab').style.display = ['person','staff','settings','review','occasions','calendar','money','myday'].includes(v)
+    || (v === 'insights' && S.sortInsight) ? 'none' : 'grid';
 
   const q = $('#q');
   if (q) q.oninput = e => {
@@ -1367,9 +1369,9 @@ function addInsight(pre){
   openForm({title:'Ghi một bài học', fields:insightFields(),
     values:insightVals(Object.assign({lv:2, areaId:S.area === 'all' ? '' : S.area}, pre)),
     onSave(v){
-      const o = stamp(Object.assign({why:'', areaId:'', jId:pre.jId || '', off:false, offWhy:'',
-                                     createdAt:today()}, insightNorm(v)));
-      db.insights.push(o); save();
+      const o = Object.assign({id:uid(), why:'', areaId:'', jId:pre.jId || '', off:false, offWhy:'',
+                               createdAt:today()}, insightNorm(v));
+      insightToEnd(o); db.insights.push(stamp(o)); save();
       S.view = 'insights'; render();
       toast('Đã ghi vào Module ' + o.lv);
     }});
@@ -1383,7 +1385,50 @@ function editInsight(id){
     onSave(v){
       /* bản ghi từ bản trước còn mang mấy ô hẹn ngày / lúc giao việc — bỏ đi */
       ['when','from','to','days','giao'].forEach(k => delete o[k]);
-      Object.assign(o, insightNorm(v)); stamp(o); save(); render(); }});
+      const lvWas = o.lv;
+      Object.assign(o, insightNorm(v));
+      if (o.lv !== lvWas) insightToEnd(o);   /* sang module mới thì vào cuối module đó */
+      stamp(o); save(); render(); }});
+}
+/* Đánh số lại một danh sách theo đúng thứ tự đang có; chỉ đóng dấu câu
+   nào thật sự đổi số, để lượt đồng bộ nhẹ. */
+const insightRenum = list => list.forEach((x, k) => { if (x.ord !== k){ x.ord = k; stamp(x); } });
+/* Đặt một câu vào CUỐI module của nó. Không dựa vào ngày ghi được: câu cũ
+   vừa chuyển module mang ngày ghi cũ, sẽ chen lên trước câu mới hơn. */
+function insightToEnd(o){
+  const list = insights().filter(x => !x.off && x.lv === o.lv && x.id !== o.id).sort(insightCmp);
+  insightRenum(list);
+  o.ord = list.length;
+}
+/* Đổi chỗ một câu lên/xuống một bậc.
+   Đang lọc theo mảng thì chỉ thấy một phần module, nên đổi chỗ với câu ĐANG
+   THẤY ngay trên/dưới nó, rồi đánh số lại cả module — không thì bấm ↑ mà
+   câu đổi chỗ với một câu bị ẩn, nhìn như không có gì xảy ra.
+   Lên khỏi đầu module thì sang cuối module trên, xuống khỏi đáy thì sang
+   đầu module dưới: kéo một câu từ "nên nhớ" lên "quan trọng nhất" không cần
+   mở form. Chỉ đóng dấu những câu thật sự đổi số, để lượt đồng bộ nhẹ. */
+function moveInsight(id, dir){
+  const o = db.insights.find(x => x.id === id); if (!o || o.off) return;
+  const mod = lv => insights().filter(x => !x.off && x.lv === lv).sort(insightCmp);
+  const renum = insightRenum;
+  const vis = insightList(S.area).filter(x => x.lv === o.lv);
+  const nb = vis[vis.findIndex(x => x.id === id) + dir];
+  const rest = mod(o.lv).filter(x => x.id !== id);
+  if (nb){
+    const j = rest.findIndex(x => x.id === nb.id);
+    rest.splice(dir < 0 ? j : j + 1, 0, o);
+    renum(rest);
+  } else {
+    const to = o.lv + dir; if (!INSIGHT_LV[to]) return;
+    renum(rest);
+    const dest = mod(to);
+    o.lv = to;
+    if (dir < 0) dest.push(o); else dest.unshift(o);
+    renum(dest); stamp(o);
+    toast('Chuyển sang Module ' + to + ' · ' + INSIGHT_LV[to].toLowerCase());
+  }
+  S.movedInsight = id;
+  save(); render();
 }
 /* Mở từ chỗ khác (tìm kiếm, hành trình) — sang đúng mục rồi mới mở form,
    để đóng form ra là thấy nó nằm ở đâu trong sổ. */
@@ -2417,6 +2462,8 @@ document.addEventListener('click', e => {
     case 'delInsight':  delInsight(id); break;
     case 'insightFromJourney': insightFromJourney(id); break;
     case 'showOffInsight': S.showOffInsight = !S.showOffInsight; render(); break;
+    case 'sortInsight': S.sortInsight = !S.sortInsight; S.movedInsight = ''; render(); break;
+    case 'moveInsight': moveInsight(id, +el.dataset.d); break;
     case 'insightWhy': S.openWhy[id] = !S.openWhy[id]; render(); break;
     case 'feedPick':  feedPick(); break;
     case 'feedPaste': feedPasteBox(); break;
