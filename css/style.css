@@ -545,6 +545,28 @@ body.locked .app,body.locked .fab{display:none}
 .jmore:hover .dim{color:var(--tx2)}
 .jless{cursor:pointer}
 
+/* ---------- sổ bài học ---------- */
+/* Viền trái theo cùng một luật với cả app: viền là trạng thái thời gian.
+   Đang đúng lúc thì vàng — đúng như việc đang tới giờ. */
+.icard{margin-bottom:10px;border-left:3px solid color-mix(in srgb,var(--acc) 45%,var(--line))}
+.icard.on{border-left-color:var(--warn);
+  background:color-mix(in srgb,var(--warn) 6%,var(--bg2))}
+.icard.off{border-left-color:var(--line);opacity:.62}
+.icard.off .it{text-decoration:line-through;text-decoration-color:var(--tx3)}
+.it{font-weight:700;font-size:15.5px;line-height:1.5;cursor:pointer}
+.iwhy{margin-top:6px;color:var(--tx2);font-size:13px;line-height:1.6;cursor:pointer}
+.btn.ison{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* Dải nhắc gọn ở Tổng quan, bảng Giao việc và form tạo thẻ */
+.istrip{margin:0 0 14px;padding:10px 12px;border-radius:var(--r);
+  background:color-mix(in srgb,var(--warn) 8%,var(--bg2));
+  border:1px solid color-mix(in srgb,var(--warn) 30%,var(--line))}
+.ish{font-size:11.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--warn);margin-bottom:4px;cursor:pointer}
+.isl{display:flex;align-items:center;gap:8px;padding:5px 0;line-height:1.5;
+  font-size:13.5px;cursor:pointer}
+.isl + .isl{border-top:1px dashed var(--line)}
+.sheet .ish,.sheet .isl{cursor:default}
+
 /* Ô tích chỉ để xem — cột không phải hôm nay thì không bấm được */
 .cb.mute{opacity:.4;cursor:default}
 /* Hàng trong tab Cả tuần đã tick xong: mờ và gạch, khớp với khối trên trục */

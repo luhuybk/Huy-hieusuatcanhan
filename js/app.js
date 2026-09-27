@@ -9,7 +9,7 @@ const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assi
             /* Lịch tháng: danh sách nhịp lặp mở sẵn, mục "ngày đã chọn" thu
                gọn — vào đây là để soi lịch định kỳ, không phải xem hôm nay. */
             showPlan:true, calList:false,
-            reviewMonth:'',
+            reviewMonth:'', showOffInsight:false,
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -25,6 +25,7 @@ const TITLES = {
   board:['Giao việc','Bảng tiến độ nhân viên'],
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
   journey:['Hành trình phát triển','Lỗi lầm, bài học, và thứ rút ra được'],
+  insights:['Sổ bài học','Điều đã nhận ra — quay lại đúng lúc cần'],
   myday:['Lịch của tôi','Việc trong ngày — theo giờ'],
   settings:['Cài đặt','Dữ liệu, nhắc nhở, đồng bộ']
 };
@@ -48,6 +49,7 @@ function render(){
     else if (v === 'ideas')    html = vIdeas();
     else if (v === 'daily')    html = vDaily();
     else if (v === 'journey')  html = vJourney();
+    else if (v === 'insights') html = vInsights();
     else if (v === 'board')    html = vBoard();
     else if (v === 'review')   html = vReview();
     else if (v === 'occasions')html = vOccasions();
@@ -628,6 +630,7 @@ function normalizeCard(v, prev){
 }
 function addCard(col){
   openForm({title:'Thẻ việc mới', fields:cardFields(),
+    top:insightStrip(insightsGiao(S.area), 'Trước khi giao', 'giao', true),
     values:{col:col||'idea', prio:'mid', progress:0, areaId:S.area==='all'?'':S.area,
             assignee: S.assignee!=='all' ? S.assignee : '', extra:'', extraPay:0, extraPaidDate:''},
     onSave(v){ db.cards.push(stamp(Object.assign({checklist:[], createdAt:today()}, normalizeCard(v))));
@@ -1232,7 +1235,7 @@ function handOffTask(id){
     top:`<div class="dim" style="margin:-6px 0 14px;line-height:1.65">
       Việc này sẽ rời danh sách của mình và thành một <b>thẻ việc đã giao</b>
       trong mục Công việc — vẫn theo dõi được, chỉ là không còn nằm trong
-      ngày của mình nữa.</div>`,
+      ngày của mình nữa.</div>` + insightStrip(insightsGiao(t.areaId || 'all'), 'Trước khi giao', 'giao', true),
     fields:[{k:'assignee', label:'Giao cho', type:'select',
              opts:[['','— chọn người nhận —'], ...names.map(n => [n, n])]},
             {k:'due', label:'Hạn chót', type:'date', half:true},
@@ -1335,6 +1338,116 @@ function delJourney(id){
   confirmBox('Xoá "' + (o.title || 'mục này') + '"?', () => {
     o.deleted = true; stamp(o); save(); closeModal(); render(); toast('Đã xoá');
   });
+}
+
+/* ---------------- sổ bài học ---------------- */
+/* Ô ngày trong tháng và ô thứ chỉ có nghĩa với đúng một kiểu hẹn — hiện cả
+   ba ô cùng lúc thì người ta điền cả ba rồi không biết cái nào đang ăn. */
+const insightFields = () => [
+  {k:'text',  label:'Điều nhận ra', type:'textarea', voice:true,
+   ph:'vd: giao việc lớn trong 3 ngày sau khi nhận lương — lúc đó nhân viên làm hăng nhất',
+   hint:'viết thành một câu dùng được cho lần sau, không phải kể lại chuyện'},
+  {k:'why',   label:'Vì sao / nhận ra từ đâu', type:'textarea', voice:true,
+   ph:'đã thấy chuyện gì mà rút ra được điều này'},
+  {k:'areaId', label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
+  {k:'giao',  label:'Hiện lúc giao việc', type:'select', half:true,
+   opts:[['', 'Không'], ['yes', 'Có — ở bảng Giao việc']]},
+  {k:'when',  label:'Tự nhắc lại vào', type:'select', opts:Object.entries(INSIGHT_WHEN),
+   hint:'đúng những ngày này, câu này hiện ở Tổng quan và trong tin Telegram buổi sáng'},
+  {k:'from',  label:'Từ ngày', type:'number', half:true, ph:'5', hint:'ngày trong tháng, 1–31'},
+  {k:'to',    label:'Đến ngày', type:'number', half:true, ph:'8',
+   hint:'nhỏ hơn "từ ngày" = vắt qua đầu tháng sau'},
+  {k:'days',  label:'Vào thứ', type:'days'}
+];
+const insightOffFields = () => [
+  {k:'off',    label:'Còn đúng không', type:'select',
+   opts:[['', 'Vẫn đúng'], ['yes', 'Không còn đúng nữa — cất xuống cuối sổ']]},
+  {k:'offWhy', label:'Vì sao không còn đúng', ph:'để lần sau khỏi nhận ra lại từ đầu'}
+];
+function insightWhenToggle(){
+  const w = document.getElementById('f_when'); if (!w) return;
+  const show = () => {
+    const box = id => { const el = document.getElementById('f_' + id); return el ? el.closest('.f') : null; };
+    [['from', 'thang'], ['to', 'thang'], ['days', 'tuan']].forEach(([k, on]) => {
+      const f = box(k); if (f) f.style.display = w.value === on ? '' : 'none';
+    });
+  };
+  w.addEventListener('change', show); show();
+}
+function insightCheck(v){
+  if (v.when === 'thang'){
+    const f = +v.from, t = +(v.to || v.from);
+    if (!(f >= 1 && f <= 31) || !(t >= 1 && t <= 31)) return 'Ngày trong tháng phải từ 1 tới 31';
+  }
+  if (v.when === 'tuan' && !(v.days || []).length) return 'Chọn ít nhất một thứ trong tuần';
+  return '';
+}
+function insightNorm(v){
+  v.giao = v.giao === 'yes' || v.giao === true;
+  if (v.off !== undefined) v.off = v.off === 'yes' || v.off === true;
+  if (!INSIGHT_WHEN[v.when]) v.when = '';
+  v.from = Math.min(31, Math.max(1, parseInt(v.from, 10) || 1));
+  v.to   = Math.min(31, Math.max(1, parseInt(v.to, 10) || v.from));
+  if (!Array.isArray(v.days)) v.days = [];
+  return v;
+}
+const insightVals = o => Object.assign({}, o, {giao: o.giao ? 'yes' : '', off: o.off ? 'yes' : '',
+  from: o.when === 'thang' ? o.from : '', to: o.when === 'thang' ? o.to : ''});
+function addInsight(pre){
+  pre = pre || {};
+  openForm({title:'Ghi một bài học', fields:insightFields(), validate:insightCheck,
+    values:insightVals(Object.assign({when:'', days:[], areaId:S.area === 'all' ? '' : S.area}, pre)),
+    onSave(v){
+      const o = stamp(Object.assign({why:'', areaId:'', jId:pre.jId || '', proof:[], off:false, offWhy:'',
+                                     createdAt:today()}, insightNorm(v)));
+      db.insights.push(o); save();
+      S.view = 'insights'; render();
+      toast(o.when ? 'Đã ghi · sẽ tự nhắc lại ' + insightWhenText(o) : 'Đã ghi vào Sổ bài học');
+    }});
+  insightWhenToggle();
+}
+function editInsight(id){
+  const o = db.insights.find(x => x.id === id); if (!o) return;
+  openForm({title:'Sửa bài học', fields:insightFields().concat(insightOffFields()),
+    validate:insightCheck, values:insightVals(o),
+    extra:`${insightSure(o) ? `<div class="dim" style="margin-bottom:10px;line-height:1.6">Đã thấy đúng
+        ${insightSure(o)} lần: ${o.proof.slice(-6).map(fmtDate).join(', ')}${o.proof.length > 6 ? '…' : ''}</div>` : ''}
+      <button type="button" class="btn full dngr" style="margin-bottom:10px"
+        data-act="delInsight" data-id="${id}">Xoá hẳn câu này</button>`,
+    onSave(v){ Object.assign(o, insightNorm(v)); stamp(o); save(); render(); }});
+  insightWhenToggle();
+}
+/* Mở từ chỗ khác (tìm kiếm, hành trình) — sang đúng mục rồi mới mở form,
+   để đóng form ra là thấy nó nằm ở đâu trong sổ. */
+function openInsight(id){
+  const o = db.insights.find(x => x.id === id); if (!o) return;
+  closeModal();
+  S.view = 'insights'; if (o.off) S.showOffInsight = true;
+  render(); editInsight(id);
+}
+function delInsight(id){
+  const o = db.insights.find(x => x.id === id); if (!o) return;
+  confirmBox('Xoá hẳn câu này? Nếu chỉ là không còn đúng thì nên cất đi thay vì xoá.', () => {
+    o.deleted = true; stamp(o); save(); closeModal(); render(); toast('Đã xoá');
+  });
+}
+/* Một ngày chỉ đếm một lần — bấm lại là bỏ, phòng lỡ tay */
+function proveInsight(id){
+  const o = db.insights.find(x => x.id === id); if (!o || o.off) return;
+  const d = today();
+  if (o.proof.includes(d)){ o.proof = o.proof.filter(x => x !== d); stamp(o); save(); render();
+    toast('Đã bỏ lần ghi nhận hôm nay'); return; }
+  o.proof = o.proof.concat(d).sort(); stamp(o); save(); render();
+  const n = insightSure(o);
+  toast(n === 3 ? 'Đúng lần thứ 3 — giờ nó là nguyên tắc rồi' : 'Đúng thêm lần nữa · ' + n + ' lần');
+}
+function insightFromJourney(jid){
+  const j = db.journey.find(x => x.id === jid); if (!j) return;
+  const had = insightOfJourney(jid);
+  if (had){ openInsight(had.id); return; }
+  closeModal();
+  addInsight({text:j.lesson || '', why:(j.title || '') + (j.date ? ' (' + fmtDate(j.date) + ')' : ''),
+              areaId:j.areaId || '', jId:j.id});
 }
 
 /* ---------------- bản đang chạy so với bản trên máy chủ ----------------
@@ -2096,6 +2209,7 @@ document.addEventListener('click', e => {
       else if (S.view === 'ideas') addIdea();
       else if (S.view === 'daily') addRem();
       else if (S.view === 'journey') addJourney('hoc');
+      else if (S.view === 'insights') addInsight();
       else if (S.view === 'board') addCard('idea');
       else quickAdd();
       break;
@@ -2242,6 +2356,7 @@ document.addEventListener('click', e => {
         render(); editIdea(id); break; }
       else if (k === 'card'){ S.view = 'board'; render(); openCard(id); break; }
       else if (k === 'journey'){ S.view = 'journey'; S.journeytab = 'all'; render(); viewJourney(id); break; }
+      else if (k === 'insight'){ openInsight(id); break; }
       else if (k === 'occasion'){ S.view = 'occasions'; }
       render(); break;
     }
@@ -2338,6 +2453,13 @@ document.addEventListener('click', e => {
     case 'viewJourney': viewJourney(id); break;
     case 'editJourney': editJourney(id); break;
     case 'delJourney': delJourney(id); break;
+    case 'addInsight':  addInsight(); break;
+    case 'editInsight': editInsight(id); break;
+    case 'openInsight': openInsight(id); break;
+    case 'delInsight':  delInsight(id); break;
+    case 'proveInsight': proveInsight(id); break;
+    case 'insightFromJourney': insightFromJourney(id); break;
+    case 'showOffInsight': S.showOffInsight = !S.showOffInsight; render(); break;
     case 'feedPick':  feedPick(); break;
     case 'feedPaste': feedPasteBox(); break;
     case 'feedSwap':  feedPick(id); break;

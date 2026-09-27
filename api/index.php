@@ -75,6 +75,15 @@ function failCount(): int {
   $st->execute([clientIp()]);
   return (int)$st->fetch()['c'];
 }
+/* Đếm theo IP thôi thì chưa chặn được ai: IP lấy từ header CF-Connecting-IP,
+   mà header thì người gửi tự điền — đổi một số khác mỗi lần là không bao giờ
+   chạm mốc 8. Thêm một trần chung cho mọi IP. App một người dùng, 40 lần sai
+   trong 15 phút thì chắc chắn không phải mình gõ nhầm. Máy đang đăng nhập
+   sẵn không bị ảnh hưởng — trần này chỉ chặn đăng nhập MỚI. */
+const FAIL_ALL = 40;
+function failAll(): int {
+  return (int)db()->query('SELECT COUNT(*) c FROM login_fails')->fetch()['c'];
+}
 
 /* Trạng thái Telegram gửi về cho giao diện. Mã bot không bao giờ có ở đây. */
 function tgState(): array {
@@ -135,7 +144,7 @@ switch ($action) {
   }
 
   case 'login': {
-    if (failCount() >= FAIL_MAX)
+    if (failCount() >= FAIL_MAX || failAll() >= FAIL_ALL)
       fail('Sai quá nhiều lần. Thử lại sau 15 phút.', 429);
 
     $pw = (string)($in['password'] ?? '');
@@ -176,6 +185,26 @@ switch ($action) {
   /* kéo về những bản ghi mới hơn mốc đang giữ */
   case 'pull': {
     requireAuth();
+    /* Kéo theo số thứ tự máy chủ cấp — xem itemsSeq() trong lib.php */
+    if (isset($in['after'])) {
+      $after = max(0, (int)$in['after']);
+      $st = db()->prepare('SELECT kind, item_id, data, updated_at, deleted, seq FROM items
+                           WHERE seq > ? ORDER BY seq ASC LIMIT ' . PULL_LIMIT);
+      $st->execute([$after]);
+      $rows = $st->fetchAll();
+      $cursor = $after;
+      foreach ($rows as &$r) {
+        $cursor = max($cursor, (int)$r['seq']);
+        unset($r['seq']);
+        $r['data']    = json_decode($r['data'], true);
+        $r['deleted'] = (bool)$r['deleted'];
+      }
+      unset($r);
+      out(['ok' => true, 'rows' => $rows, 'cursor' => $cursor,
+           'more' => count($rows) >= PULL_LIMIT, 'now' => isoNow()]);
+    }
+    /* Đường cũ theo mốc giờ — chỉ còn cho bản app cũ đang nằm trong bộ nhớ
+       đệm của máy nào đó, tới lần mở sau nó tự lên bản mới. */
     $since = (string)($in['since'] ?? '');
     $st = db()->prepare('SELECT kind, item_id, data, updated_at, deleted FROM items
                          WHERE updated_at >= ? ORDER BY updated_at ASC LIMIT ' . PULL_LIMIT);

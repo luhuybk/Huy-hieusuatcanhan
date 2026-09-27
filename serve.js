@@ -50,6 +50,15 @@ function db(){
     CREATE TABLE IF NOT EXISTS login_fails (ip TEXT, at INTEGER);
     CREATE TABLE IF NOT EXISTS conf (k TEXT PRIMARY KEY, v TEXT);
     CREATE TABLE IF NOT EXISTS sent (k TEXT PRIMARY KEY, at INTEGER);`);
+  /* số thứ tự máy chủ cấp — đúng như itemsSeq() trong api/lib.php */
+  if (!store.prepare('PRAGMA table_info(items)').all().some(c => c.name === 'seq'))
+    store.exec(`ALTER TABLE items ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;
+                UPDATE items SET seq = rowid;`);
+  store.exec(`CREATE INDEX IF NOT EXISTS items_seq ON items(seq);
+    CREATE TRIGGER IF NOT EXISTS items_seq_ins AFTER INSERT ON items BEGIN
+      UPDATE items SET seq = (SELECT IFNULL(MAX(seq), 0) + 1 FROM items) WHERE rowid = NEW.rowid; END;
+    CREATE TRIGGER IF NOT EXISTS items_seq_upd AFTER UPDATE OF data, updated_at, deleted ON items BEGIN
+      UPDATE items SET seq = (SELECT IFNULL(MAX(seq), 0) + 1 FROM items) WHERE rowid = NEW.rowid; END;`);
   return store;
 }
 
@@ -335,6 +344,17 @@ function snoozeAt(t){
   return m ? Math.floor(new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime()/1000) : 0;
 }
 
+/* bản song sinh của insightOnPhp() bên PHP */
+function insightOnJs(o, iso){
+  const d = new Date(iso + 'T00:00:00');
+  if (o.when === 'thang'){
+    const n = d.getDate(), last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    const f = Math.min(Math.max(1, +o.from || 1), last), t = Math.min(Math.max(1, +o.to || f), last);
+    return f <= t ? n >= f && n <= t : n >= f || n <= t;
+  }
+  if (o.when === 'tuan') return (o.days || []).map(Number).includes(d.getDay());
+  return false;
+}
 function buildDigest(){
   const now = new Date();
   const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
@@ -355,6 +375,13 @@ function buildDigest(){
       + gaps.slice(0,3).map(g => winText(g.from) + '–' + winText(g.to)).join(', ')
       + (gaps.length > 3 ? '…' : '');
     lines.push(line);
+  }
+
+  const ins = itemsOf('insights').filter(o => !o.off && String(o.text || '').trim() && insightOnJs(o, today));
+  if (ins.length){
+    lines.push('🧭 Nhớ lại hôm nay');
+    ins.slice(0,4).forEach(o => lines.push('   • ' + String(o.text).slice(0,160)));
+    if (ins.length > 4) lines.push(`   … và ${ins.length - 4} câu nữa trong Sổ bài học`);
   }
 
   const workOn = +confGet('tg_work_hour','-1') >= 0;
@@ -1101,7 +1128,8 @@ function api(req, res, body){
     case 'login': {
       db().prepare('DELETE FROM login_fails WHERE at < ?').run(Math.floor(Date.now()/1000) - FAIL_WIN);
       const fails = db().prepare('SELECT COUNT(*) c FROM login_fails WHERE ip = ?').get(ip).c;
-      if (fails >= FAIL_MAX) return fail('Sai quá nhiều lần. Thử lại sau 15 phút.', 429);
+      const failsAll = db().prepare('SELECT COUNT(*) c FROM login_fails').get().c;
+      if (fails >= FAIL_MAX || failsAll >= 40) return fail('Sai quá nhiều lần. Thử lại sau 15 phút.', 429);
       if (!checkPassword(String(inp.password || ''))){
         db().prepare('INSERT INTO login_fails (ip, at) VALUES (?, ?)').run(ip, Math.floor(Date.now()/1000));
         return fail(`Sai mật khẩu. Còn ${Math.max(0, FAIL_MAX - fails - 1)} lần thử.`, 401);
@@ -1127,6 +1155,15 @@ function api(req, res, body){
 
     case 'pull': {
       if (!need()) return;
+      if (inp.after !== undefined){
+        const after = Math.max(0, parseInt(inp.after, 10) || 0);
+        const rows = db().prepare(`SELECT kind, item_id, data, updated_at, deleted, seq FROM items
+                                   WHERE seq > ? ORDER BY seq ASC LIMIT ${PULL_LIMIT}`).all(after);
+        return send({ok:true, now:iso(), more: rows.length >= PULL_LIMIT,
+          cursor: rows.reduce((m, r) => Math.max(m, Number(r.seq)), after),
+          rows: rows.map(r => ({kind:r.kind, item_id:r.item_id, data:JSON.parse(r.data),
+                                updated_at:r.updated_at, deleted:!!r.deleted}))});
+      }
       const rows = db().prepare(`SELECT kind, item_id, data, updated_at, deleted FROM items
                                  WHERE updated_at >= ? ORDER BY updated_at ASC LIMIT ${PULL_LIMIT}`)
                        .all(String(inp.since || ''));

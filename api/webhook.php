@@ -108,7 +108,7 @@ if (preg_match('#^remdone:(.+)$#', $data, $m)) {
   if ($ok && $msgId) {
     httpPostJson("https://api.telegram.org/bot$token/editMessageText", [
       'chat_id' => $chatId, 'message_id' => $msgId, 'parse_mode' => 'HTML',
-      'text' => (string)($msg['text'] ?? '') . "\n\n✅ <b>Xong hôm nay</b>" . tgEsc($khi),
+      'text' => tgEsc((string)($msg['text'] ?? '')) . "\n\n✅ <b>Xong hôm nay</b>" . tgEsc($khi),
     ]);
     tgForget(tgMsgKey('rem', $m[1]));      /* sửa tay rồi thì khỏi sửa lần nữa */
   }
@@ -156,7 +156,7 @@ if (preg_match('#^idea:(go|drop|snz):([^:]+)(?::([dwmy]\d+))?$#', $data, $m)) {
   if ($ok && $msgId) {
     httpPostJson("https://api.telegram.org/bot$token/editMessageText", [
       'chat_id' => $chatId, 'message_id' => $msgId, 'parse_mode' => 'HTML',
-      'text' => (string)($msg['text'] ?? '') . "\n\n" . $note,
+      'text' => tgEsc((string)($msg['text'] ?? '')) . "\n\n" . $note,
     ]);
   }
   echo '{}';
@@ -236,7 +236,10 @@ if ($act !== '') {
       'text' => $ok ? $said : 'Không tìm thấy việc này (có thể đã xoá)',
     ]);
     if ($ok && $msgId) {
-      $origText = (string)($msg['text'] ?? '');
+      /* Telegram trả về chữ TRƠN của tin cũ (đã bỏ định dạng), mà gửi lại
+         thì dùng parse_mode HTML: tên việc có "<" hay "&" là Telegram từ
+         chối cả lượt sửa, tin cũ nằm nguyên với bộ nút còn bấm được. */
+      $origText = tgEsc((string)($msg['text'] ?? ''));
       $note = $act !== 'done' ? '⏰ <b>Đã dời tới ' . date('H:i d/m', $until) . '</b>'
             : ($rolled !== '' ? '✅ <b>Xong kỳ này</b> — lần tới ' . date('d/m', strtotime($rolled)) . $chuoi
                               : '✅ <b>Đã xong</b>');

@@ -75,6 +75,7 @@ function db(): PDO {
       updated_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (kind, item_id))');
   $pdo->exec('CREATE INDEX IF NOT EXISTS items_upd ON items(updated_at)');
+  itemsSeq($pdo);
   $pdo->exec('CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY, created_at TEXT, expires_at TEXT, label TEXT)');
   $pdo->exec('CREATE TABLE IF NOT EXISTS login_fails (ip TEXT, at INTEGER)');
@@ -92,6 +93,31 @@ function db(): PDO {
   $pdo->exec('CREATE TABLE IF NOT EXISTS tgout (msg INTEGER PRIMARY KEY, at INTEGER NOT NULL)');
   $pdo->exec('CREATE INDEX IF NOT EXISTS tgout_at ON tgout(at)');
   return $pdo;
+}
+
+/* Số thứ tự do MÁY CHỦ cấp mỗi lần một dòng được ghi — máy nào kéo về cũng
+   kéo theo số này, không theo updated_at nữa.
+   updated_at là giờ của máy đã sửa, không phải giờ tới máy chủ. Điện thoại
+   sửa lúc mất sóng 10:00, có sóng lại đẩy lên lúc 10:05 — trong khi máy tính
+   đã kéo tới mốc 10:03 từ trước. Bản sửa mang giờ 10:00, nằm sau lưng mốc,
+   và máy tính không bao giờ thấy nó nữa. Cũng vì mốc là giờ, hơn 500 dòng
+   trùng đúng một mili giây (xoá hàng loạt, nhập file) là lượt kéo đứng
+   nguyên một chỗ mãi mãi. Số thứ tự thì không trùng và chỉ tăng.
+   Cấp bằng trigger để mọi đường ghi — đồng bộ, nút Telegram, ghi nhanh —
+   đều được đánh số mà không phải nhớ sửa từng chỗ. */
+function itemsSeq(PDO $pdo): void {
+  $cols = array_column($pdo->query('PRAGMA table_info(items)')->fetchAll(), 'name');
+  if (!in_array('seq', $cols, true)) {
+    try {
+      $pdo->exec('ALTER TABLE items ADD COLUMN seq INTEGER NOT NULL DEFAULT 0');
+      $pdo->exec('UPDATE items SET seq = rowid');
+    } catch (Throwable $e) { /* yêu cầu khác vừa thêm cột trước — không sao */ }
+  }
+  $pdo->exec('CREATE INDEX IF NOT EXISTS items_seq ON items(seq)');
+  $pdo->exec('CREATE TRIGGER IF NOT EXISTS items_seq_ins AFTER INSERT ON items BEGIN
+      UPDATE items SET seq = (SELECT IFNULL(MAX(seq), 0) + 1 FROM items) WHERE rowid = NEW.rowid; END');
+  $pdo->exec('CREATE TRIGGER IF NOT EXISTS items_seq_upd AFTER UPDATE OF data, updated_at, deleted ON items BEGIN
+      UPDATE items SET seq = (SELECT IFNULL(MAX(seq), 0) + 1 FROM items) WHERE rowid = NEW.rowid; END');
 }
 
 function confGet(string $k, $def = null) {
@@ -697,6 +723,23 @@ function webhookSecret(): string {
 /* chữ do người dùng nhập phải rào lại, nếu không dấu < > sẽ làm hỏng thẻ HTML */
 function tgEsc(string $s): string { return htmlspecialchars($s, ENT_NOQUOTES, 'UTF-8'); }
 
+/* Bản song sinh của insightOn() trong js/state.js — ngày 31 ở tháng ngắn
+   là ngày cuối tháng, khoảng ngược chiều (28 → 3) vắt qua đầu tháng sau. */
+function insightOnPhp(array $o, string $iso): bool {
+  $t = strtotime($iso . ' 00:00:00');
+  $when = (string)($o['when'] ?? '');
+  if ($when === 'thang') {
+    $n = (int)date('j', $t); $last = (int)date('t', $t);
+    $f  = min(max(1, (int)($o['from'] ?? 1)), 31);
+    $to = (int)($o['to'] ?? 0);
+    $to = min($to >= 1 ? $to : $f, 31);          /* trống = một ngày, như bên app */
+    $f  = min($f, $last); $to = min($to, $last);
+    return $f <= $to ? ($n >= $f && $n <= $to) : ($n >= $f || $n <= $to);
+  }
+  if ($when === 'tuan') return in_array((int)date('w', $t), array_map('intval', (array)($o['days'] ?? [])), true);
+  return false;
+}
+
 /* ---------------- bản tóm tắt hằng ngày ----------------
    Đọc thẳng dữ liệu đã đồng bộ nên vẫn đúng kể cả khi bạn không mở app. */
 function buildDigest(): array {
@@ -725,6 +768,20 @@ function buildDigest(): array {
       $line .= "\n   Còn rảnh: " . implode(', ', $txt) . (count($gaps) > 3 ? '…' : '');
     }
     $lines[] = $line;
+  }
+
+  /* Sổ bài học: câu nào hẹn đúng hôm nay thì nhắc — "giao việc lớn trong 3
+     ngày sau lương" chỉ có ích khi nó tới đúng mấy ngày đó, lúc 7h sáng
+     còn kịp xếp việc theo, chứ không phải lúc mở sổ ra đọc. */
+  $ins = [];
+  foreach (itemsOf('insights') as $o) {
+    if (!empty($o['off']) || trim((string)($o['text'] ?? '')) === '') continue;
+    if (insightOnPhp($o, $today)) $ins[] = $o;
+  }
+  if ($ins) {
+    $lines[] = '🧭 <b>Nhớ lại hôm nay</b>';
+    foreach (array_slice($ins, 0, 4) as $o) $lines[] = '   • ' . tgEsc(cutTitle($o['text'], 160));
+    if (count($ins) > 4) $lines[] = '   <i>… và ' . (count($ins) - 4) . ' câu nữa trong Sổ bài học</i>';
   }
 
   /* Việc đến hạn. Nếu bảng công việc riêng đang bật thì bỏ khối này đi,

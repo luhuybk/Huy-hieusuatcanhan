@@ -124,7 +124,8 @@ const Server = (() => {
     mode = 'anon'; clearGrace();
   }
 
-  const pull  = since => call('pull', {since: since || ''});
+  /* số → kéo theo số thứ tự máy chủ cấp; chuỗi → đường cũ theo mốc giờ */
+  const pull  = at => call('pull', typeof at === 'number' ? {after: at} : {since: at || ''});
   const push  = rows  => call('push', {rows});
   const stats = ()    => call('stats');
 

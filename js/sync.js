@@ -59,20 +59,56 @@ const Sync = (() => {
   }
 
   /* ============ đường 1: máy chủ của bạn ============ */
+  /* Mốc đẩy không được vượt quá giờ của CHÍNH máy này lúc bắt đầu đẩy.
+     Trong đống vừa đẩy có cả bản ghi kéo từ máy khác về, mang giờ của máy
+     kia — máy kia chạy nhanh hơn vài giây là mốc nhảy lên trước giờ của máy
+     này, và việc mình sửa ngay sau đó mang giờ "cũ hơn mốc", không bao giờ
+     được đẩy lên. Chặn trần ở giờ bắt đầu thì cùng lắm đẩy thừa một bản
+     mà máy chủ bỏ qua. */
+  const capAt = (rows, since, started) => {
+    const max = rows.reduce((m,r) => r.updated_at > m ? r.updated_at : m, since);
+    return max > started ? started : max;
+  };
   async function srvPush(){
-    const since = db.meta.srvPush || '';
+    /* Lần đầu chạy bản kéo-theo-số-thứ-tự: đẩy lại toàn bộ một lần. Máy chủ
+       bỏ qua bản nào không mới hơn, nên chỉ những bản sửa từng bị kẹt lại
+       trên máy này (xem capAt) mới thật sự được ghi. */
+    const since = db.meta.srvHealed ? (db.meta.srvPush || '') : '';
+    const started = now();
     const rows = localRows(since);
-    if (!rows.length) return 0;
-    /* chia lô để không vượt giới hạn kích thước yêu cầu */
-    for (let i = 0; i < rows.length; i += 400){
-      await Server.push(rows.slice(i, i + 400));
+    if (rows.length){
+      /* chia lô để không vượt giới hạn kích thước yêu cầu */
+      for (let i = 0; i < rows.length; i += 400){
+        await Server.push(rows.slice(i, i + 400));
+      }
+      db.meta.srvPush = capAt(rows, since, started);
     }
-    db.meta.srvPush = rows.reduce((m,r) => r.updated_at > m ? r.updated_at : m, since);
+    db.meta.srvHealed = true;
     return rows.length;
   }
+  /* Kéo theo số thứ tự máy chủ cấp cho mỗi lần ghi (xem itemsSeq trong
+     api/lib.php), không theo updated_at. updated_at là giờ của máy đã sửa:
+     bản sửa lúc mất sóng đẩy lên muộn mang giờ cũ hơn mốc đang giữ, và theo
+     mốc giờ thì máy này không bao giờ thấy nó. Lần đầu (chưa có số) kéo lại
+     từ đầu — cũng là lúc nhặt lại những bản đã lọt mất theo cách đó. */
   async function srvPull(){
-    let cursor = db.meta.srvPull || '';
+    let after = typeof db.meta.srvSeq === 'number' ? db.meta.srvSeq : 0;
     let changed = 0, guard = 0;
+    while (guard++ < 400){
+      const d = await Server.pull(after);
+      if (typeof d.cursor !== 'number') return srvPullOld(changed);   /* máy chủ bản cũ */
+      d.rows.forEach(r => { changed += absorb(r); });
+      after = Math.max(after, d.cursor);
+      if (!d.more || !d.rows.length) break;
+    }
+    db.meta.srvSeq = after;
+    db.meta.lastPull = now();
+    return changed;
+  }
+  /* Đường cũ theo mốc giờ — chỉ dùng khi api/ trên máy chủ còn là bản cũ */
+  async function srvPullOld(changed){
+    let cursor = db.meta.srvPull || '';
+    let guard = 0;
     while (guard++ < 200){
       const d = await Server.pull(cursor);
       d.rows.forEach(r => { changed += absorb(r); });
@@ -103,6 +139,7 @@ const Sync = (() => {
   }
   async function supaPush(){
     const since = db.meta.lastPush || null;
+    const started = now();
     const rows = localRows(since).map(r => Object.assign({workspace: cfg().workspace}, r));
     if (!rows.length) return 0;
     const res = await req(endpoint(), {
@@ -111,7 +148,7 @@ const Sync = (() => {
       body: JSON.stringify(rows)
     });
     if (!res.ok) throw new Error('Đẩy dữ liệu lỗi ' + res.status + ': ' + (await res.text()).slice(0,140));
-    db.meta.lastPush = rows.reduce((m,r) => r.updated_at > m ? r.updated_at : m, since || '');
+    db.meta.lastPush = capAt(rows, since || '', started);
     return rows.length;
   }
   /* Supabase chỉ trả tối đa 1000 dòng mỗi lượt → phải lấy theo trang */
@@ -215,7 +252,7 @@ const Sync = (() => {
 
   /* Máy này vừa đăng nhập lần đầu: quên mốc cũ để kéo lại từ đầu */
   function resetCursor(){
-    db.meta.srvPull = ''; db.meta.srvPush = '';
+    db.meta.srvPull = ''; db.meta.srvPush = ''; db.meta.srvSeq = null;
     db.meta.lastPull = null; db.meta.lastPush = null;
   }
 
