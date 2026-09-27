@@ -1367,7 +1367,7 @@ function addInsight(pre){
   openForm({title:'Ghi một bài học', fields:insightFields(),
     values:insightVals(Object.assign({lv:2, areaId:S.area === 'all' ? '' : S.area}, pre)),
     onSave(v){
-      const o = stamp(Object.assign({why:'', areaId:'', jId:pre.jId || '', proof:[], off:false, offWhy:'',
+      const o = stamp(Object.assign({why:'', areaId:'', jId:pre.jId || '', off:false, offWhy:'',
                                      createdAt:today()}, insightNorm(v)));
       db.insights.push(o); save();
       S.view = 'insights'; render();
@@ -1378,9 +1378,7 @@ function editInsight(id){
   const o = db.insights.find(x => x.id === id); if (!o) return;
   openForm({title:'Sửa bài học', fields:insightFields().concat(insightOffFields()),
     values:insightVals(o),
-    extra:`${insightSure(o) ? `<div class="dim" style="margin-bottom:10px;line-height:1.6">Đã thấy đúng
-        ${insightSure(o)} lần: ${o.proof.slice(-6).map(fmtDate).join(', ')}${o.proof.length > 6 ? '…' : ''}</div>` : ''}
-      <button type="button" class="btn full dngr" style="margin-bottom:10px"
+    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px"
         data-act="delInsight" data-id="${id}">Xoá hẳn câu này</button>`,
     onSave(v){
       /* bản ghi từ bản trước còn mang mấy ô hẹn ngày / lúc giao việc — bỏ đi */
@@ -1400,16 +1398,6 @@ function delInsight(id){
   confirmBox('Xoá hẳn câu này? Nếu chỉ là không còn đúng thì nên cất đi thay vì xoá.', () => {
     o.deleted = true; stamp(o); save(); closeModal(); render(); toast('Đã xoá');
   });
-}
-/* Một ngày chỉ đếm một lần — bấm lại là bỏ, phòng lỡ tay */
-function proveInsight(id){
-  const o = db.insights.find(x => x.id === id); if (!o || o.off) return;
-  const d = today();
-  if (o.proof.includes(d)){ o.proof = o.proof.filter(x => x !== d); stamp(o); save(); render();
-    toast('Đã bỏ lần ghi nhận hôm nay'); return; }
-  o.proof = o.proof.concat(d).sort(); stamp(o); save(); render();
-  const n = insightSure(o);
-  toast(n === 3 ? 'Đúng lần thứ 3 — giờ nó là nguyên tắc rồi' : 'Đúng thêm lần nữa · ' + n + ' lần');
 }
 function insightFromJourney(jid){
   const j = db.journey.find(x => x.id === jid); if (!j) return;
@@ -2427,7 +2415,6 @@ document.addEventListener('click', e => {
     case 'editInsight': editInsight(id); break;
     case 'openInsight': openInsight(id); break;
     case 'delInsight':  delInsight(id); break;
-    case 'proveInsight': proveInsight(id); break;
     case 'insightFromJourney': insightFromJourney(id); break;
     case 'showOffInsight': S.showOffInsight = !S.showOffInsight; render(); break;
     case 'insightWhy': S.openWhy[id] = !S.openWhy[id]; render(); break;

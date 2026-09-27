@@ -546,21 +546,22 @@ body.locked .app,body.locked .fab{display:none}
 .jless{cursor:pointer}
 
 /* ---------- sổ bài học ---------- */
-/* Viền trái theo mức quan trọng: Module 1 đậm nhất, Module 3 gần như chìm */
-.icard{margin-bottom:10px;border-left:3px solid var(--line)}
-.icard.lv1{border-left-color:var(--warn)}
-.icard.lv2{border-left-color:color-mix(in srgb,var(--acc) 60%,var(--line))}
-.icard.off{border-left-color:var(--line);opacity:.62}
-.icard.off .it{text-decoration:line-through;text-decoration-color:var(--tx3)}
-.it{font-weight:700;font-size:15.5px;line-height:1.5;cursor:pointer}
-.icard.lv1 .it{font-size:16.5px}
-/* Nút "Vì sao" — chữ nhỏ nhưng vùng chạm đủ cao để bấm bằng ngón cái */
-.iwhyt{display:inline-flex;align-items:center;min-height:32px;margin-top:4px;padding:0 2px;
-  color:var(--tx3);font-size:12.5px;font-weight:650}
-.iwhyt:hover{color:var(--tx2)}
-.iwhy{margin-top:2px;padding:8px 10px;border-radius:9px;background:var(--bg3);
-  color:var(--tx2);font-size:13px;line-height:1.6}
-.btn.ison{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+/* Dạng danh sách: mỗi module một khung, mỗi câu một dòng. Viền trái theo
+   mức quan trọng — Module 1 vàng, Module 2 xanh, Module 3 chìm. */
+.ilist{padding:2px 0;margin-bottom:6px;border-left:3px solid var(--line)}
+.ilist.lv1{border-left-color:var(--warn)}
+.ilist.lv2{border-left-color:color-mix(in srgb,var(--acc) 60%,var(--line))}
+.irow + .irow{border-top:1px solid var(--line)}
+.ihd{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;cursor:pointer;min-height:44px}
+.ihd .in{flex:none;width:18px;color:var(--tx3);font-size:12.5px;font-weight:700;line-height:1.6;text-align:right}
+.ihd .it{font-size:14.5px;font-weight:600;line-height:1.55}
+.ilist.lv1 .ihd .it{font-weight:700}
+.ihd > .sw{flex:none;margin-top:7px} .ihd .ich{margin-top:2px}
+.ich{flex:none;color:var(--tx2);font-size:14px}
+.irow.off .it{text-decoration:line-through;text-decoration-color:var(--tx3);color:var(--tx3)}
+.iwhy{margin:-2px 14px 12px 42px;padding:9px 11px;border-radius:9px;background:var(--bg3);
+  color:var(--tx2);font-size:13px;line-height:1.6;display:flex;flex-direction:column;gap:6px}
+.iedit{align-self:flex-start;color:var(--acc);font-size:12.5px;font-weight:650;padding:2px 0}
 
 /* Ô tích chỉ để xem — cột không phải hôm nay thì không bấm được */
 .cb.mute{opacity:.4;cursor:default}

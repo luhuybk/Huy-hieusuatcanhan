@@ -2489,51 +2489,40 @@ function vJourney(){
 
 /* ---------------- SỔ BÀI HỌC ---------------- */
 /* Bài học nằm trong hành trình thì gắn với MỘT chuyện, lướt qua theo tháng
-   rồi trôi đi. Đưa sang sổ là biến nó thành nguyên tắc: có hẹn ngày quay
-   lại, và đếm được đã đúng thêm bao nhiêu lần. */
+   rồi trôi đi. Đưa sang sổ là cho nó một chỗ đứng riêng, xếp theo mức
+   quan trọng. */
 function journeyToInsight(o){
   if (!(o.lesson || '').trim()) return '';
   const ins = insightOfJourney(o.id);
   return ins
     ? `<div class="dim" style="margin-top:12px;cursor:pointer" data-act="openInsight" data-id="${ins.id}">
-        🧭 Đã có trong Sổ bài học${insightSure(ins) ? ' · đúng ' + insightSure(ins) + ' lần' : ''} ›</div>`
+        🧭 Đã có trong Sổ bài học · Module ${ins.lv} ›</div>`
     : `<button class="btn sm full" style="margin-top:12px" data-act="insightFromJourney" data-id="${o.id}">
         🧭 Đưa câu này vào Sổ bài học</button>`;
 }
 
-/* Đúng thêm vài lần thì câu mới nhận ra mới thành nguyên tắc. Ba mức, nói
-   bằng chữ chứ không bắt đọc con số rồi tự suy ra. */
-function insightSureChip(o){
-  const n = insightSure(o);
-  if (!n) return `<span class="chip" title="Chưa kiểm chứng lần nào — bấm “Lại đúng” mỗi lần thấy nó đúng">mới nhận ra</span>`;
-  return n >= 3
-    ? `<span class="chip ok" title="Đã thấy đúng ${n} lần">✓ đã chắc · ${n} lần</span>`
-    : `<span class="chip acc" title="Đã thấy đúng ${n} lần">✓ đúng ${n} lần</span>`;
-}
-/* "Vì sao" thu gọn sẵn: đọc lại sổ là để đọc câu kết luận, lý do chỉ cần
-   khi muốn nhớ lại vì đâu mà ra câu đó. Mở ra đóng vào chỉ là chuyện của
-   màn hình đang xem, không lưu, không đồng bộ. */
-function insightCard(o){
-  const src = o.jId ? journeys().find(j => j.id === o.jId) : null;
-  const done = insightProvedToday(o), open = !!S.openWhy[o.id];
-  return `<div class="card icard lv${o.lv}${o.off ? ' off' : ''}">
-    <div class="it" data-act="editInsight" data-id="${o.id}">${nl(o.text)}</div>
-    ${o.why ? `<button class="iwhyt" data-act="insightWhy" data-id="${o.id}" aria-expanded="${open}">
-        Vì sao ${open ? '▴' : '▾'}</button>
-      ${open ? `<div class="iwhy">${nl(o.why)}</div>` : ''}` : ''}
-    ${o.off ? `<div class="iwhy" style="color:var(--bad)">✕ Không còn đúng${o.offWhy ? ': ' + esc(o.offWhy) : ''}</div>` : ''}
-    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px">
-      ${insightSureChip(o)}
-      ${areaChip(o.areaId)}
-      ${src ? `<span class="chip" data-act="viewJourney" data-id="${src.id}" style="cursor:pointer"
-        title="Rút ra từ chuyện này trong Hành trình">🌱 ${esc(String(src.title || '').slice(0, 40))}</span>` : ''}
-      <span class="grow"></span>
-      ${o.off ? '' : `<button class="btn sm${done ? ' ison' : ''}" data-act="proveInsight" data-id="${o.id}"
-        title="${done ? 'Hôm nay đã ghi nhận — bấm lần nữa để bỏ' : 'Vừa gặp lại và thấy nó đúng — đếm thêm một lần'}">${
-        done ? '✓ Đã ghi' : '✓ Lại đúng'}</button>`}
+/* Một dòng cho một câu. Bấm vào dòng là thả "Vì sao" xuống — đọc lại sổ là
+   để đọc câu kết luận, lý do chỉ cần khi muốn nhớ vì đâu mà ra câu đó. Câu
+   không ghi lý do thì bấm vào là mở luôn form sửa, không có gì để thả ra.
+   Mở/đóng chỉ là chuyện của màn hình đang xem, không lưu, không đồng bộ. */
+function insightRow(o, i){
+  const open = !!S.openWhy[o.id], has = !!(o.why || o.off);
+  return `<div class="irow${open ? ' open' : ''}${o.off ? ' off' : ''}">
+    <div class="ihd" data-act="${has ? 'insightWhy' : 'editInsight'}" data-id="${o.id}"${
+      has ? ` aria-expanded="${open}"` : ''}>
+      <span class="in">${i + 1}</span>
+      <span class="it grow">${nl(o.text)}</span>
+      ${areaDot(o.areaId)}
+      ${has ? `<span class="ich">${open ? '▴' : '▾'}</span>` : ''}
     </div>
+    ${open ? `<div class="iwhy">
+      ${o.why ? `<div><b>Vì sao:</b> ${nl(o.why)}</div>` : ''}
+      ${o.off ? `<div style="color:var(--bad)">✕ Không còn đúng${o.offWhy ? ': ' + esc(o.offWhy) : ''}</div>` : ''}
+      <button class="iedit" data-act="editInsight" data-id="${o.id}">✎ Sửa</button>
+    </div>` : ''}
   </div>`;
 }
+const insightBlock = list => `<div class="card ilist">${list.map(insightRow).join('')}</div>`;
 function vInsights(){
   const A = S.area;
   const live = insightList(A), off = insightList(A, true);
@@ -2544,26 +2533,21 @@ function vInsights(){
       <button class="btn" data-act="area" data-id="all">Xem tất cả</button>${addBtn}</div></div>`;
   if (!live.length && !off.length) return `<div class="empty"><b>Sổ bài học còn trống</b>
     Ghi những điều đã nhận ra, viết thành một câu dùng được cho lần sau.<br>
-    Ví dụ: <i>“Giao việc lớn trong 3 ngày sau khi nhận lương — lúc đó nhân viên làm hăng nhất.”</i><br>
-    Xếp vào Module 1 nếu là câu không được quên.
+    Ví dụ: <i>“Giao việc lớn trong 3 ngày sau khi nhận lương — lúc đó nhân viên làm hăng nhất.”</i>
     <div class="btns" style="justify-content:center;margin-top:14px">${addBtn}</div></div>`;
 
-  let h = `<div class="btns" style="margin-bottom:6px">${addBtn.replace('btn pri', 'btn pri grow')}</div>
-    <div class="dim" style="margin-bottom:4px;line-height:1.6">Chuyện đã xảy ra ghi ở
-      <span data-act="nav" data-id="journey" style="color:var(--acc);cursor:pointer">🌱 Hành trình</span>;
-      ở đây là điều rút ra. Mỗi lần gặp lại mà thấy nó đúng, bấm <b>✓ Lại đúng</b> — đúng 3 lần thì thành nguyên tắc.</div>`;
+  let h = `<div class="btns" style="margin-bottom:4px">${addBtn.replace('btn pri', 'btn pri grow')}</div>`;
   [1, 2, 3].forEach(lv => {
     const list = live.filter(o => o.lv === lv);
     if (!list.length) return;
     h += secHd('Module ' + lv + ' · ' + INSIGHT_LV[lv] + ' — ' + list.length);
-    h += list.map(insightCard).join('');
+    h += insightBlock(list).replace('card ilist', 'card ilist lv' + lv);
   });
   if (!live.length) h += `<div class="empty" style="padding:22px">Mọi câu trong mảng này đều đã cất đi.</div>`;
   if (off.length){
     h += secHd('Không còn đúng — ' + off.length,
       `<button data-act="showOffInsight">${S.showOffInsight ? 'Thu gọn ▲' : 'Xem ▼'}</button>`);
-    h += S.showOffInsight ? off.map(insightCard).join('')
-      : `<div class="dim" style="margin-bottom:10px">Câu từng đúng rồi không còn đúng nữa cũng là một bài học — giữ lại để khỏi nhận ra lại từ đầu.</div>`;
+    if (S.showOffInsight) h += insightBlock(off);
   }
   return h + `<div style="height:56px"></div>`;
 }
