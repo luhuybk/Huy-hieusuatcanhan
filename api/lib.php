@@ -723,23 +723,6 @@ function webhookSecret(): string {
 /* chữ do người dùng nhập phải rào lại, nếu không dấu < > sẽ làm hỏng thẻ HTML */
 function tgEsc(string $s): string { return htmlspecialchars($s, ENT_NOQUOTES, 'UTF-8'); }
 
-/* Bản song sinh của insightOn() trong js/state.js — ngày 31 ở tháng ngắn
-   là ngày cuối tháng, khoảng ngược chiều (28 → 3) vắt qua đầu tháng sau. */
-function insightOnPhp(array $o, string $iso): bool {
-  $t = strtotime($iso . ' 00:00:00');
-  $when = (string)($o['when'] ?? '');
-  if ($when === 'thang') {
-    $n = (int)date('j', $t); $last = (int)date('t', $t);
-    $f  = min(max(1, (int)($o['from'] ?? 1)), 31);
-    $to = (int)($o['to'] ?? 0);
-    $to = min($to >= 1 ? $to : $f, 31);          /* trống = một ngày, như bên app */
-    $f  = min($f, $last); $to = min($to, $last);
-    return $f <= $to ? ($n >= $f && $n <= $to) : ($n >= $f || $n <= $to);
-  }
-  if ($when === 'tuan') return in_array((int)date('w', $t), array_map('intval', (array)($o['days'] ?? [])), true);
-  return false;
-}
-
 /* ---------------- bản tóm tắt hằng ngày ----------------
    Đọc thẳng dữ liệu đã đồng bộ nên vẫn đúng kể cả khi bạn không mở app. */
 function buildDigest(): array {
@@ -768,20 +751,6 @@ function buildDigest(): array {
       $line .= "\n   Còn rảnh: " . implode(', ', $txt) . (count($gaps) > 3 ? '…' : '');
     }
     $lines[] = $line;
-  }
-
-  /* Sổ bài học: câu nào hẹn đúng hôm nay thì nhắc — "giao việc lớn trong 3
-     ngày sau lương" chỉ có ích khi nó tới đúng mấy ngày đó, lúc 7h sáng
-     còn kịp xếp việc theo, chứ không phải lúc mở sổ ra đọc. */
-  $ins = [];
-  foreach (itemsOf('insights') as $o) {
-    if (!empty($o['off']) || trim((string)($o['text'] ?? '')) === '') continue;
-    if (insightOnPhp($o, $today)) $ins[] = $o;
-  }
-  if ($ins) {
-    $lines[] = '🧭 <b>Nhớ lại hôm nay</b>';
-    foreach (array_slice($ins, 0, 4) as $o) $lines[] = '   • ' . tgEsc(cutTitle($o['text'], 160));
-    if (count($ins) > 4) $lines[] = '   <i>… và ' . (count($ins) - 4) . ' câu nữa trong Sổ bài học</i>';
   }
 
   /* Việc đến hạn. Nếu bảng công việc riêng đang bật thì bỏ khối này đi,

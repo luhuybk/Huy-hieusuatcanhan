@@ -344,17 +344,6 @@ function snoozeAt(t){
   return m ? Math.floor(new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).getTime()/1000) : 0;
 }
 
-/* bản song sinh của insightOnPhp() bên PHP */
-function insightOnJs(o, iso){
-  const d = new Date(iso + 'T00:00:00');
-  if (o.when === 'thang'){
-    const n = d.getDate(), last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    const f = Math.min(Math.max(1, +o.from || 1), last), t = Math.min(Math.max(1, +o.to || f), last);
-    return f <= t ? n >= f && n <= t : n >= f || n <= t;
-  }
-  if (o.when === 'tuan') return (o.days || []).map(Number).includes(d.getDay());
-  return false;
-}
 function buildDigest(){
   const now = new Date();
   const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
@@ -375,13 +364,6 @@ function buildDigest(){
       + gaps.slice(0,3).map(g => winText(g.from) + '–' + winText(g.to)).join(', ')
       + (gaps.length > 3 ? '…' : '');
     lines.push(line);
-  }
-
-  const ins = itemsOf('insights').filter(o => !o.off && String(o.text || '').trim() && insightOnJs(o, today));
-  if (ins.length){
-    lines.push('🧭 Nhớ lại hôm nay');
-    ins.slice(0,4).forEach(o => lines.push('   • ' + String(o.text).slice(0,160)));
-    if (ins.length > 4) lines.push(`   … và ${ins.length - 4} câu nữa trong Sổ bài học`);
   }
 
   const workOn = +confGet('tg_work_hour','-1') >= 0;

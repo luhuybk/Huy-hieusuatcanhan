@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-09-27.1';
+const APP_BUILD = '2026-09-27.2';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -542,17 +542,16 @@ function ensure(){
                             if (typeof o.date !== 'string' || o.date.length < 10) o.date = today();
                             ['title','story','who','root','fix','lesson','areaId']
                               .forEach(k => { if (typeof o[k] !== 'string') o[k] = ''; }); });
-  /* Sổ bài học. Dữ liệu đồng bộ từ máy khác về thì không tin gì cả: ngày
-     trong tháng ngoài 1–31 là trục nhắc tính ra NaN, và một mục mất chữ
-     thì chẳng còn gì để đọc lại. */
+  /* Sổ bài học. Dữ liệu đồng bộ từ máy khác về thì không tin gì cả: mức
+     quan trọng ngoài 1–3 là mục rơi khỏi mọi nhóm, và một mục mất chữ thì
+     chẳng còn gì để đọc lại. Câu cũ chưa có mức thì cho vào Module 2 — ở
+     giữa, để tự mình xếp lại, chứ không tự đẩy lên hàng quan trọng nhất. */
   db.insights.forEach(o => {
     ['text','why','areaId','jId','offWhy','createdAt'].forEach(k => { if (typeof o[k] !== 'string') o[k] = ''; });
-    if (!INSIGHT_WHEN[o.when]) o.when = '';
-    o.from = Math.min(31, Math.max(1, parseInt(o.from, 10) || 1));
-    o.to   = Math.min(31, Math.max(1, parseInt(o.to, 10) || o.from));
-    if (!Array.isArray(o.days)) o.days = [];
-    o.days = o.days.map(Number).filter(d => d >= 0 && d <= 6);
-    o.giao = !!o.giao; o.off = !!o.off;
+    o.lv = INSIGHT_LV[o.lv] ? +o.lv : 2;
+    o.off = !!o.off;
+    /* bản đầu có hẹn ngày và "hiện lúc giao việc", đã bỏ — dọn khỏi bản ghi */
+    ['when','from','to','days','giao'].forEach(k => delete o[k]);
     if (!Array.isArray(o.proof)) o.proof = [];
     o.proof = o.proof.filter(d => typeof d === 'string' && d.length >= 10);
     if (!o.text.trim()) o.deleted = true;
@@ -1834,61 +1833,30 @@ const monthName = m => 'Tháng ' + (+String(m).slice(5, 7)) + '/' + String(m).sl
    SỔ BÀI HỌC
    Khác Hành trình ở chỗ: Hành trình ghi CHUYỆN đã xảy ra, có ngày, có
    diễn biến. Sổ này ghi điều RÚT RA — một câu dùng được cho lần sau, kiểu
-   "giao việc lớn trong 3 ngày sau khi nhận lương". Câu như vậy chỉ có ích
-   nếu nó quay lại đúng lúc cần: đúng mấy ngày đó trong tháng, hay đúng lúc
-   đang giao việc. Ghi xong cất vào sổ thì sáu tháng sau vẫn quên như thường.
+   "giao việc lớn trong 3 ngày sau khi nhận lương". Chia ba module theo mức
+   quan trọng: mở sổ ra là thấy ngay mấy câu không được quên, chứ không phải
+   lội qua cả chục câu "nên nhớ" mới tới.
    ============================================================ */
-const INSIGHT_WHEN = {'':'Không hẹn ngày', thang:'Mấy ngày trong tháng', tuan:'Thứ trong tuần'};
+const INSIGHT_LV = {1:'Quan trọng nhất', 2:'Quan trọng', 3:'Nên nhớ'};
 function insights(){ return alive(db.insights); }
 
-/* Ngày iso có nằm trong khoảng hẹn không.
-   Ngày 31 ở tháng chỉ có 30 ngày thì hiểu là ngày cuối tháng — lương về
-   "cuối tháng" không được im lặng mất một lần vào tháng Tư. Khoảng ngược
-   chiều (28 → 3) là khoảng vắt qua đầu tháng sau. */
-function insightOn(o, iso){
-  const d = new Date(String(iso || today()).slice(0,10) + 'T00:00:00');
-  if (o.when === 'thang'){
-    const n = d.getDate(), last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    const f = Math.min(o.from, last), t = Math.min(o.to, last);
-    return f <= t ? n >= f && n <= t : n >= f || n <= t;
-  }
-  if (o.when === 'tuan') return (o.days || []).includes(d.getDay());
-  return false;
-}
-/* Còn mấy ngày tới khoảng hẹn kế tiếp; 0 = đang trong khoảng; null = không hẹn */
-function insightNext(o){
-  if (!o.when) return null;
-  for (let i = 0; i <= 62; i++) if (insightOn(o, addDays(today(), i))) return i;
-  return null;
-}
-function insightWhenText(o){
-  if (o.when === 'thang')
-    return (o.from === o.to ? 'ngày ' + o.from : 'ngày ' + o.from + '–' + o.to) + ' hằng tháng';
-  if (o.when === 'tuan') return daysText(o.days);
-  return '';
-}
 /* Số lần đã thấy đúng thêm. Một câu mới nhận ra là giả thuyết; đúng thêm
    vài lần thì mới đáng gọi là nguyên tắc — con số này nói nó đang ở đâu. */
 const insightSure = o => (o.proof || []).length;
 const insightProvedToday = o => (o.proof || []).includes(today());
 
-/* Đang tới lúc lên trước, rồi câu sắp tới lúc (còn 1 ngày trước còn 8
-   ngày), rồi câu đã kiểm chứng nhiều lần, rồi câu vừa ghi/sửa.
+/* Module 1 trước. Trong cùng module: câu đã kiểm chứng nhiều lần lên trên,
+   rồi câu vừa ghi/sửa.
    Câu không gắn mảng nào là câu dùng chung — đang lọc Barbershop thì nó
-   vẫn phải hiện, ở đây cũng như ở bảng Giao việc, chứ không biến mất. */
+   vẫn phải hiện, chứ không biến mất. */
 function insightList(areaId, off){
   const A = areaId === undefined ? 'all' : areaId;
   return insights()
     .filter(o => A === 'all' || !o.areaId || o.areaId === A)
     .filter(o => !!o.off === !!off)
-    .map(o => { const nx = insightNext(o); return {o, nx: nx === null ? 99 : nx}; })
-    .sort((a, b) => (a.nx - b.nx) || (insightSure(b.o) - insightSure(a.o))
-                 || String(b.o.updatedAt || '').localeCompare(String(a.o.updatedAt || '')))
-    .map(x => x.o);
+    .sort((a, b) => (a.lv - b.lv) || (insightSure(b) - insightSure(a))
+                 || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
-/* Hai chỗ bài học tự quay lại: hôm nay đúng khoảng hẹn, và lúc giao việc */
-const insightsToday = A => insightList(A || 'all').filter(o => insightOn(o, today()));
-const insightsGiao  = A => insightList(A || 'all').filter(o => o.giao);
 /* Mục hành trình này đã được đưa sang sổ chưa */
 const insightOfJourney = jid => insights().find(o => o.jId === jid) || null;
 
@@ -2058,7 +2026,7 @@ function searchAll(q, limit){
   insights().forEach(o => { if (hit(o.text, o.why, areaName(o.areaId)))
     out.push({kind:'insight', id:o.id, title:o.text,
       sub:'Sổ bài học' + (insightSure(o) ? ' · đúng ' + insightSure(o) + ' lần' : '')
-          + (o.off ? ' · không còn đúng' : insightWhenText(o) ? ' · ' + insightWhenText(o) : ''),
+          + (o.off ? ' · không còn đúng' : ' · Module ' + o.lv),
       color:(areaOf(o.areaId)||{}).color || 'var(--acc)'}); });
 
   ideas().forEach(i => { if (hit(i.title, i.detail, i.plan, areaName(i.areaId)))

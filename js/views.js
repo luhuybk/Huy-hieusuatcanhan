@@ -52,7 +52,7 @@ function renderSide(){
        ['daily','🔁','Việc hằng ngày', dailyLeft()],
        ['ideas','💡','Ý tưởng', ideasDue().length || ideas().filter(i=>i.status==='doing').length],
        ['journey','🌱','Hành trình', 0],
-       ['insights','🧭','Sổ bài học', insightsToday('all').length],
+       ['insights','🧭','Sổ bài học', 0],
        ['money','₫','Sổ tiền', 0],
        ['board','▦','Giao việc', nLate],
        ['review','◷','Ôn lại tuần', 0]];
@@ -236,7 +236,7 @@ function dashSoonCount(){
 
 /* Tab 1 — sắp xếp: trục tuần, việc đang né, việc đã giao đang trễ. */
 function dashToday(A){
-  let h = feedNote() + insightStrip(insightsToday(A), 'Nhớ lại hôm nay') + dashWeek(A) + dashDucked(A);
+  let h = feedNote() + dashWeek(A) + dashDucked(A);
   const lcs = byArea(lateCards(), A);
   if (lcs.length){
     h += secHd('Việc đã giao đang trễ', `<button data-act="nav" data-id="board">Mở bảng</button>`);
@@ -708,7 +708,6 @@ function vBoard(){
       `<button class="tab" data-act="staffBox">＋ Nhân sự</button></div>`;
   }
   if (S.assignee !== 'all') list = list.filter(c => cardWho(c) === S.assignee);
-  if (!isStaff) h += insightStrip(insightsGiao(S.area), 'Trước khi giao việc', 'giao');
 
   if (!cards().length)
     h += `<div class="empty"><b>Bảng còn trống</b>Tạo thẻ việc rồi chuyển dần qua các cột.
@@ -2511,48 +2510,28 @@ function insightSureChip(o){
     ? `<span class="chip ok" title="Đã thấy đúng ${n} lần">✓ đã chắc · ${n} lần</span>`
     : `<span class="chip acc" title="Đã thấy đúng ${n} lần">✓ đúng ${n} lần</span>`;
 }
-function insightWhenChip(o){
-  const w = insightWhenText(o); if (!w) return '';
-  const on = insightOn(o, today()), nx = insightNext(o);
-  return on ? `<span class="chip warn" title="${esc(w)}">● đang đúng lúc · ${esc(w)}</span>`
-            : `<span class="chip">📅 ${esc(w)}${nx !== null ? ' · còn ' + nx + ' ngày' : ''}</span>`;
-}
+/* "Vì sao" thu gọn sẵn: đọc lại sổ là để đọc câu kết luận, lý do chỉ cần
+   khi muốn nhớ lại vì đâu mà ra câu đó. Mở ra đóng vào chỉ là chuyện của
+   màn hình đang xem, không lưu, không đồng bộ. */
 function insightCard(o){
   const src = o.jId ? journeys().find(j => j.id === o.jId) : null;
-  const done = insightProvedToday(o);
-  return `<div class="card icard${insightOn(o, today()) && !o.off ? ' on' : ''}${o.off ? ' off' : ''}">
+  const done = insightProvedToday(o), open = !!S.openWhy[o.id];
+  return `<div class="card icard lv${o.lv}${o.off ? ' off' : ''}">
     <div class="it" data-act="editInsight" data-id="${o.id}">${nl(o.text)}</div>
-    ${o.why ? `<div class="iwhy" data-act="editInsight" data-id="${o.id}">${nl(o.why)}</div>` : ''}
+    ${o.why ? `<button class="iwhyt" data-act="insightWhy" data-id="${o.id}" aria-expanded="${open}">
+        Vì sao ${open ? '▴' : '▾'}</button>
+      ${open ? `<div class="iwhy">${nl(o.why)}</div>` : ''}` : ''}
     ${o.off ? `<div class="iwhy" style="color:var(--bad)">✕ Không còn đúng${o.offWhy ? ': ' + esc(o.offWhy) : ''}</div>` : ''}
     <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px">
-      ${o.off ? '' : insightWhenChip(o)}
-      ${o.giao && !o.off ? `<span class="chip" title="Hiện ở đầu bảng Giao việc và trong form tạo thẻ">▦ lúc giao việc</span>` : ''}
       ${insightSureChip(o)}
       ${areaChip(o.areaId)}
       ${src ? `<span class="chip" data-act="viewJourney" data-id="${src.id}" style="cursor:pointer"
         title="Rút ra từ chuyện này trong Hành trình">🌱 ${esc(String(src.title || '').slice(0, 40))}</span>` : ''}
+      <span class="grow"></span>
+      ${o.off ? '' : `<button class="btn sm${done ? ' ison' : ''}" data-act="proveInsight" data-id="${o.id}"
+        title="${done ? 'Hôm nay đã ghi nhận — bấm lần nữa để bỏ' : 'Vừa gặp lại và thấy nó đúng — đếm thêm một lần'}">${
+        done ? '✓ Đã ghi' : '✓ Lại đúng'}</button>`}
     </div>
-    ${o.off ? '' : `<div class="row" style="margin-top:10px">
-      <span class="dim grow">${done ? 'Hôm nay đã ghi nhận là đúng.' : 'Vừa gặp lại chuyện này và thấy nó đúng?'}</span>
-      <button class="btn sm${done ? ' ison' : ''}" data-act="proveInsight" data-id="${o.id}"
-        title="${done ? 'Bấm lần nữa để bỏ' : 'Đếm thêm một lần kiểm chứng'}">${done ? '✓ Đã ghi' : '✓ Lại đúng'}</button>
-    </div>`}
-  </div>`;
-}
-/* Dải nhắc gọn đặt ở màn khác — Tổng quan, bảng Giao việc, form tạo thẻ.
-   inForm: nằm trong form thì không gắn hành động, bấm nhầm là mất cả form. */
-function insightStrip(list, title, mode, inForm){
-  if (!list.length) return '';
-  const act = inForm ? '' : ` data-act="nav" data-id="insights"`;
-  const rows = list.slice(0, 3).map(o => {
-    const on = insightOn(o, today()), nx = insightNext(o);
-    const tag = mode === 'giao' && (on || nx !== null)
-      ? `<span class="chip ${on ? 'warn' : ''}" style="flex:none">${on ? '● đúng lúc' : 'còn ' + nx + ' ngày'}</span>` : '';
-    return `<div class="isl"${act}><span class="grow">${esc(o.text)}</span>${tag}</div>`;
-  }).join('');
-  return `<div class="istrip"${inForm ? ' style="margin:-4px 0 14px"' : ''}>
-    <div class="ish"${act}>🧭 ${esc(title)}${list.length > 3 ? ` <span class="dim">· +${list.length - 3} câu nữa</span>` : ''}</div>
-    ${rows}
   </div>`;
 }
 function vInsights(){
@@ -2566,24 +2545,19 @@ function vInsights(){
   if (!live.length && !off.length) return `<div class="empty"><b>Sổ bài học còn trống</b>
     Ghi những điều đã nhận ra, viết thành một câu dùng được cho lần sau.<br>
     Ví dụ: <i>“Giao việc lớn trong 3 ngày sau khi nhận lương — lúc đó nhân viên làm hăng nhất.”</i><br>
-    Hẹn cho nó một khoảng ngày trong tháng thì đúng mấy ngày đó nó tự hiện lên
-    ở Tổng quan và trong tin Telegram buổi sáng.
+    Xếp vào Module 1 nếu là câu không được quên.
     <div class="btns" style="justify-content:center;margin-top:14px">${addBtn}</div></div>`;
 
-  const now = live.filter(o => insightOn(o, today()));
-  const rest = live.filter(o => !insightOn(o, today()));
   let h = `<div class="btns" style="margin-bottom:6px">${addBtn.replace('btn pri', 'btn pri grow')}</div>
     <div class="dim" style="margin-bottom:4px;line-height:1.6">Chuyện đã xảy ra ghi ở
       <span data-act="nav" data-id="journey" style="color:var(--acc);cursor:pointer">🌱 Hành trình</span>;
       ở đây là điều rút ra. Mỗi lần gặp lại mà thấy nó đúng, bấm <b>✓ Lại đúng</b> — đúng 3 lần thì thành nguyên tắc.</div>`;
-  if (now.length){
-    h += secHd('Đang đúng lúc — ' + now.length);
-    h += now.map(insightCard).join('');
-  }
-  if (rest.length){
-    h += secHd((now.length ? 'Còn lại' : 'Trong sổ') + ' — ' + rest.length);
-    h += rest.map(insightCard).join('');
-  }
+  [1, 2, 3].forEach(lv => {
+    const list = live.filter(o => o.lv === lv);
+    if (!list.length) return;
+    h += secHd('Module ' + lv + ' · ' + INSIGHT_LV[lv] + ' — ' + list.length);
+    h += list.map(insightCard).join('');
+  });
   if (!live.length) h += `<div class="empty" style="padding:22px">Mọi câu trong mảng này đều đã cất đi.</div>`;
   if (off.length){
     h += secHd('Không còn đúng — ' + off.length,
