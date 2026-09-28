@@ -10,6 +10,7 @@ const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assi
                gọn — vào đây là để soi lịch định kỳ, không phải xem hôm nay. */
             showPlan:true, calList:false,
             reviewMonth:'', showOffInsight:false, openWhy:{}, sortInsight:false, movedInsight:'',
+            wrange:'90', wper:'week', wall:false,
             calMonth: today().slice(0,7), calDay: today(), moneyMonth: today().slice(0,7) };
 
 const TITLES = {
@@ -26,6 +27,7 @@ const TITLES = {
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
   journey:['Hành trình phát triển','Lỗi lầm, bài học, và thứ rút ra được'],
   insights:['Sổ bài học','Điều đã nhận ra — xếp theo mức quan trọng'],
+  weight:['Cân nặng','Mỗi sáng một lần cân — nhìn xu hướng, không nhìn từng ngày'],
   myday:['Lịch của tôi','Việc trong ngày — theo giờ'],
   settings:['Cài đặt','Dữ liệu, nhắc nhở, đồng bộ']
 };
@@ -50,6 +52,7 @@ function render(){
     else if (v === 'daily')    html = vDaily();
     else if (v === 'journey')  html = vJourney();
     else if (v === 'insights') html = vInsights();
+    else if (v === 'weight')   html = vWeight();
     else if (v === 'board')    html = vBoard();
     else if (v === 'review')   html = vReview();
     else if (v === 'occasions')html = vOccasions();
@@ -1341,6 +1344,115 @@ function delJourney(id){
   });
 }
 
+/* ---------------- cân nặng ---------------- */
+/* Lệch xu hướng quá 3 kg trong một lần cân thì gần như chắc là gõ nhầm
+   (72 thành 27, 68,5 thành 86,5) — hỏi lại một câu, vẫn cho lưu nếu đúng
+   thật. Một con số nhầm lọt vào là kéo lệch đường xu hướng cả tuần sau. */
+function weightSave(kg, date, force){
+  if (!(kg >= 20 && kg <= 300)){ toast('Số ký phải trong khoảng 20–300'); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || date > today()) date = today();
+  const tr = weightTrend(), near = tr.length ? tr[tr.length - 1].trend : null;
+  if (!force && near !== null && Math.abs(kg - near) > 3){
+    confirmBox(fmtKg(kg) + ' kg — lệch ' + fmtKg(Math.abs(kg - near)) + ' kg so với xu hướng ' + fmtKg(near)
+      + ' kg. Có gõ nhầm không?', () => weightSave(kg, date, true), 'Đúng rồi, lưu');
+    return;
+  }
+  const id = wId(date);
+  const w = db.weights.find(x => x.id === id);
+  if (w){ w.kg = kg; w.date = date; w.deleted = false; stamp(w); }
+  else db.weights.push(stamp({id, date, kg}));
+  save(); render();
+  toast('Đã lưu ' + fmtKg(kg) + ' kg' + (date === today() ? '' : ' cho ngày ' + fmtDate(date)));
+}
+function weightEdit(id){
+  const w = db.weights.find(x => x.id === id); if (!w) return;
+  openForm({title:'Lần cân ' + fmtDate(w.date), submit:'Lưu',
+    fields:[{k:'kg', label:'Số ký', ph:fmtKg(w.kg)}], values:{kg:fmtKg(w.kg)},
+    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="wDel" data-id="${id}">Xoá lần cân này</button>`,
+    onSave(v){ weightSave(parseKg(v.kg), w.date); }});
+}
+function weightDel(id){
+  const w = db.weights.find(x => x.id === id); if (!w) return;
+  confirmBox('Xoá lần cân ' + fmtDate(w.date) + ' (' + fmtKg(w.kg) + ' kg)?', () => {
+    w.deleted = true; stamp(w); save(); closeModal(); render(); toast('Đã xoá');
+  });
+}
+/* Mốc xuất phát mặc định là đường xu hướng hôm nay, không phải lần cân gần
+   nhất — cân lẻ một hôm nặng nước thì cả thanh tiến độ lệch theo nó. */
+function weightGoalForm(){
+  const g = weightGoal(), tr = weightTrend();
+  const now = tr.length ? tr[tr.length - 1].trend : 0;
+  openForm({title:g ? 'Đổi mục tiêu' : 'Đặt mục tiêu cân nặng', submit:'Lưu mục tiêu',
+    fields:[
+      {k:'target', label:'Mục tiêu (kg)', ph:'vd: 65', half:true},
+      {k:'startKg', label:'Xuất phát (kg)', half:true, hint:'mặc định là xu hướng hôm nay'},
+      {k:'startDate', label:'Tính từ ngày', type:'date', hint:'tốc độ trung bình tính từ ngày này'}],
+    values:{target:g ? fmtKg(g.target) : '', startKg:g ? fmtKg(g.startKg) : (now ? fmtKg(now) : ''),
+            startDate:g ? g.startDate : today()},
+    validate(v){
+      const t = parseKg(v.target), s0 = parseKg(v.startKg);
+      if (!(t >= 20 && t <= 300)) return 'Mục tiêu phải trong khoảng 20–300 kg';
+      if (!(s0 >= 20 && s0 <= 300)) return 'Cần số ký lúc xuất phát';
+      if (Math.abs(t - s0) < 0.1) return 'Mục tiêu đang trùng với lúc xuất phát';
+      return '';
+    },
+    extra:g ? `<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="wGoalDel">Bỏ mục tiêu</button>` : '',
+    onSave(v){
+      let o = db.wgoal.find(x => x.id === 'goal');
+      const val = {target:parseKg(v.target), startKg:parseKg(v.startKg),
+                   startDate:/^\d{4}-\d{2}-\d{2}$/.test(v.startDate) ? v.startDate : today(), deleted:false};
+      if (o) Object.assign(o, val); else db.wgoal.push(o = Object.assign({id:'goal'}, val));
+      stamp(o); save(); render();
+      toast('Mục tiêu ' + fmtKg(val.target) + ' kg · ' + (val.target < val.startKg ? 'giảm ' : 'tăng ')
+            + fmtKg(Math.abs(val.target - val.startKg)) + ' kg');
+    }});
+}
+function weightGoalDel(){
+  const o = db.wgoal.find(x => x.id === 'goal'); if (!o) return;
+  confirmBox('Bỏ mục tiêu ' + fmtKg(o.target) + ' kg?', () => {
+    o.deleted = true; stamp(o); save(); closeModal(); render();
+  }, 'Bỏ');
+}
+/* Ô nhập ngay trên màn — Enter là lưu, khỏi mở form */
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'wform') return;
+  e.preventDefault();
+  weightSave(parseKg($('#w_kg').value), $('#w_date').value || today());
+});
+/* Chạm hay rê lên biểu đồ: hiện đúng ngày đó cân bao nhiêu. Ngày không cân
+   thì bám sang lần cân gần nhất — rơi vào chỗ trống mà báo "không cân" thì
+   chạm mười lần mới trúng một lần. */
+function wTip(e){
+  const svg = e.target && e.target.closest ? e.target.closest('#wchart') : null;
+  const tip = document.getElementById('wtip'), C = window._wchart;
+  if (!svg || !tip || !C){ if (tip) tip.style.display = 'none'; return; }
+  const r = svg.getBoundingClientRect(), n = C.pts.length;
+  /* biểu đồ chưa kịp có kích thước (màn đang ẩn) thì thôi, đừng chia cho 0 */
+  if (!r.width || !n){ tip.style.display = 'none'; return; }
+  const x = (e.clientX - r.left) * (C.W / r.width);
+  let i = Math.round((x - C.L) / ((C.W - C.L - C.R) / Math.max(1, n - 1)));
+  i = Math.max(0, Math.min(n - 1, isFinite(i) ? i : 0));
+  for (let k = 0; k < n; k++){
+    if (C.pts[i + k] && C.pts[i + k].kg !== null){ i += k; break; }
+    if (C.pts[i - k] && C.pts[i - k].kg !== null){ i -= k; break; }
+  }
+  const p = C.pts[i], px = C.xs(i), py = C.ys(p.kg !== null ? p.kg : p.trend);
+  tip.style.display = '';
+  tip.querySelector('line').setAttribute('x1', px); tip.querySelector('line').setAttribute('x2', px);
+  const c = tip.querySelector('circle'); c.setAttribute('cx', px); c.setAttribute('cy', py);
+  const [t1, t2] = tip.querySelectorAll('text');
+  t1.textContent = p.date.slice(8, 10) + '/' + p.date.slice(5, 7) + ' · ' + (p.kg !== null ? fmtKg(p.kg) + ' kg' : 'không cân');
+  t2.textContent = 'xu hướng ' + fmtKg(p.trend);
+  const bw = Math.max(t1.getComputedTextLength(), t2.getComputedTextLength()) + 16;
+  const bx = Math.max(C.L, Math.min(C.W - C.R - bw, px - bw / 2));
+  const by = py > 60 ? py - 48 : py + 12;
+  const b = tip.querySelector('rect'); b.setAttribute('x', bx); b.setAttribute('y', by); b.setAttribute('width', bw);
+  t1.setAttribute('x', bx + 8); t1.setAttribute('y', by + 15);
+  t2.setAttribute('x', bx + 8); t2.setAttribute('y', by + 29);
+}
+document.addEventListener('pointermove', wTip);
+document.addEventListener('pointerdown', wTip);
+
 /* ---------------- sổ bài học ---------------- */
 const insightFields = () => [
   {k:'text',  label:'Điều nhận ra', type:'textarea', voice:true,
@@ -2213,6 +2325,7 @@ document.addEventListener('click', e => {
       else if (S.view === 'daily') addRem();
       else if (S.view === 'journey') addJourney('hoc');
       else if (S.view === 'insights') addInsight();
+      else if (S.view === 'weight') { const k = $('#w_kg'); if (k){ window.scrollTo({top:0}); k.focus(); } }
       else if (S.view === 'board') addCard('idea');
       else quickAdd();
       break;
@@ -2462,6 +2575,13 @@ document.addEventListener('click', e => {
     case 'delInsight':  delInsight(id); break;
     case 'insightFromJourney': insightFromJourney(id); break;
     case 'showOffInsight': S.showOffInsight = !S.showOffInsight; render(); break;
+    case 'wrange': S.wrange = id; render(); break;
+    case 'wper':   S.wper = id; render(); break;
+    case 'wall':   S.wall = !S.wall; render(); break;
+    case 'wGoal':  weightGoalForm(); break;
+    case 'wEdit':  weightEdit(id); break;
+    case 'wDel':   weightDel(id); break;
+    case 'wGoalDel': weightGoalDel(); break;
     case 'sortInsight': S.sortInsight = !S.sortInsight; S.movedInsight = ''; render(); break;
     case 'moveInsight': moveInsight(id, +el.dataset.d); break;
     case 'insightWhy': S.openWhy[id] = !S.openWhy[id]; render(); break;

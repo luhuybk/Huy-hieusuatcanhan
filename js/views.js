@@ -53,6 +53,7 @@ function renderSide(){
        ['ideas','💡','Ý tưởng', ideasDue().length || ideas().filter(i=>i.status==='doing').length],
        ['journey','🌱','Hành trình', 0],
        ['insights','🧭','Sổ bài học', 0],
+       ['weight','⚖︎','Cân nặng', 0],
        ['money','₫','Sổ tiền', 0],
        ['board','▦','Giao việc', nLate],
        ['review','◷','Ôn lại tuần', 0]];
@@ -2573,6 +2574,181 @@ function vInsights(){
       `<button data-act="showOffInsight">${S.showOffInsight ? 'Thu gọn ▲' : 'Xem ▼'}</button>`);
     if (S.showOffInsight) h += insightBlock(off);
   }
+  return h + `<div style="height:56px"></div>`;
+}
+
+/* ---------------- CÂN NẶNG ---------------- */
+const W_RANGES = [['30','30 ngày'], ['90','3 tháng'], ['365','1 năm'], ['all','Tất cả']];
+/* Bước lưới dễ đọc: 0,2 · 0,5 · 1 · 2 · 5 kg — chọn sao cho ra khoảng 4 vạch */
+function wStep(span){
+  return [0.2, 0.5, 1, 2, 5, 10].find(x => span / x <= 5) || 10;
+}
+/* Biểu đồ vẽ tay bằng SVG: app chạy không cần mạng, kéo thêm thư viện vẽ
+   biểu đồ về chỉ để vẽ hai đường là thừa. Rộng theo đúng khung đang hiển
+   thị, nên chữ trên trục không bị co giãn méo đi. */
+function wChart(series, goal){
+  const days = S.wrange === 'all' ? series.length : +S.wrange;
+  const pts = series.slice(-days);
+  const have = pts.filter(p => p.kg !== null);
+  if (have.length < 2){ window._wchart = null;
+    return `<div class="empty" style="padding:26px 12px">Cân thêm vài hôm nữa là có biểu đồ.</div>`; }
+  /* đúng bề ngang lòng thẻ: khung xem trừ lề hai bên, trừ viền + lề của thẻ */
+  const vw = $('#view'), padX = vw ? parseFloat(getComputedStyle(vw).paddingLeft) * 2 : 28;
+  const W = Math.max(280, Math.min(820, Math.floor((vw && vw.clientWidth ? vw.clientWidth : 380) - padX - 22))), H = 210;
+  const L = 38, R = 10, T = 12, B = 24;
+  let lo = Math.min(...have.map(p => p.kg), ...pts.map(p => p.trend));
+  let hi = Math.max(...have.map(p => p.kg), ...pts.map(p => p.trend));
+  /* Mục tiêu ở quá xa thì không kéo trục theo — kéo theo là cả biểu đồ dẹt
+     lại thành một vạch, không thấy nổi tuần này lên hay xuống. */
+  const showGoal = goal && goal.target >= lo - 2 && goal.target <= hi + 2;
+  if (showGoal){ lo = Math.min(lo, goal.target); hi = Math.max(hi, goal.target); }
+  const st = wStep(Math.max(hi - lo, 0.6));
+  lo = Math.floor((lo - 0.2) / st) * st; hi = Math.ceil((hi + 0.2) / st) * st;
+  const n = pts.length, xs = i => L + (n === 1 ? 0 : i * (W - L - R) / (n - 1));
+  const ys = v => T + (hi - v) * (H - T - B) / (hi - lo);
+  let g = '';
+  for (let v = lo; v <= hi + 1e-9; v += st)
+    g += `<line x1="${L}" x2="${W - R}" y1="${ys(v)}" y2="${ys(v)}" class="wg"/>
+      <text x="${L - 6}" y="${ys(v) + 4}" text-anchor="end" class="wt">${fmtKg(v).replace(',0', '')}</text>`;
+  [0, Math.floor((n - 1) / 2), n - 1].filter((v, i, a) => a.indexOf(v) === i).forEach((i, k, a) => {
+    const d = pts[i].date;
+    g += `<text x="${xs(i)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === a.length - 1 ? 'end' : 'middle'}"
+      class="wt">${d.slice(8, 10)}/${d.slice(5, 7)}</text>`;
+  });
+  if (showGoal) g += `<line x1="${L}" x2="${W - R}" y1="${ys(goal.target)}" y2="${ys(goal.target)}" class="wgoal"/>
+    <text x="${W - R - 2}" y="${ys(goal.target) - 5}" text-anchor="end" class="wt wgl">🎯 ${fmtKg(goal.target)}</text>`;
+  const raw = pts.map((p, i) => p.kg === null ? null : `${xs(i).toFixed(1)},${ys(p.kg).toFixed(1)}`).filter(Boolean);
+  const tr = pts.map((p, i) => `${xs(i).toFixed(1)},${ys(p.trend).toFixed(1)}`);
+  g += `<polyline points="${raw.join(' ')}" class="wraw"/>`;
+  g += pts.map((p, i) => p.kg === null ? '' : `<circle cx="${xs(i).toFixed(1)}" cy="${ys(p.kg).toFixed(1)}" r="${n > 120 ? 1.6 : 2.6}" class="wdot"/>`).join('');
+  g += `<polyline points="${tr.join(' ')}" class="wtrend"/>`;
+  /* chỗ để app.js vẽ chú thích khi chạm/rê chuột */
+  window._wchart = {pts, L, R, W, xs, ys, showGoal, below: goal && goal.target < lo};
+  return `<svg id="wchart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+      aria-label="Biểu đồ cân nặng ${esc(W_RANGES.find(r => r[0] === S.wrange)[1])}">${g}
+    <g id="wtip" style="display:none"><line class="wtipl" y1="${T}" y2="${H - B}"/><circle r="4.5" class="wtipc"/>
+      <rect rx="7" class="wtipb" height="36"/><text class="wtipt"></text><text class="wtipt2"></text></g>
+    <rect x="0" y="0" width="${W}" height="${H}" fill="transparent" id="whit"/></svg>`;
+}
+function wEtaLine(label, rate, now, goal){
+  const perWk = rate === null ? null : rate * 7;
+  if (perWk === null) return `<div class="weta"><div class="dim">${label}</div><div class="dim">Chưa đủ số liệu — cần ít nhất 4 lần cân trải trên một tuần</div></div>`;
+  const d = weightEta(now, goal.target, rate);
+  return `<div class="weta"><div class="dim">${label} · ${fmtDelta(perWk)} kg/tuần</div><div>${
+    d === null ? `<span style="color:var(--bad)">${Math.abs(perWk) < 0.05 ? 'Đang đứng yên' : 'Đang đi ngược hướng'}</span>`
+    : d === 0 ? `<span style="color:var(--ok)">Đã tới đích</span>`
+    : d > 1100 ? `Hơn 3 năm nữa`
+    : `<b>khoảng ${fmtDate(addDays(today(), d))}</b> <span class="dim">· còn ${d} ngày</span>`}</div></div>`;
+}
+function vWeight(){
+  const list = weights(), series = weightTrend(), goal = weightGoal();
+  const todayW = list.find(w => w.date === today());
+  const last = list[list.length - 1];
+  /* ô nhập đặt trên cùng: mở tab này ra phần lớn là để gõ đúng một con số */
+  /* Một hàng: ô số + nút Lưu. Ngày mặc định là hôm nay; cân bù cho hôm
+     khác thì đổi ngày ở dòng nhỏ bên dưới — chín trên mười lần không đụng tới. */
+  let h = `<form class="card wform" id="wform" autocomplete="off">
+    <div class="dim" style="margin-bottom:8px">${todayW ? 'Hôm nay đã cân <b>' + fmtKg(todayW.kg) + ' kg</b> — gõ lại để sửa'
+      : 'Sáng nay cân được bao nhiêu?'}</div>
+    <div class="row" style="gap:8px">
+      <div class="wkg grow"><input id="w_kg" inputmode="decimal" placeholder="${last ? fmtKg(last.kg) : '70,0'}"
+        aria-label="Số ký"><span>kg</span></div>
+      <button type="submit" class="btn pri" style="height:50px;padding:0 22px">Lưu</button>
+    </div>
+    <label class="wday dim">Ngày cân <input id="w_date" type="date" value="${today()}" max="${today()}"></label>
+  </form>`;
+
+  if (!list.length) return h + `<div class="empty"><b>Chưa có lần cân nào</b>
+    Mỗi sáng cân một lần — tốt nhất là ngay sau khi thức dậy, trước khi ăn uống,
+    để các lần cân so được với nhau. Cân vài hôm là có biểu đồ.</div>`;
+
+  const now = series[series.length - 1].trend;
+  const ago = k => series.length > k ? series[series.length - 1 - k].trend : null;
+  const d7 = ago(7), d30 = ago(30);
+  const st = (v, l, cls) => `<div class="stat"><div class="v"${cls ? ` style="color:var(--${cls})"` : ''}>${v}</div><div class="l">${l}</div></div>`;
+  /* Màu theo hướng của mục tiêu: đang giảm cân thì giảm là xanh, đang tăng
+     cân thì ngược lại. Chưa đặt mục tiêu thì không tô — app không tự đoán
+     là mình muốn lên hay xuống. */
+  const dir = goal ? Math.sign(goal.target - (goal.startKg || now)) : 0;
+  const tone = v => !dir || v === null || Math.abs(v) < 0.05 ? '' : Math.sign(v) === dir ? 'ok' : 'warn';
+  h += `<div class="stats" style="margin-top:12px">
+    ${st(fmtKg(now), 'xu hướng')}
+    ${st(d7 === null ? '—' : fmtDelta(now - d7), '7 ngày', d7 === null ? '' : tone(now - d7))}
+    ${st(d30 === null ? '—' : fmtDelta(now - d30), '30 ngày', d30 === null ? '' : tone(now - d30))}
+    ${st(goal ? fmtKg(goal.target) : '—', 'mục tiêu')}
+  </div>`;
+
+  /* ---- mục tiêu ---- */
+  h += secHd('Mục tiêu', goal ? `<button data-act="wGoal">Đổi</button>` : '');
+  if (!goal) h += `<div class="card"><div class="row"><div class="grow dim" style="line-height:1.6">
+      Đặt một con số để cố gắng — app tính giúp còn bao xa, và với tốc độ hiện tại thì khoảng ngày nào tới.</div>
+      <button class="btn pri" data-act="wGoal">🎯 Đặt mục tiêu</button></div></div>`;
+  else {
+    const total = goal.target - goal.startKg, done = now - goal.startKg;
+    const pct = Math.abs(total) < 0.05 ? 100 : Math.max(0, Math.min(100, Math.round(done / total * 100)));
+    const left = goal.target - now;
+    const sinceDays = Math.max(1, -dayDiff(goal.startDate));
+    /* "trung bình" = từ lúc đặt mục tiêu tới giờ, tính trên đường xu hướng —
+       dài hơi hơn 4 tuần gần đây, ít bị một tuần ăn tiệc làm lệch */
+    const avgRate = goal.startDate && sinceDays >= 7 ? (now - goal.startKg) / sinceDays : null;
+    const r28 = weightRate(28);
+    const fast = r28 !== null && Math.abs(r28 * 7) > now * 0.01;
+    h += `<div class="card">
+      <div class="row" style="align-items:baseline">
+        <div class="grow"><b style="font-size:17px">${fmtKg(goal.startKg)} → ${fmtKg(goal.target)} kg</b></div>
+        <span class="dim">từ ${fmtDate(goal.startDate)}</span>
+      </div>
+      <div class="pg" style="margin:10px 0 6px"><i style="width:${pct}%"></i></div>
+      <div class="dim">${Math.abs(left) < 0.05 ? '<b style="color:var(--ok)">Đã tới mục tiêu 🎉</b>'
+        : `Đi được <b>${fmtKg(Math.abs(done))} kg</b> (${pct}%) · còn <b>${fmtKg(Math.abs(left))} kg</b>`}</div>
+      <div class="hr"></div>
+      <div class="dim" style="margin-bottom:6px;font-weight:700">Dự kiến tới đích</div>
+      ${wEtaLine('Theo 4 tuần gần đây', r28, now, goal)}
+      ${wEtaLine('Theo trung bình từ ' + fmtDate(goal.startDate), avgRate, now, goal)}
+      ${fast ? `<div class="dim" style="margin-top:8px;color:var(--warn);line-height:1.6">Đang đi nhanh hơn 1% cân nặng
+        mỗi tuần — mức thường được khuyên là 0,5–1%. Nhanh quá dễ mất cơ và dễ bật lại.</div>` : ''}
+    </div>`;
+  }
+
+  /* ---- biểu đồ ---- */
+  h += secHd('Biểu đồ');
+  h += `<div class="tabs" style="padding-bottom:8px">` + W_RANGES.map(([id, lb]) =>
+    `<button class="tab ${S.wrange === id ? 'on' : ''}" data-act="wrange" data-id="${id}">${lb}</button>`).join('') + `</div>`;
+  h += `<div class="card wcard">${wChart(series, goal)}
+    <div class="row dim" style="gap:14px;margin-top:6px;flex-wrap:wrap">
+      <span><i class="wkey dot"></i>từng lần cân</span><span><i class="wkey line"></i>xu hướng</span>
+      ${goal ? (window._wchart && window._wchart.showGoal ? `<span><i class="wkey goal"></i>mục tiêu</span>`
+        : `<span>🎯 ${fmtKg(goal.target)} kg ở ${window._wchart && window._wchart.below ? 'dưới' : 'trên'} khung</span>`) : ''}</div></div>`;
+
+  /* ---- theo tuần / tháng ---- */
+  const kind = S.wper === 'month' ? 'month' : 'week';
+  h += secHd('Thay đổi');
+  h += `<div class="tabs" style="padding-bottom:8px">
+    <button class="tab ${kind === 'week' ? 'on' : ''}" data-act="wper" data-id="week">Theo tuần</button>
+    <button class="tab ${kind === 'month' ? 'on' : ''}" data-act="wper" data-id="month">Theo tháng</button></div>`;
+  const per = weightPeriods(kind, kind === 'week' ? 10 : 12);
+  h += `<div class="card" style="padding:4px 14px">` + per.map(r => {
+    const lb = kind === 'month' ? monthName(r.key)
+      : fmtDate(r.key).slice(0, 5) + ' – ' + fmtDate(addDays(r.key, 6)).slice(0, 5);
+    /* kỳ đang chạy: mới vài lần cân, so với cả kỳ trước thì chưa công bằng — nói ra */
+    const running = kind === 'month' ? r.key === today().slice(0, 7) : addDays(r.key, 6) >= today();
+    return `<div class="wrow wper"><span>${lb}<span class="dim"> · ${r.n} lần cân${running ? ' · đang chạy' : ''}</span></span>
+      <span><b>${fmtKg(r.avg)}</b>${r.delta === null ? '<span class="dim wdl">—</span>'
+        : `<span class="wdl" style="color:var(--${tone(r.delta) || 'tx3'})">${fmtDelta(r.delta)}</span>`}</span></div>`;
+  }).join('') + `</div>
+  <div class="dim" style="margin-top:6px;line-height:1.6">Số là trung bình các lần cân trong ${kind === 'week' ? 'tuần' : 'tháng'},
+    chênh lệch so với ${kind === 'week' ? 'tuần' : 'tháng'} trước đó có cân.</div>`;
+
+  /* ---- nhật ký ---- */
+  const logs = list.slice().reverse(), shown = S.wall ? logs : logs.slice(0, 7);
+  h += secHd('Các lần cân — ' + list.length, list.length > 7
+    ? `<button data-act="wall">${S.wall ? 'Thu gọn ▲' : 'Xem hết ▼'}</button>` : '');
+  h += `<div class="card" style="padding:4px 14px">` + shown.map(w => {
+    const i = list.indexOf(w), prev = i > 0 ? list[i - 1] : null;
+    return `<div class="wrow wlog" data-act="wEdit" data-id="${w.id}">
+      <span>${WDAY_NAME[new Date(w.date + 'T00:00:00').getDay()]}, ${fmtDate(w.date)}</span>
+      <span><b>${fmtKg(w.kg)}</b>${prev ? `<span class="dim wdl">${fmtDelta(w.kg - prev.kg)}</span>` : '<span class="wdl"></span>'}</span></div>`;
+  }).join('') + `</div>`;
   return h + `<div style="height:56px"></div>`;
 }
 

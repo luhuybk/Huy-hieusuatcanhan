@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-09-27.5';
+const APP_BUILD = '2026-09-28.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -347,12 +347,12 @@ function httpTime(v){
 /* ---------------- kho dữ liệu ---------------- */
 const KEY = 'lifehub.v2';
 const OLD  = 'lifehub.v1';
-const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds','journey','insights'];
+const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds','journey','insights','weights','wgoal'];
 
 function blank(){
   return {
     people:[], gifts:[], tasks:[], ideas:[], cards:[], staff:[], areas:[], occasions:[], inbox:[],
-    reminders:[], feeds:[], journey:[], insights:[],
+    reminders:[], feeds:[], journey:[], insights:[], weights:[], wgoal:[],
     settings:{
       theme:'dark',
       notifyHour:8,
@@ -555,6 +555,20 @@ function ensure(){
     /* bản đầu có hẹn ngày và "hiện lúc giao việc", đã bỏ — dọn khỏi bản ghi */
     ['when','from','to','days','giao'].forEach(k => delete o[k]);
     if (!o.text.trim()) o.deleted = true;
+  });
+  /* Cân nặng. Một ngày một bản ghi, id suy ra từ chính ngày đó — cân trên
+     điện thoại lúc mất sóng rồi cân lại trên máy tính cùng ngày thì vẫn là
+     MỘT bản ghi, lần sửa sau thắng, chứ không thành hai điểm cùng một ngày
+     trên biểu đồ. Số ngoài 20–300 kg là gõ nhầm, bỏ. */
+  db.weights.forEach(w => {
+    if (typeof w.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w.date)) { w.deleted = true; return; }
+    w.kg = Math.round((+w.kg || 0) * 10) / 10;
+    if (!(w.kg >= 20 && w.kg <= 300)) w.deleted = true;
+  });
+  db.wgoal.forEach(g => {
+    g.target = Math.round((+g.target || 0) * 10) / 10;
+    g.startKg = Math.round((+g.startKg || 0) * 10) / 10;
+    if (typeof g.startDate !== 'string') g.startDate = '';
   });
   if (!db.settings.workspace) db.settings.workspace = '';
   /* cửa sổ làm việc — mốc để tính khoảng trống trong ngày */
@@ -1857,6 +1871,78 @@ function insightList(areaId, off){
     .filter(o => !!o.off === !!off)
     .sort(insightCmp);
 }
+/* ============================================================
+   CÂN NẶNG
+   Cân mỗi sáng lên xuống 0,5–1,5 kg chỉ vì nước, muối, bữa tối hôm trước —
+   không phải mỡ. Lấy hiệu của hai lần cân lẻ thì con số nhảy loạn, hôm nay
+   "tăng 1 kg" mai "giảm 1,2 kg", nhìn mãi thì nản. Nên mọi thứ đọc ra
+   (thay đổi, tốc độ, ngày về đích) đều dựa trên ĐƯỜNG XU HƯỚNG hoặc trung
+   bình cả tuần/tháng; từng lần cân chỉ là chấm mờ phía sau.
+   ============================================================ */
+const WEIGHT_ALPHA = 0.1;        // mỗi lần cân kéo đường xu hướng đi 10% quãng lệch
+const wId = d => 'w' + d;
+const fmtKg = v => (Math.round(v * 10) / 10).toLocaleString('vi-VN', {minimumFractionDigits:1, maximumFractionDigits:1});
+/* dấu theo số ĐÃ làm tròn — không thì −0,04 hiện thành "−0,0" */
+const fmtDelta = v => { const r = Math.round(v * 10) / 10; return (r > 0 ? '+' : r < 0 ? '−' : '±') + fmtKg(Math.abs(r)); };
+/* "72,4" hay "72.4" đều được — bàn phím điện thoại Việt hay ra dấu phẩy */
+const parseKg = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? 0 : Math.round(n * 10) / 10; };
+function weights(){
+  return alive(db.weights).slice().sort((a, b) => a.date.localeCompare(b.date));
+}
+const weightGoal = () => alive(db.wgoal).find(g => g.id === 'goal' && g.target > 0) || null;
+
+/* Xu hướng từng ngày, từ lần cân đầu tới hôm nay. Ngày không cân thì giữ
+   nguyên — không bịa ra số, chỉ là đường xu hướng không có gì để kéo. */
+function weightTrend(){
+  const list = weights(); if (!list.length) return [];
+  const by = new Map(list.map(w => [w.date, w.kg]));
+  const out = []; let t = list[0].kg;
+  const end = today() > list[list.length - 1].date ? today() : list[list.length - 1].date;
+  for (let d = list[0].date, i = 0; d <= end && i < 4000; d = addDays(d, 1), i++){
+    if (by.has(d)) t += WEIGHT_ALPHA * (by.get(d) - t);
+    out.push({date:d, kg:by.has(d) ? by.get(d) : null, trend:t});
+  }
+  return out;
+}
+/* Tốc độ kg/ngày trên các lần cân trong N ngày gần nhất (hồi quy tuyến tính).
+   Cần ít nhất 4 lần cân trải trên 7 ngày — ít hơn thì con số chỉ là nhiễu. */
+function weightRate(days){
+  const from = addDays(today(), -days);
+  const pts = weights().filter(w => w.date > from);
+  if (pts.length < 4) return null;
+  const x0 = new Date(pts[0].date + 'T00:00:00').getTime();
+  const xs = pts.map(w => (new Date(w.date + 'T00:00:00').getTime() - x0) / 86400000), ys = pts.map(w => w.kg);
+  if (xs[xs.length - 1] < 7) return null;
+  const n = xs.length, mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+  let num = 0, den = 0;
+  xs.forEach((x, i) => { num += (x - mx) * (ys[i] - my); den += (x - mx) * (x - mx); });
+  return den ? num / den : null;
+}
+/* Còn bao nhiêu ngày tới mục tiêu với một tốc độ cho trước.
+   null = đang đi ngược hướng hoặc gần như đứng yên (dưới 0,05 kg/tuần). */
+function weightEta(now, target, rate){
+  if (rate === null || rate === undefined) return null;
+  const need = target - now;
+  if (Math.abs(need) < 0.05) return 0;
+  if (Math.abs(rate) * 7 < 0.05 || Math.sign(rate) !== Math.sign(need)) return null;
+  return Math.ceil(need / rate);
+}
+/* Gom theo tuần (thứ 2 → CN) hoặc theo tháng: trung bình các lần cân trong
+   kỳ, và chênh với kỳ trước CÓ cân. Mới nhất lên trước. */
+function weightPeriods(kind, max){
+  const key = w => {
+    if (kind === 'month') return w.date.slice(0, 7);
+    const d = new Date(w.date + 'T00:00:00'), back = (d.getDay() + 6) % 7;
+    return addDays(w.date, -back);
+  };
+  const m = new Map();
+  weights().forEach(w => { const k = key(w); if (!m.has(k)) m.set(k, []); m.get(k).push(w.kg); });
+  const rows = [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([k, v]) => ({key:k, n:v.length, avg:v.reduce((a, b) => a + b) / v.length}));
+  rows.forEach((r, i) => { r.delta = i ? r.avg - rows[i - 1].avg : null; });
+  return rows.reverse().slice(0, max || 12);
+}
+
 /* Mục hành trình này đã được đưa sang sổ chưa */
 const insightOfJourney = jid => insights().find(o => o.jId === jid) || null;
 

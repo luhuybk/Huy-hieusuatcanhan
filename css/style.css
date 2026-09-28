@@ -711,3 +711,42 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
    nên đặt border-color ở đây là vô nghĩa — thua style nội tuyến. Vòng sáng
    bên ngoài mới là thứ thật sự nhìn thấy, nên tín hiệu nằm ở đó. */
 .tlbar i.qua{box-shadow:0 0 0 1px var(--warn)}
+
+/* ---------- cân nặng ---------- */
+/* Ô số ký to, dễ gõ bằng ngón cái; chữ "kg" nằm trong ô */
+.wkg{display:flex;align-items:center;height:50px;padding:0 14px;border-radius:12px;
+  background:var(--bg3);border:1px solid var(--line)}
+.wkg:focus-within{border-color:var(--acc)}
+.wkg input{flex:1;min-width:0;height:100%;background:none;border:0;outline:0;
+  font-size:21px;font-weight:750;letter-spacing:-.3px}
+.wkg input::placeholder{color:var(--tx3);font-weight:600}
+.wkg span{color:var(--tx3);font-size:15px;font-weight:600}
+.wday{display:flex;align-items:center;gap:8px;margin-top:10px}
+.wday input{background:var(--bg3);border:1px solid var(--line);border-radius:9px;padding:5px 8px;font-size:13px}
+.weta{padding:6px 0;font-size:14px;line-height:1.5}
+.weta + .weta{border-top:1px dashed var(--line);padding-top:9px;margin-top:3px}
+.wcard{padding:12px 10px 10px;overflow:hidden}
+#wchart{display:block;max-width:100%;height:auto;touch-action:pan-y;user-select:none}
+#wchart .wg{stroke:var(--line);stroke-width:1}
+#wchart .wt{fill:var(--tx3);font-size:11px;font-family:inherit}
+#wchart .wgl{fill:var(--ok);font-weight:700}
+#wchart .wgoal{stroke:var(--ok);stroke-width:1.5;stroke-dasharray:5 4}
+/* Từng lần cân mờ phía sau, đường xu hướng đậm phía trước: mắt đọc cái
+   đậm trước — và cái đậm mới là thứ đáng đọc */
+#wchart .wraw{fill:none;stroke:var(--tx3);stroke-width:1;opacity:.45}
+#wchart .wdot{fill:var(--tx3);opacity:.7}
+#wchart .wtrend{fill:none;stroke:var(--acc);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+#wchart .wtipl{stroke:var(--tx3);stroke-dasharray:3 3}
+#wchart .wtipc{fill:var(--acc);stroke:var(--bg2);stroke-width:2}
+#wchart .wtipb{fill:var(--bg3);stroke:var(--line)}
+#wchart .wtipt{fill:var(--tx);font-size:12px;font-weight:700}
+#wchart .wtipt2{fill:var(--tx3);font-size:11px}
+.wkey{display:inline-block;vertical-align:middle;margin-right:5px}
+.wkey.dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);opacity:.7}
+.wkey.line{width:16px;height:3px;border-radius:2px;background:var(--acc)}
+.wkey.goal{width:16px;height:0;border-top:2px dashed var(--ok)}
+.wrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;font-size:13.5px}
+.wper + .wper,.wlog + .wlog{border-top:1px solid var(--line)}
+.wper,.wlog{padding:10px 0}
+.wlog{cursor:pointer}
+.wdl{display:inline-block;min-width:52px;text-align:right;margin-left:8px;font-size:12.5px;font-weight:650}
