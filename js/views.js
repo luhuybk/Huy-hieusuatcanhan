@@ -2679,7 +2679,12 @@ function vWeight(){
   </div>`;
 
   /* ---- mục tiêu ---- */
-  h += secHd('Mục tiêu', goal ? `<button data-act="wGoal">Đổi</button>` : '');
+  const motto = mottoLines(weightMotto());
+  h += secHd('Mục tiêu', (motto.length ? '' : `<button data-act="wMotto">+ Câu tự nhắc</button>`)
+                       + (goal ? `<button data-act="wGoal">Đổi</button>` : ''));
+  /* câu tự nhắc đứng ngay trên con số — chạm để sửa */
+  if (motto.length) h += `<div class="wmotto" data-act="wMotto" title="Chạm để sửa">${
+    motto.map(x => `<div>${esc(x)}</div>`).join('')}</div>`;
   if (!goal) h += `<div class="card"><div class="row"><div class="grow dim" style="line-height:1.6">
       Đặt một con số để cố gắng — app tính giúp còn bao xa, và với tốc độ hiện tại thì khoảng ngày nào tới.</div>
       <button class="btn pri" data-act="wGoal">🎯 Đặt mục tiêu</button></div></div>`;

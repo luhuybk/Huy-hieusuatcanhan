@@ -334,7 +334,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-09-28.1';
+const APP_BUILD = '2026-09-29.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -566,6 +566,7 @@ function ensure(){
     if (!(w.kg >= 20 && w.kg <= 300)) w.deleted = true;
   });
   db.wgoal.forEach(g => {
+    if (g.id === 'motto'){ g.text = typeof g.text === 'string' ? g.text.slice(0, 400) : ''; return; }
     g.target = Math.round((+g.target || 0) * 10) / 10;
     g.startKg = Math.round((+g.startKg || 0) * 10) / 10;
     if (typeof g.startDate !== 'string') g.startDate = '';
@@ -1890,6 +1891,13 @@ function weights(){
   return alive(db.weights).slice().sort((a, b) => a.date.localeCompare(b.date));
 }
 const weightGoal = () => alive(db.wgoal).find(g => g.id === 'goal' && g.target > 0) || null;
+/* Câu tự nhắc nằm ngay trên mục tiêu. Bản ghi riêng (id 'motto') chứ không
+   dính vào mục tiêu — bỏ mục tiêu không kéo câu này đi theo. Chưa từng sửa
+   thì dùng câu mặc định; xoá trắng là tắt hẳn. Mỗi dòng (hoặc mỗi đoạn cách
+   nhau bằng " - ") là một câu riêng. */
+const WEIGHT_MOTTO = 'TAO LÀ 1 FITNESS MODEL\nTAO LÀ 1 THẰNG 6 MÚI\nTAO LÀ ĐỈNH CAO CHO CÁC THẰNG KHÁC NHÌN';
+const weightMotto = () => { const m = db.wgoal.find(g => g.id === 'motto'); return m ? m.text : WEIGHT_MOTTO; };
+const mottoLines = s => String(s || '').split(/\n|\s+-\s+/).map(x => x.trim()).filter(Boolean);
 
 /* Xu hướng từng ngày, từ lần cân đầu tới hôm nay. Ngày không cân thì giữ
    nguyên — không bịa ra số, chỉ là đường xu hướng không có gì để kéo. */

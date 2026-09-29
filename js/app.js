@@ -1407,6 +1407,18 @@ function weightGoalForm(){
             + fmtKg(Math.abs(val.target - val.startKg)) + ' kg');
     }});
 }
+function weightMottoForm(){
+  openForm({title:'Câu tự nhắc', submit:'Lưu',
+    fields:[{k:'text', label:'Mỗi dòng một câu', type:'textarea', req:false,
+             hint:'để trống là ẩn đi'}],
+    values:{text:mottoLines(weightMotto()).join('\n')},
+    onSave(v){
+      let o = db.wgoal.find(x => x.id === 'motto');
+      const text = mottoLines(v.text).join('\n');
+      if (o) Object.assign(o, {text, deleted:false}); else db.wgoal.push(o = {id:'motto', text});
+      stamp(o); save(); render();
+    }});
+}
 function weightGoalDel(){
   const o = db.wgoal.find(x => x.id === 'goal'); if (!o) return;
   confirmBox('Bỏ mục tiêu ' + fmtKg(o.target) + ' kg?', () => {
@@ -2579,6 +2591,7 @@ document.addEventListener('click', e => {
     case 'wper':   S.wper = id; render(); break;
     case 'wall':   S.wall = !S.wall; render(); break;
     case 'wGoal':  weightGoalForm(); break;
+    case 'wMotto': weightMottoForm(); break;
     case 'wEdit':  weightEdit(id); break;
     case 'wDel':   weightDel(id); break;
     case 'wGoalDel': weightGoalDel(); break;

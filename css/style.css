@@ -726,6 +726,12 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
 .weta{padding:6px 0;font-size:14px;line-height:1.5}
 .weta + .weta{border-top:1px dashed var(--line);padding-top:9px;margin-top:3px}
 .wcard{padding:12px 10px 10px;overflow:hidden}
+/* Câu tự nhắc: chữ to, đậm, in hoa — đọc lướt cũng phải đập vào mắt */
+.wmotto{margin-bottom:10px;padding:14px 16px;border-radius:14px;cursor:pointer;
+  background:var(--bg2);border:1px solid var(--line);border-left:4px solid var(--acc);
+  font-size:17px;font-weight:850;letter-spacing:.2px;line-height:1.35;text-transform:uppercase}
+.wmotto div + div{margin-top:6px}
+.wmotto div::before{content:'🔥 ';font-size:14px}
 #wchart{display:block;max-width:100%;height:auto;touch-action:pan-y;user-select:none}
 #wchart .wg{stroke:var(--line);stroke-width:1}
 #wchart .wt{fill:var(--tx3);font-size:11px;font-family:inherit}
