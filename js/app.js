@@ -3,7 +3,7 @@
    ============================================================ */
 "use strict";
 
-const S = { view:'dash', q:'', personId:null, staffId:null, ideatab:'live', assignee:'all', area:'all', side:false,
+const S = { view:'dash', q:'', personId:null, staffId:null, ideaFold:{}, assignee:'all', area:'all', side:false,
             dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
             dashtab:'today', showDone:false, showStuck:false, showGiven:false,
             /* Lịch tháng: danh sách nhịp lặp mở sẵn, mục "ngày đã chọn" thu
@@ -21,7 +21,7 @@ const TITLES = {
   people:['Quan hệ','Năm vòng tròn: S · S2 · A · B · C'],
   occasions:['Dịp & lễ','Giỗ, Tết, kỷ niệm — có tính âm lịch'],
   work:['Công việc','Việc cần làm, có cả việc lặp lại'],
-  ideas:['Ý tưởng','Nghĩ gì ghi đó — kèm hướng triển khai'],
+  ideas:['Ý tưởng','Nghĩ gì ghi đó — rồi xếp vào từng mục lớn'],
   daily:['Việc hằng ngày','Việc lặp lại — giờ và thời lượng'],
   board:['Giao việc','Bảng tiến độ nhân viên'],
   review:['Ôn lại tuần','Nhìn lại 7 ngày qua'],
@@ -37,6 +37,7 @@ const TITLES = {
    (tick một ô, đánh dấu đã trả…) thì giữ nguyên chỗ đang xem. */
 let _renderKey = '';
 function render(){
+  if (idDrag) return;          /* đồng bộ chạy ngầm giữa lúc đang cầm ý tưởng — vẽ sau khi thả */
   const v = S.view;
   const key = v + ':' + (S.personId || '') + ':' + (S.staffId || '');
   const keepScroll = key === _renderKey;
@@ -527,55 +528,167 @@ function snoozeApply(kind, id, mins){
 }
 
 /* ---------------- ý tưởng ---------------- */
-/* Ô "nhắc xem lại" nhận mã khoảng cách (m3, y1…) chứ không nhận ngày, vì
-   người ta nghĩ theo kiểu "ba tháng nữa tính tiếp" chứ không nhớ nổi ngày
-   cụ thể. Ý tưởng đang có hẹn thì thêm lựa chọn giữ nguyên ngày cũ, không
-   thì mỗi lần sửa tên là ngày hẹn bị đặt lại. */
-function reviewOpts(i){
-  const keep = i && String(i.reviewAt || '').slice(0,10);
-  return (keep ? [['keep', 'Giữ ngày ' + fmtDate(keep)]] : [])
-         .concat([['', 'Không nhắc']], REVIEW_IN);
-}
-const ideaFields = i => [
-  {k:'title',  label:'Ý tưởng'},
-  {k:'areaId', label:'Mảng việc', type:'select', half:true, opts:areaOpts()},
-  {k:'status', label:'Trạng thái', type:'select', half:true, opts:Object.entries(IDEA_ST), def:'seed'},
-  {k:'reviewIn', label:'Nhắc xem lại', type:'select', opts:reviewOpts(i),
-   hint:'tới ngày đó Telegram hỏi lại: làm hay bỏ'},
-  {k:'detail', label:'Nội dung', type:'textarea', voice:true, ph:'ý tưởng này là gì, giải quyết vấn đề gì'},
-  {k:'plan',   label:'Hướng triển khai', type:'textarea', voice:true, ph:'bước 1…\nbước 2…'}
+const ideaFields = () => [
+  {k:'title', label:'Ý tưởng'},
+  {k:'gid',   label:'Mục', type:'select', req:false,
+   opts:[['', '— Chưa xếp mục —']].concat(ideaGroups().map(g => [g.id, g.name]))},
+  {k:'detail', label:'Nội dung', type:'textarea', voice:true, req:false,
+   ph:'ý tưởng này là gì, giải quyết chuyện gì'}
 ];
-/* đổi lựa chọn trong ô thành ngày thật, rồi bỏ trường tạm đi */
-function applyReview(v, i){
-  const pick = v.reviewIn;
-  delete v.reviewIn;
-  if (pick === 'keep') { if (i) v.reviewAt = i.reviewAt || ''; return v; }
-  v.reviewAt = pick ? reviewDate(pick) : '';
-  return v;
+/* vào mục nào thì nằm trên cùng mục đó — vừa ghi là thấy ngay */
+function ideaToTop(i){
+  const l = ideasIn(i.gid || '').filter(x => x.id !== i.id);
+  i.ord = l.length ? Math.min(...l.map(ideaOrd)) - 1 : 0;
+}
+function newIdea(v){
+  const i = {title:v.title, detail:v.detail || '', gid:v.gid || '', areaId:'', createdAt:today()};
+  ideaToTop(i); db.ideas.push(stamp(i)); save();
+  return i;
 }
 function addIdea(){
-  openForm({title:'Ý tưởng mới', fields:ideaFields(null),
-    values:{status:'seed', reviewIn:'', areaId:S.area==='all'?'':S.area},
-    onSave(v){ db.ideas.push(stamp(Object.assign({createdAt:today()}, applyReview(v, null))));
-      save(); S.view='ideas'; S.ideatab='live'; render(); }});
+  openForm({title:'Ý tưởng mới', fields:ideaFields(), values:{gid:''},
+    onSave(v){ newIdea(v); S.view = 'ideas'; render(); }});
 }
 function editIdea(id){
-  const i = db.ideas.find(x => x.id === id);
-  openForm({title:'Sửa ý tưởng', fields:ideaFields(i),
-    values:Object.assign({}, i, {reviewIn: i.reviewAt ? 'keep' : ''}),
+  const i = db.ideas.find(x => x.id === id); if (!i) return;
+  const g = ideaGroupOf(i);
+  openForm({title:'Sửa ý tưởng', fields:ideaFields(),
+    values:{title:i.title, gid:g ? g.id : '', detail:ideaText(i)},
     extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delIdea" data-id="${id}">Xoá ý tưởng</button>
       <button type="button" class="btn full" style="margin-bottom:10px" data-act="ideaToCard" data-id="${id}">→ Đưa lên bảng giao việc</button>`,
-    onSave(v){ Object.assign(i, applyReview(v, i)); stamp(i); save(); render(); }});
+    onSave(v){
+      const moved = (v.gid || '') !== (g ? g.id : '');
+      /* gộp hẳn phần "hướng triển khai" cũ vào nội dung, bỏ luôn hẹn xem lại */
+      Object.assign(i, {title:v.title, detail:v.detail || '', gid:v.gid || ''});
+      delete i.plan; delete i.reviewAt; delete i.status;
+      if (moved) ideaToTop(i);
+      stamp(i); save(); render();
+    }});
 }
-/* Ba nút trên thẻ ý tưởng tới hẹn — cùng bộ với ba nút dưới tin Telegram,
-   bấm bên nào cũng ghi vào cùng một chỗ. */
-function ideaReview(id, act){
-  const i = db.ideas.find(x => x.id === id); if (!i) return;
-  if (act === 'go')        { i.status = 'doing'; i.reviewAt = ''; toast('Bắt tay làm: ' + i.title); }
-  else if (act === 'drop') { i.status = 'drop';  i.reviewAt = ''; toast('Đã gác lại: ' + i.title); }
-  else                     { i.reviewAt = reviewDate(act); toast('Hẹn xem lại ' + fmtDate(i.reviewAt)); }
-  stamp(i); save(); render();
+
+/* ---- mục lớn ---- */
+function ideaGroupNew(name){
+  name = String(name || '').trim(); if (!name) return null;
+  const gs = ideaGroups();
+  const g = stamp({name, ord:gs.length ? gs[gs.length - 1].ord + 1 : 0});
+  db.ideagroups.push(g); save(); render();
+  return g;
 }
+function ideaGroupAdd(){
+  openForm({title:'Mục lớn mới', submit:'Tạo mục',
+    fields:[{k:'name', label:'Tên mục', ph:'vd: 💰 Đầu tư', hint:'thêm emoji ở đầu cho dễ nhìn'}],
+    onSave(v){ ideaGroupNew(v.name); toast('Đã tạo mục ' + v.name.trim()); }});
+}
+function ideaGroupEdit(id){
+  const g = db.ideagroups.find(x => x.id === id); if (!g) return;
+  const gs = ideaGroups(), k = gs.findIndex(x => x.id === id);
+  openForm({title:'Sửa mục', fields:[{k:'name', label:'Tên mục'}], values:{name:g.name},
+    extra:`<div class="btns" style="margin-bottom:10px">
+        <button type="button" class="btn sm grow" data-act="ideaGroupMove" data-id="${id}" data-d="-1" ${k ? '' : 'disabled'}>↑ Lên trên</button>
+        <button type="button" class="btn sm grow" data-act="ideaGroupMove" data-id="${id}" data-d="1" ${k < gs.length - 1 ? '' : 'disabled'}>↓ Xuống dưới</button>
+      </div>
+      <button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="ideaGroupDel" data-id="${id}">Xoá mục</button>`,
+    onSave(v){ g.name = v.name.trim(); stamp(g); save(); render(); }});
+}
+function ideaGroupMove(id, dir){
+  const gs = ideaGroups(), k = gs.findIndex(x => x.id === id), j = k + dir;
+  if (k < 0 || j < 0 || j >= gs.length) return;
+  [gs[k], gs[j]] = [gs[j], gs[k]];
+  gs.forEach((g, n) => { if (g.ord !== n){ g.ord = n; stamp(g); } });
+  save(); render(); ideaGroupEdit(id);           /* mở lại để bấm tiếp được */
+}
+/* Xoá mục không xoá ý tưởng — chúng về "Chưa xếp mục" để xếp lại */
+function ideaGroupDel(id){
+  const g = db.ideagroups.find(x => x.id === id); if (!g) return;
+  const n = ideasIn(id).length;
+  closeModal();
+  confirmBox('Xoá mục ' + g.name + '?' + (n ? ' ' + n + ' ý tưởng bên trong sẽ về "Chưa xếp mục".' : ''), () => {
+    ideasIn(id).forEach(i => { i.gid = ''; stamp(i); });
+    g.deleted = true; stamp(g); save(); render();
+  }, 'Xoá');
+}
+
+/* ---- kéo thả ý tưởng ----
+   Tự viết bằng pointer chứ không dùng kéo-thả HTML5: cái đó không chạy bằng
+   ngón tay trên điện thoại. Chỉ nắm ⠿ mới kéo được (touch-action:none ở
+   CSS), nên vuốt vào chữ vẫn cuộn trang như thường. Tới sát mép trên/dưới
+   thì trang tự cuộn, để kéo được tới mục nằm ngoài màn hình. */
+let idDrag = null;
+function idPlace(){
+  const d = idDrag; if (!d) return;
+  d.ghost.style.top = (d.y - d.dy) + 'px';
+  const el = document.elementFromPoint(d.x, d.y);
+  const g = el && el.closest('.idg');
+  document.querySelectorAll('.idg.over').forEach(x => { if (x !== g) x.classList.remove('over'); });
+  if (!g) return;                     /* lọt vào khe giữa hai mục: giữ chỗ cũ */
+  g.classList.add('over');
+  const list = g.querySelector('.idl');
+  if (!list){ d.fold = g; d.ph.style.display = 'none'; return; }   /* mục đang thu gọn: thả vào cuối */
+  d.fold = null; d.ph.style.display = '';
+  const rows = [...list.querySelectorAll('.idr')].filter(x => x !== d.row);
+  const before = rows.find(x => { const b = x.getBoundingClientRect(); return d.y < b.top + b.height / 2; });
+  if (before){ if (d.ph.nextElementSibling !== before) list.insertBefore(d.ph, before); }
+  else if (list.lastElementChild !== d.ph) list.appendChild(d.ph);
+}
+function idMove(e){ if (!idDrag) return; idDrag.x = e.clientX; idDrag.y = e.clientY; idPlace(); }
+function idTick(){
+  const d = idDrag; if (!d) return;
+  const edge = 70, v = d.y < edge ? -(edge - d.y) / 4 : d.y > innerHeight - edge ? (d.y - innerHeight + edge) / 4 : 0;
+  if (v){ window.scrollBy(0, v); idPlace(); }
+  d.raf = requestAnimationFrame(idTick);
+}
+function idEnd(e){
+  const d = idDrag; if (!d) return;
+  idDrag = null;
+  cancelAnimationFrame(d.raf);
+  window.removeEventListener('pointermove', idMove);
+  window.removeEventListener('pointerup', idEnd);
+  window.removeEventListener('pointercancel', idEnd);
+  document.body.classList.remove('iddrag');
+  d.ghost.remove();
+  const g = e.type === 'pointercancel' ? null
+          : d.fold || (d.ph.isConnected && d.ph.style.display !== 'none' ? d.ph.closest('.idg') : null);
+  const i = db.ideas.find(x => x.id === d.id);
+  if (g && i){
+    const gid = g.dataset.gid || '', from = (ideaGroupOf(i) || {}).id || '';
+    let order;
+    if (d.fold) order = ideasIn(gid).map(x => x.id).filter(x => x !== d.id).concat(d.id);
+    else order = [...g.querySelectorAll('.idl > .idr, .idl > .idph')]
+                   .filter(x => x !== d.row).map(x => x === d.ph ? d.id : x.dataset.iid);
+    const same = gid === from && order.join() === ideasIn(gid).map(x => x.id).join();
+    if (!same){
+      order.forEach((id, n) => {
+        const o = db.ideas.find(x => x.id === id); if (!o) return;
+        if (o.gid !== gid || o.ord !== n){ o.gid = gid; o.ord = n; stamp(o); }
+      });
+      save();
+      if (gid !== from){
+        const gg = gid && db.ideagroups.find(x => x.id === gid);
+        toast('→ ' + (gg ? gg.name : 'Chưa xếp mục'));
+      }
+    }
+  }
+  render();
+}
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('[data-idrag]'); if (!h || idDrag) return;
+  const row = h.closest('.idr'); if (!row) return;
+  e.preventDefault();
+  const r = row.getBoundingClientRect();
+  const ghost = row.cloneNode(true);
+  ghost.classList.add('idghost');
+  Object.assign(ghost.style, {width:r.width + 'px', left:r.left + 'px', top:r.top + 'px'});
+  document.body.appendChild(ghost);
+  const ph = document.createElement('div');
+  ph.className = 'idph'; ph.style.height = r.height + 'px';
+  row.after(ph); row.style.display = 'none';
+  document.body.classList.add('iddrag');
+  idDrag = {id:h.dataset.idrag, row, ghost, ph, fold:null, dy:e.clientY - r.top, x:e.clientX, y:e.clientY, raf:0};
+  idDrag.raf = requestAnimationFrame(idTick);
+  window.addEventListener('pointermove', idMove);
+  window.addEventListener('pointerup', idEnd);
+  window.addEventListener('pointercancel', idEnd);
+});
 
 /* ---------------- thẻ giao việc ---------------- */
 const cardFields = () => [
@@ -722,11 +835,10 @@ function inboxTo(kind, id){
       }});
   }
   else if (kind === 'idea'){
-    openForm({title:'Chuyển thành ý tưởng', fields:ideaFields(null),
-      values:{title:first, detail:body, status:'seed', reviewIn:'',
-              areaId:S.area === 'all' ? '' : S.area},
+    openForm({title:'Chuyển thành ý tưởng', fields:ideaFields(),
+      values:{title:first, detail:body, gid:''},
       onSave(v){
-        db.ideas.push(stamp(Object.assign({createdAt:today()}, applyReview(v, null))));
+        newIdea(v);
         finish('ý tưởng'); toast('Đã tạo ý tưởng');
       }});
   }
@@ -1755,10 +1867,6 @@ function tgBox(){
        ph:'để trống = nhánh mặc định', hint:'gym, uống thuốc, chốt sổ…'},
       {k:'reportTopic', label:'Nhánh: báo cáo', half:true,
        ph:'để trống = nhánh mặc định', hint:'tóm tắt ngày, bảng công việc, tóm tắt tuần'},
-      {k:'ideaTopic', label:'Nhánh: ý tưởng', half:true,
-       ph:'để trống = nhánh mặc định', hint:'câu hỏi "làm hay bỏ" khi tới hẹn xem lại'},
-      {k:'ideaHour', label:'Giờ hỏi lại ý tưởng', type:'number', half:true,
-       ph:'0-23', hint:'chỉ hỏi khi ý tưởng có đặt ngày xem lại'},
       {k:'enddayHour', label:'Giờ nhắc sắp hết ngày', type:'number', half:true,
        ph:'0-23', hint:'điểm lại việc chưa tick; xong hết thì không gửi. -1 = tắt'},
       {k:'weeklyHour', label:'Giờ gửi tóm tắt tuần (Chủ nhật)', type:'number', half:true,
@@ -1779,8 +1887,6 @@ function tgBox(){
             cardTopic: t.cardTopic || t.workTopic || '',
             remTopic: t.remTopic || '',
             reportTopic: t.reportTopic || t.workTopic || '',
-            ideaTopic: t.ideaTopic || '',
-            ideaHour: t.ideaHour == null ? 9 : t.ideaHour,
             enddayHour: t.enddayHour == null ? 22 : t.enddayHour,
             weeklyHour: t.weeklyHour == null ? -1 : t.weeklyHour,
             staffWeekly: t.staffWeekly ? 'yes' : '',
@@ -1799,8 +1905,7 @@ function tgBox(){
                     cardTopic:  String(v.cardTopic || '').trim(),
                     remTopic:   String(v.remTopic || '').trim(),
                     reportTopic:String(v.reportTopic || '').trim(),
-                    ideaTopic:  String(v.ideaTopic || '').trim(),
-                    ideaHour:   v.ideaHour === '' ? -1 : +v.ideaHour,
+                    ideaHour:   -1,       /* hẹn xem lại ý tưởng đã bỏ */
                     enddayHour: v.enddayHour === '' ? -1 : +v.enddayHour,
                     weeklyHour: v.weeklyHour === '' ? -1 : +v.weeklyHour,
                     staffWeekly: v.staffWeekly === 'yes',
@@ -2321,7 +2426,6 @@ document.addEventListener('click', e => {
     case 'burger':  setSide(!S.side); break;
     case 'scrim':   setSide(false); break;
     case 'area':    S.area = id; setSide(false); render(); break;
-    case 'ideatab': S.ideatab = id; render(); break;
     case 'dailytab': S.dailytab = id; render(); break;
     case 'dailyDay': S.dailyDay = +id; render(); break;
     case 'asg':     S.assignee = (S.assignee === id ? 'all' : id); closeModal(); S.view='board'; render(); break;
@@ -2381,13 +2485,18 @@ document.addEventListener('click', e => {
 
     /* ý tưởng */
     case 'addIdea':  addIdea(); break;
-    case 'ideaRev':  ideaReview(id, el.dataset.r); break;
+    case 'ideaFold': S.ideaFold[id] = !S.ideaFold[id]; render(); break;
+    case 'ideaGroupAdd':   ideaGroupAdd(); break;
+    case 'ideaGroupQuick': ideaGroupNew(id); break;
+    case 'ideaGroupEdit':  ideaGroupEdit(id); break;
+    case 'ideaGroupMove':  closeModal(); ideaGroupMove(id, +el.dataset.d); break;
+    case 'ideaGroupDel':   ideaGroupDel(id); break;
     case 'editIdea': editIdea(id); break;
     case 'delIdea':  closeModal(); confirmBox('Xoá ý tưởng này?', () => {
         const i = db.ideas.find(x => x.id === id); i.deleted = true; stamp(i); save(); render(); }); break;
     case 'ideaToCard': {
       const i = db.ideas.find(x => x.id === id);
-      db.cards.push(stamp({title:i.title, desc:(i.detail||'') + (i.plan?'\n\n'+i.plan:''), assignee:'',
+      db.cards.push(stamp({title:i.title, desc:ideaText(i), assignee:'',
         col:'idea', areaId:i.areaId, due:'', prio:'mid', progress:0, checklist:[], createdAt:today()}));
       save(); closeModal(); S.view='board'; render(); toast('Đã đưa lên bảng giao việc'); break;
     }
@@ -2476,12 +2585,7 @@ document.addEventListener('click', e => {
       else if (k === 'task'){ S.view = 'work'; render(); editTask(id); break; }
       else if (k === 'reminder'){ S.view = 'daily'; S.dailytab = 'all'; render(); editRem(id); break; }
       else if (k === 'idea'){
-        /* Ý tưởng đã xong/tạm gác nằm trong Kho — nhảy sang đúng nhóm, không
-           thì đóng ô sửa xong lại thấy danh sách trống trơn. */
-        const i2 = db.ideas.find(x => x.id === id);
-        S.view = 'ideas';
-        S.ideatab = i2 && (i2.status === 'done' || i2.status === 'drop') ? 'kho' : 'live';
-        render(); editIdea(id); break; }
+        S.view = 'ideas'; render(); editIdea(id); break; }
       else if (k === 'card'){ S.view = 'board'; render(); openCard(id); break; }
       else if (k === 'journey'){ S.view = 'journey'; S.journeytab = 'all'; render(); viewJourney(id); break; }
       else if (k === 'insight'){ openInsight(id); break; }

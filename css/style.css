@@ -756,3 +756,30 @@ pre.code{background:var(--bg2);border:1px solid var(--line);border-radius:10px;p
 .wper,.wlog{padding:10px 0}
 .wlog{cursor:pointer}
 .wdl{display:inline-block;min-width:52px;text-align:right;margin-left:8px;font-size:12.5px;font-weight:650}
+
+/* ---------- ý tưởng: mục lớn + kéo thả ---------- */
+.idg{margin-bottom:12px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  transition:border-color .12s}
+.idg.un{border-style:dashed;border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
+.idg.over{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.idgh{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 12px;font-size:15px}
+.idgh > .grow{cursor:pointer;display:flex;align-items:center;gap:7px;min-width:0}
+.idgh .idc{width:14px;color:var(--tx2);font-size:14px}
+.idgh .n{color:var(--tx3);font-size:12.5px;font-weight:650;background:var(--bg3);border-radius:999px;padding:1px 8px}
+.idl{padding:0 6px 6px;min-height:40px}
+.idr{display:flex;align-items:flex-start;gap:2px;padding:6px 4px;border-top:1px solid var(--line)}
+.idh{flex:none;width:36px;height:36px;display:grid;place-items:center;border-radius:9px;
+  color:var(--tx2);opacity:.75;font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.idh:hover{background:var(--bg3);color:var(--tx2)}
+.idb{flex:1;min-width:0;cursor:pointer;padding:7px 4px 4px}
+.idt{font-weight:650;font-size:15px;line-height:1.35}
+.idd{color:var(--tx2);font-size:13.5px;line-height:1.5;margin-top:3px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.idempty{padding:12px;text-align:center;border-top:1px solid var(--line)}
+.idl:has(.idph) .idempty{display:none}
+.idph{margin:4px 0;border:2px dashed var(--acc);border-radius:10px;
+  background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.idghost{position:fixed;z-index:999;pointer-events:none;margin:0;border:0;border-radius:12px;
+  background:var(--bg3);box-shadow:0 12px 32px rgba(0,0,0,.35);transform:rotate(-1deg)}
+.idghost .idh{color:var(--acc)}
+body.iddrag, body.iddrag *{cursor:grabbing !important;user-select:none;-webkit-user-select:none}

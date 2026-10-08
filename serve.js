@@ -274,13 +274,6 @@ function topicFor(what){
   }
   return String(confGet('tg_topic', '') || '') || 'chính';
 }
-/* bản song sinh của tgIdeaButtons() bên PHP */
-function tgIdeaButtons(id){
-  if (!confGet('tg_webhook_on')) return null;
-  return [[{text:'▶ Triển khai', callback_data:`idea:go:${id}`},
-           {text:'🗄 Gác lại',   callback_data:`idea:drop:${id}`}],
-          [{text:'⏰ Nhắc lại sau 3 tháng', callback_data:`idea:snz:${id}:m3`}]];
-}
 /* Bố cục nút dưới tin nhắc — bản song sinh của tgItemButtons() bên PHP.
    Ở đây không gọi Telegram thật, nhưng vẫn dựng đúng hình dạng bàn phím để
    kiểm được số hàng và số nút mỗi hàng: bốn nút một hàng thì trên điện
@@ -849,23 +842,6 @@ function runSchedule(dry, atMs){
       if (dry) done.push({month:ym, dry:true, sent:text});
       else { markSent('month:' + ym);
              done.push({month:ym, ok:true, sent:text, topic:topicFor('report')}); }
-    }
-  }
-
-  /* ý tưởng tới hẹn xem lại — bản song sinh của khối cùng tên bên lib.php */
-  const ih = +confGet('tg_idea_hour', '9');
-  if (ih >= 0 && now.getHours() >= ih){
-    for (const i of itemsOf('ideas')){
-      const st = String(i.status || '');
-      if (st === 'done' || st === 'drop') continue;
-      const rv = String(i.reviewAt || '').slice(0,10);
-      if (rv.length !== 10 || rv > today) continue;
-      const key = `idea:${i.id}:${rv}`;
-      if (alreadySent(key)) continue;
-      if (dry){ done.push({idea:i.title, dry:true}); continue; }
-      markSent(key);
-      done.push({idea:i.title, ok:true, topic:topicFor('ideas'),
-                 buttons:tgIdeaButtons(String(i.id || ''))});
     }
   }
 

@@ -21,7 +21,6 @@ const COLS = [
 ];
 const COL_MAP = {backlog:'idea', todo:'assigned', doing:'doing', review:'doing', done:'done'};
 
-const IDEA_ST = {seed:'Hạt giống', explore:'Đang nghiên cứu', doing:'Đang triển khai', done:'Đã xong', drop:'Tạm gác'};
 const PRIO    = {high:'Cao', mid:'Bình thường', low:'Thấp'};
 
 const LOG_KINDS = {
@@ -334,7 +333,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-09-29.1';
+const APP_BUILD = '2026-10-08.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -347,12 +346,12 @@ function httpTime(v){
 /* ---------------- kho dữ liệu ---------------- */
 const KEY = 'lifehub.v2';
 const OLD  = 'lifehub.v1';
-const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds','journey','insights','weights','wgoal'];
+const COLLECTIONS = ['people','gifts','tasks','ideas','cards','staff','areas','occasions','inbox','reminders','feeds','journey','insights','weights','wgoal','ideagroups'];
 
 function blank(){
   return {
     people:[], gifts:[], tasks:[], ideas:[], cards:[], staff:[], areas:[], occasions:[], inbox:[],
-    reminders:[], feeds:[], journey:[], insights:[], weights:[], wgoal:[],
+    reminders:[], feeds:[], journey:[], insights:[], weights:[], wgoal:[], ideagroups:[],
     settings:{
       theme:'dark',
       notifyHour:8,
@@ -433,12 +432,16 @@ function ensure(){
                               "ngoại lệ một lần" ở đầu tệp */
                            if(!t.exc || typeof t.exc!=='object') t.exc={};
                            else if (excPrune(t)) stamp(t); });
+  /* Ý tưởng chỉ còn tên, nội dung và mục lớn. Trạng thái, hẹn xem lại và
+     hướng triển khai của bản cũ để nguyên trong dữ liệu — không sửa ở đây,
+     vì sửa mà không đóng dấu thì lần kéo về sau ghi đè lại, còn đóng dấu thì
+     máy đang cũ có thể đè mất một lần kéo thả vừa làm ở máy kia. Phần hướng
+     triển khai được gộp vào nội dung lúc hiện ra, và gộp hẳn khi sửa. */
   db.ideas .forEach(i => { if(i.areaId===undefined) i.areaId='';
-                           /* Ý tưởng từ bản v1 chưa có trường này — để trống thì
-                              chip trạng thái rỗng và thứ tự sắp xếp lộn xộn. */
-                           if(!IDEA_ST[i.status]) i.status='seed';
-                           /* ngày hẹn xem lại, 'YYYY-MM-DD'; rỗng = không nhắc */
-                           if(i.reviewAt===undefined) i.reviewAt=''; });
+                           if(typeof i.gid!=='string') i.gid='';
+                           if(i.ord!==undefined && !Number.isFinite(i.ord)) delete i.ord; });
+  db.ideagroups.forEach(g => { g.name = String(g.name || '').trim() || 'Mục không tên';
+                               if(!Number.isFinite(g.ord)) g.ord = 0; });
   db.inbox.forEach(n => { if(n.processed===undefined) n.processed = false; if(!n.text) n.text = ''; });
   db.staff.forEach(s2 => { if(!Array.isArray(s2.areaIds)) s2.areaIds = [];
                            if(s2.phone===undefined) s2.phone = ''; if(s2.startDate===undefined) s2.startDate = '';
@@ -605,20 +608,24 @@ function people(){ return alive(db.people); }
 function tasks(){  return alive(db.tasks);  }
 function ideas(){  return alive(db.ideas);  }
 
-/* ---- hẹn xem lại ý tưởng ----
-   Ý tưởng khác việc ở chỗ nó không có hạn, nên nó chìm. Đặt một ngày hẹn
-   để tới hôm đó máy chủ hỏi lại "làm hay bỏ".
-   Bốn mức dùng chung mã với việc lặp lại (m1/m3/m6/y1) để chỉ có một hàm
-   cộng ngày duy nhất — stepRepeat, đã dò khớp giữa JS và PHP. */
-const REVIEW_IN = [['m1','Sau 1 tháng'], ['m3','Sau 3 tháng'],
-                   ['m6','Sau 6 tháng'], ['y1','Sau 1 năm']];
-const reviewDate = code => stepRepeat(today(), code);
-/* tới hẹn = đúng hôm nay hoặc đã qua; ý tưởng đã xong/gác thì thôi */
-function ideaDue(i){
-  const d = String(i.reviewAt || '').slice(0,10);
-  return d.length === 10 && d <= today() && i.status !== 'done' && i.status !== 'drop';
+/* ---- ý tưởng: các mục lớn ----
+   Mục do mình đặt trước (Đầu tư, Kinh doanh…), ý tưởng ghi xong thì kéo vào.
+   Ý tưởng trỏ tới mục đã xoá thì coi như chưa xếp — không để nó biến mất. */
+function ideaGroups(){
+  return alive(db.ideagroups).slice().sort((a, b) =>
+    (a.ord - b.ord) || String(a.id).localeCompare(String(b.id)));
 }
-function ideasDue(){ return ideas().filter(ideaDue); }
+const ideaGroupOf = i => { const g = i.gid && db.ideagroups.find(x => x.id === i.gid && !x.deleted); return g || null; };
+/* bản cũ có ô "hướng triển khai" riêng — giờ gộp chung vào nội dung */
+const ideaText = i => [i.detail, i.plan].map(s => String(s || '').trim()).filter(Boolean).join('\n\n');
+const ideaOrd = i => typeof i.ord === 'number' ? i.ord : 0;
+/* chưa từng kéo thì cái mới nằm trên */
+const ideaCmp = (a, b) => (ideaOrd(a) - ideaOrd(b))
+  || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+  || String(b.id).localeCompare(String(a.id));
+function ideasIn(gid){
+  return ideas().filter(i => ((ideaGroupOf(i) || {}).id || '') === gid).sort(ideaCmp);
+}
 function cards(){  return alive(db.cards);  }
 function gifts(){  return alive(db.gifts);  }
 function staff(){  return alive(db.staff);  }
@@ -2122,10 +2129,10 @@ function searchAll(q, limit){
       sub:'Sổ bài học · ' + (o.off ? 'không còn đúng' : 'Module ' + o.lv),
       color:(areaOf(o.areaId)||{}).color || 'var(--acc)'}); });
 
-  ideas().forEach(i => { if (hit(i.title, i.detail, i.plan, areaName(i.areaId)))
+  ideas().forEach(i => { const g = ideaGroupOf(i);
+    if (hit(i.title, i.detail, i.plan, g && g.name))
     out.push({kind:'idea', id:i.id, title:i.title,
-      sub:(IDEA_ST[i.status]||'') + (areaName(i.areaId) ? ' · ' + areaName(i.areaId) : ''),
-      color:(areaOf(i.areaId)||{}).color || 'var(--warn)'}); });
+      sub:'Ý tưởng · ' + (g ? g.name : 'chưa xếp mục'), color:'var(--warn)'}); });
 
   cards().forEach(c => { if (hit(c.title, c.desc, cardWho(c), areaName(c.areaId)))
     out.push({kind:'card', id:c.id, title:c.title,

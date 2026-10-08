@@ -50,7 +50,7 @@ function renderSide(){
        ['occasions','🎊','Dịp & lễ', dueOccasions().length],
        ['work','✓','Công việc', tasks().filter(t=>!t.done).length],
        ['daily','🔁','Việc hằng ngày', dailyLeft()],
-       ['ideas','💡','Ý tưởng', ideasDue().length || ideas().filter(i=>i.status==='doing').length],
+       ['ideas','💡','Ý tưởng', 0],
        ['journey','🌱','Hành trình', 0],
        ['insights','🧭','Sổ bài học', 0],
        ['weight','⚖︎','Cân nặng', 0],
@@ -632,65 +632,50 @@ function vWork(){
 }
 
 /* ---------------- Ý TƯỞNG ---------------- */
-/* Tách khỏi Công việc thành màn riêng: ý tưởng là chỗ nghĩ dài hạn, phải mở
-   được bằng một cú bấm chứ không nằm sau một tab của màn khác. */
-const IDEA_ORDER = ['doing','explore','seed','done','drop'];
-function ideaCard(i){
-  const due = ideaDue(i);
-  const rv  = String(i.reviewAt || '').slice(0,10);
-  return `
-    <div class="card" style="margin-bottom:10px" data-act="editIdea" data-id="${i.id}">
-      <div class="row">
-        <div class="grow"><div style="font-weight:650;font-size:15px">${areaDot(i.areaId)} ${esc(i.title)}</div></div>
-        <span class="chip ${i.status==='doing'?'acc':i.status==='done'?'ok':''}">${IDEA_ST[i.status]||''}</span>
-      </div>
-      ${rv && !due ? `<div class="dim" style="margin-top:6px;font-size:12.5px">⏳ xem lại ${fmtDate(rv)}</div>` : ''}
-      ${i.detail ? `<div class="muted" style="margin-top:8px;font-size:13.5px">${nl(i.detail)}</div>` : ''}
-      ${i.plan ? `<div style="margin-top:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:13px">
-        <div class="dim" style="margin-bottom:4px;font-weight:700">HƯỚNG TRIỂN KHAI</div>${nl(i.plan)}</div>` : ''}
-      ${due ? ideaReviewBtns(i.id, rv) : ''}
-    </div>`;
-}
-/* Ba nút y hệt ba nút dưới tin Telegram. Hai dòng chứ không một — ba nút
-   một hàng là bị chèn trên máy 375px, lỗi đã gặp với hàng nút dời nhắc. */
-function ideaReviewBtns(id, rv){
-  const late = rv ? -dayDiff(rv) : 0;
-  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bg4)">
-    <div class="dim" style="margin-bottom:7px;font-size:12.5px">Tới hẹn xem lại${
-      late > 0 ? ' — hẹn từ ' + fmtDate(rv) + ' (' + late + ' ngày trước)' : ''} — làm hay bỏ?</div>
-    <div class="btns" style="margin-bottom:6px">
-      <button class="btn sm grow" data-act="ideaRev" data-r="go"   data-id="${id}">▶ Triển khai</button>
-      <button class="btn sm grow" data-act="ideaRev" data-r="drop" data-id="${id}">🗄 Gác lại</button>
+/* Chỉ còn hai tầng: mục lớn do mình đặt trước, và ý tưởng nằm trong mục.
+   Không trạng thái, không hẹn xem lại — ghi xong thì kéo nắm ⠿ vào đúng mục.
+   Nắm kéo tách khỏi phần chữ: chạm vào chữ là mở ra sửa, kéo nắm là chuyển
+   chỗ, và trên điện thoại vuốt chỗ khác vẫn cuộn trang bình thường. */
+const IDEA_GROUP_HINT = ['💰 Đầu tư', '🏪 Kinh doanh', '💪 Sức khoẻ', '📚 Học hỏi', '🏠 Gia đình'];
+function ideaRow(i){
+  /* xem trước hai dòng: các dòng nối bằng chấm giữa cho khỏi phí chỗ */
+  const t = ideaText(i).replace(/\s*\n+\s*/g, ' · ');
+  return `<div class="idr" data-iid="${i.id}">
+    <span class="idh" data-idrag="${i.id}" title="Kéo để chuyển mục hoặc đổi thứ tự">⠿</span>
+    <div class="idb" data-act="editIdea" data-id="${i.id}">
+      <div class="idt">${esc(i.title)}</div>
+      ${t ? `<div class="idd">${esc(t)}</div>` : ''}
     </div>
-    <div class="btns">
-      <button class="btn sm grow" data-act="ideaRev" data-r="m3" data-id="${id}">⏰ Nhắc lại sau 3 tháng</button>
-    </div></div>`;
+  </div>`;
+}
+function ideaBlock(gid, name, list){
+  const key = gid || '_', fold = !!S.ideaFold[key];
+  return `<div class="idg ${gid ? '' : 'un'} ${fold ? 'fold' : ''}" data-gid="${esc(gid)}">
+    <div class="idgh">
+      <div class="grow ell" data-act="ideaFold" data-id="${esc(key)}">
+        <span class="idc">${fold ? '▸' : '▾'}</span><b>${esc(name)}</b><span class="n">${list.length}</span></div>
+      ${gid ? `<button class="iconbtn sm" data-act="ideaGroupEdit" data-id="${gid}" title="Sửa mục">✎</button>` : ''}
+    </div>
+    ${fold ? '' : `<div class="idl">${list.map(ideaRow).join('')
+      || `<div class="idempty dim">Kéo ý tưởng vào đây</div>`}</div>`}
+  </div>`;
 }
 function vIdeas(){
-  const list = byArea(ideas(), S.area);
-  if (!list.length) return `<div class="empty"><b>Chưa có ý tưởng nào</b>Ghi lại ý tưởng cùng hướng triển khai để không quên.</div>`;
-
-  /* Chỉ ba nhóm. Trạng thái chi tiết đã có sẵn trên chip mỗi thẻ, thêm tab
-     nữa là hàng tab tràn ngang trên điện thoại — lỗi đã gặp một lần rồi. */
-  const kho  = i => i.status === 'done' || i.status === 'drop';
-  const pick = {live: i => !kho(i), doing: i => i.status === 'doing', kho};
-  const tabs = [['live','Đang nuôi'], ['doing','Đang triển khai'], ['kho','Kho']];
-  let h = `<div class="tabs">` + tabs.map(([id,label]) =>
-    `<button class="tab ${S.ideatab===id?'on':''}" data-act="ideatab" data-id="${id}">${label}
-      <span class="n">${list.filter(pick[id]).length}</span></button>`).join('') + `</div>`;
-
-  const shown = list.filter(pick[S.ideatab] || pick.live);
-  if (!shown.length) return h + `<div class="empty"><b>Trống</b>Chưa có ý tưởng nào ở nhóm này.</div>`;
-  const rank = (a,b) => (IDEA_ORDER.indexOf(a.status) - IDEA_ORDER.indexOf(b.status))
-                     || (b.createdAt||'').localeCompare(a.createdAt||'');
-
-  /* Tới hẹn thì tách lên đầu, đừng để lẫn vào danh sách — cả điểm của
-     tính năng này là bắt mình phải quyết, chứ không phải lướt qua. */
-  const due  = shown.filter(ideaDue).sort((a,b) => (a.reviewAt||'').localeCompare(b.reviewAt||''));
-  const rest = shown.filter(i => !ideaDue(i)).sort(rank);
-  if (due.length) h += secHd('Cần xem lại (' + due.length + ')') + due.map(ideaCard).join('');
-  if (rest.length) h += (due.length ? secHd('Còn lại (' + rest.length + ')') : '') + rest.map(ideaCard).join('');
-  return h;
+  const gs = ideaGroups(), un = ideasIn(''), all = ideas();
+  let h = `<div class="row" style="gap:8px;margin-bottom:12px">
+    <div class="grow dim" style="line-height:1.5">${all.length ? 'Giữ <b>⠿</b> rồi kéo ý tưởng vào mục' : ''}</div>
+    <button class="btn sm" data-act="ideaGroupAdd">+ Mục lớn</button></div>`;
+  if (!gs.length) h += `<div class="card" style="margin-bottom:12px">
+    <div class="dim" style="line-height:1.6;margin-bottom:10px">Đặt trước vài mục lớn để xếp ý tưởng vào. Chạm để tạo nhanh:</div>
+    <div class="row" style="gap:6px;flex-wrap:wrap">${IDEA_GROUP_HINT.map(n =>
+      `<button class="chip" data-act="ideaGroupQuick" data-id="${esc(n)}" style="cursor:pointer">+ ${esc(n)}</button>`).join('')}</div>
+  </div>`;
+  if (!all.length && gs.length) h += `<div class="empty" style="padding:20px"><b>Chưa có ý tưởng nào</b>
+    Bấm nút + để ghi. Ghi xong kéo vào mục, hoặc chọn mục ngay lúc ghi.</div>`;
+  /* "Chưa xếp" chỉ hiện khi có gì để xếp — xếp hết rồi thì nó biến đi */
+  if (un.length) h += ideaBlock('', 'Chưa xếp mục', un);
+  h += gs.map(g => ideaBlock(g.id, g.name, ideasIn(g.id))).join('');
+  return h + `<div style="height:64px"></div>`;   /* nút tròn khỏi đè lên hàng cuối */
 }
 
 /* ---------------- GIAO VIỆC ---------------- */
