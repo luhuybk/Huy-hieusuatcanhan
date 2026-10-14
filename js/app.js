@@ -3,7 +3,7 @@
    ============================================================ */
 "use strict";
 
-const S = { view:'dash', q:'', personId:null, staffId:null, ideaFold:{}, assignee:'all', area:'all', side:false,
+const S = { view:'dash', q:'', personId:null, staffId:null, ideaFold:{__done:true}, assignee:'all', area:'all', side:false,
             dailytab:'today', dailyDay: new Date().getDay(), journeytab:'all', journeyCause:'',
             dashtab:'today', showDone:false, showStuck:false, showGiven:false,
             /* Lịch tháng: danh sách nhịp lặp mở sẵn, mục "ngày đã chọn" thu
@@ -554,16 +554,32 @@ function editIdea(id){
   const g = ideaGroupOf(i);
   openForm({title:'Sửa ý tưởng', fields:ideaFields(),
     values:{title:i.title, gid:g ? g.id : '', detail:ideaText(i)},
-    extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delIdea" data-id="${id}">Xoá ý tưởng</button>
+    extra:`<button type="button" class="btn full" style="margin-bottom:10px" data-act="ideaDone" data-id="${id}">${
+        ideaDone(i) ? '↩ Chưa xong — trả về mục' : '✓ Đánh dấu hoàn thành'}</button>
+      <button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="delIdea" data-id="${id}">Xoá ý tưởng</button>
       <button type="button" class="btn full" style="margin-bottom:10px" data-act="ideaToCard" data-id="${id}">→ Đưa lên bảng giao việc</button>`,
     onSave(v){
       const moved = (v.gid || '') !== (g ? g.id : '');
       /* gộp hẳn phần "hướng triển khai" cũ vào nội dung, bỏ luôn hẹn xem lại */
-      Object.assign(i, {title:v.title, detail:v.detail || '', gid:v.gid || ''});
+      Object.assign(i, {title:v.title, detail:v.detail || '', gid:v.gid || '', done:ideaDone(i)});
       delete i.plan; delete i.reviewAt; delete i.status;
       if (moved) ideaToTop(i);
       stamp(i); save(); render();
     }});
+}
+
+/* Hoàn thành / trả về — cho ai không muốn kéo. Trả về thì nằm trên cùng
+   mục cũ, vì đó là thứ vừa được nhắc tới. */
+function ideaSetDone(i, on){
+  i.done = on; delete i.status;
+  if (on) i.doneAt = today(); else { delete i.doneAt; ideaToTop(i); }
+  stamp(i);
+}
+function ideaToggleDone(id){
+  const i = db.ideas.find(x => x.id === id); if (!i) return;
+  const on = !ideaDone(i);
+  ideaSetDone(i, on); save(); closeModal(); render();
+  toast(on ? '✓ Hoàn thành: ' + i.title : '↩ Trả về ' + ((ideaGroupOf(i) || {}).name || 'Chưa xếp mục'));
 }
 
 /* ---- mục lớn ---- */
@@ -649,8 +665,12 @@ function idEnd(e){
   const g = e.type === 'pointercancel' ? null
           : d.fold || (d.ph.isConnected && d.ph.style.display !== 'none' ? d.ph.closest('.idg') : null);
   const i = db.ideas.find(x => x.id === d.id);
-  if (g && i){
-    const gid = g.dataset.gid || '', from = (ideaGroupOf(i) || {}).id || '';
+  if (g && i && g.dataset.gid === IDEA_DONE){
+    /* thả vào Hoàn thành: chỉ đánh dấu, giữ nguyên mục cũ và thứ tự cũ */
+    if (!ideaDone(i)){ ideaSetDone(i, true); save(); toast('✓ Hoàn thành: ' + i.title); }
+  }
+  else if (g && i){
+    const gid = g.dataset.gid || '', from = ideaDone(i) ? IDEA_DONE : (ideaGroupOf(i) || {}).id || '';
     let order;
     if (d.fold) order = ideasIn(gid).map(x => x.id).filter(x => x !== d.id).concat(d.id);
     else order = [...g.querySelectorAll('.idl > .idr, .idl > .idph')]
@@ -659,7 +679,8 @@ function idEnd(e){
     if (!same){
       order.forEach((id, n) => {
         const o = db.ideas.find(x => x.id === id); if (!o) return;
-        if (o.gid !== gid || o.ord !== n){ o.gid = gid; o.ord = n; stamp(o); }
+        if (o.id === d.id && ideaDone(o)){ o.done = false; delete o.doneAt; delete o.status; o.gid = gid; o.ord = n; stamp(o); }
+        else if (o.gid !== gid || o.ord !== n){ o.gid = gid; o.ord = n; stamp(o); }
       });
       save();
       if (gid !== from){
@@ -2487,6 +2508,7 @@ document.addEventListener('click', e => {
     case 'addIdea':  addIdea(); break;
     case 'ideaFold': S.ideaFold[id] = !S.ideaFold[id]; render(); break;
     case 'ideaGroupAdd':   ideaGroupAdd(); break;
+    case 'ideaDone':       ideaToggleDone(id); break;
     case 'ideaGroupQuick': ideaGroupNew(id); break;
     case 'ideaGroupEdit':  ideaGroupEdit(id); break;
     case 'ideaGroupMove':  closeModal(); ideaGroupMove(id, +el.dataset.d); break;

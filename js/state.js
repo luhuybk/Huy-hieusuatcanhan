@@ -333,7 +333,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-10-08.1';
+const APP_BUILD = '2026-10-14.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -623,8 +623,17 @@ const ideaOrd = i => typeof i.ord === 'number' ? i.ord : 0;
 const ideaCmp = (a, b) => (ideaOrd(a) - ideaOrd(b))
   || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
   || String(b.id).localeCompare(String(a.id));
+/* Hoàn thành: một ô riêng ở cuối, thu gọn sẵn. Ý tưởng vào đó vẫn nhớ mục
+   cũ của nó (gid giữ nguyên), kéo ra lại là về đúng chỗ mình thả.
+   Bản cũ có trạng thái "Đã xong" — những cái đó tự vào ô này luôn. */
+const IDEA_DONE = '__done';
+const ideaDone = i => i.done !== undefined ? !!i.done : i.status === 'done';
 function ideasIn(gid){
-  return ideas().filter(i => ((ideaGroupOf(i) || {}).id || '') === gid).sort(ideaCmp);
+  return ideas().filter(i => !ideaDone(i) && ((ideaGroupOf(i) || {}).id || '') === gid).sort(ideaCmp);
+}
+function ideasDone(){
+  return ideas().filter(ideaDone).sort((a, b) =>
+    String(b.doneAt || b.updatedAt || '').localeCompare(String(a.doneAt || a.updatedAt || '')));
 }
 function cards(){  return alive(db.cards);  }
 function gifts(){  return alive(db.gifts);  }
@@ -2132,7 +2141,7 @@ function searchAll(q, limit){
   ideas().forEach(i => { const g = ideaGroupOf(i);
     if (hit(i.title, i.detail, i.plan, g && g.name))
     out.push({kind:'idea', id:i.id, title:i.title,
-      sub:'Ý tưởng · ' + (g ? g.name : 'chưa xếp mục'), color:'var(--warn)'}); });
+      sub:'Ý tưởng · ' + (ideaDone(i) ? 'đã hoàn thành' : g ? g.name : 'chưa xếp mục'), color:'var(--warn)'}); });
 
   cards().forEach(c => { if (hit(c.title, c.desc, cardWho(c), areaName(c.areaId)))
     out.push({kind:'card', id:c.id, title:c.title,

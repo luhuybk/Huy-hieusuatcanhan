@@ -639,8 +639,12 @@ function vWork(){
 const IDEA_GROUP_HINT = ['💰 Đầu tư', '🏪 Kinh doanh', '💪 Sức khoẻ', '📚 Học hỏi', '🏠 Gia đình'];
 function ideaRow(i){
   /* xem trước hai dòng: các dòng nối bằng chấm giữa cho khỏi phí chỗ */
-  const t = ideaText(i).replace(/\s*\n+\s*/g, ' · ');
-  return `<div class="idr" data-iid="${i.id}">
+  let t = ideaText(i).replace(/\s*\n+\s*/g, ' · ');
+  const done = ideaDone(i);
+  /* ở ô Hoàn thành thì nói nó từ mục nào ra và xong hôm nào */
+  if (done){ const g = ideaGroupOf(i);
+    t = [g ? g.name : '', i.doneAt ? 'xong ' + fmtDate(String(i.doneAt).slice(0,10)) : ''].filter(Boolean).join(' · '); }
+  return `<div class="idr ${done ? 'done' : ''}" data-iid="${i.id}">
     <span class="idh" data-idrag="${i.id}" title="Kéo để chuyển mục hoặc đổi thứ tự">⠿</span>
     <div class="idb" data-act="editIdea" data-id="${i.id}">
       <div class="idt">${esc(i.title)}</div>
@@ -649,15 +653,15 @@ function ideaRow(i){
   </div>`;
 }
 function ideaBlock(gid, name, list){
-  const key = gid || '_', fold = !!S.ideaFold[key];
-  return `<div class="idg ${gid ? '' : 'un'} ${fold ? 'fold' : ''}" data-gid="${esc(gid)}">
+  const key = gid || '_', fold = !!S.ideaFold[key], dn = gid === IDEA_DONE;
+  return `<div class="idg ${!gid ? 'un' : dn ? 'dn' : ''} ${fold ? 'fold' : ''}" data-gid="${esc(gid)}">
     <div class="idgh">
       <div class="grow ell" data-act="ideaFold" data-id="${esc(key)}">
         <span class="idc">${fold ? '▸' : '▾'}</span><b>${esc(name)}</b><span class="n">${list.length}</span></div>
-      ${gid ? `<button class="iconbtn sm" data-act="ideaGroupEdit" data-id="${gid}" title="Sửa mục">✎</button>` : ''}
+      ${gid && !dn ? `<button class="iconbtn sm" data-act="ideaGroupEdit" data-id="${gid}" title="Sửa mục">✎</button>` : ''}
     </div>
     ${fold ? '' : `<div class="idl">${list.map(ideaRow).join('')
-      || `<div class="idempty dim">Kéo ý tưởng vào đây</div>`}</div>`}
+      || `<div class="idempty dim">${dn ? 'Kéo ý tưởng đã làm xong vào đây' : 'Kéo ý tưởng vào đây'}</div>`}</div>`}
   </div>`;
 }
 function vIdeas(){
@@ -675,6 +679,8 @@ function vIdeas(){
   /* "Chưa xếp" chỉ hiện khi có gì để xếp — xếp hết rồi thì nó biến đi */
   if (un.length) h += ideaBlock('', 'Chưa xếp mục', un);
   h += gs.map(g => ideaBlock(g.id, g.name, ideasIn(g.id))).join('');
+  /* luôn có mặt (khi đã có ý tưởng) để có chỗ mà thả vào; mặc định thu gọn */
+  if (all.length) h += ideaBlock(IDEA_DONE, '✅ Đã hoàn thành', ideasDone());
   return h + `<div style="height:64px"></div>`;   /* nút tròn khỏi đè lên hàng cuối */
 }
 
