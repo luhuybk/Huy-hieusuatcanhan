@@ -2290,7 +2290,7 @@ function feedBlock(){
    thứ mình cần là câu kết luận chứ không phải diễn biến — để diễn biến lên
    đầu thì mỗi lần ôn lại phải đọc hết mới tới chỗ đáng đọc. */
 function jRow(label, v){
-  return v ? `<div class="jr"><span class="k">${esc(label)}</span><span class="v">${esc(v)}</span></div>` : '';
+  return v ? `<div class="jr"><span class="k">${esc(label)}</span><span class="v">${nl(v)}</span></div>` : '';
 }
 const J_DETAIL = [['story','Sự việc'], ['who','Ảnh hưởng tới'],
                   ['root','Vấn đề cốt lõi'], ['fix','Cách khắc phục']];
@@ -2339,7 +2339,7 @@ function journeyCard(o){
     ${causesOf(o).length || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
       ${causeChips(o, true)}${whoChips(o)}</div>` : ''}
     ${o.lesson ? `<div class="jless" data-act="viewJourney" data-id="${o.id}"><span class="lb">Bài học</span>${
-      esc(o.lesson)}</div>` : ''}
+      nl(o.lesson)}</div>` : ''}
     ${n ? `<div class="row jmore" data-act="viewJourney" data-id="${o.id}">
       <span class="dim">Xem đầy đủ · ${n} phần</span>
       <span class="grow"></span><span class="dim">›</span>
@@ -2361,7 +2361,7 @@ function journeyView(o){
     <h2 style="margin-bottom:12px">${esc(o.title || '(chưa đặt tên)')}</h2>
     ${causesOf(o).length || (o.whoIds || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:12px">
       ${causeChips(o, false)}${whoChips(o)}</div>` : ''}
-    ${o.lesson ? `<div class="jless"><span class="lb">Bài học</span>${esc(o.lesson)}</div>` : ''}
+    ${o.lesson ? `<div class="jless"><span class="lb">Bài học</span>${nl(o.lesson)}</div>` : ''}
     ${detail ? `<div class="jdet">${detail}</div>`
              : `<div class="dim" style="margin-top:12px">Chưa ghi diễn biến, chỉ có bài học.</div>`}
     ${journeyToInsight(o)}

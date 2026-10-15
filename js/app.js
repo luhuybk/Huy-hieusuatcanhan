@@ -166,6 +166,9 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
       </form>
     </div>`;
 
+  /* ô ghi chú mở ra đã có sẵn chữ thì cao vừa đủ chữ, khỏi phải cuộn trong ô */
+  $('#theform').querySelectorAll('textarea').forEach(taFit);
+
   /* chọn nhiều người + nút micro */
   $('#theform').addEventListener('click', e => {
     const pk = e.target.closest('[data-pk]');
@@ -2935,6 +2938,191 @@ document.addEventListener('click', e => {
       $('#set_ws').value = w; toast('Đã tạo: ' + w); break;
     }
   }
+});
+
+/* ---- gõ danh sách trong ô ghi chú ----
+   Bản chép từ lib/listContinue.js của Nhật ký giao dịch, để hai app gõ y nhau:
+     "1." / "*" / "-" + dấu cách ở đầu dòng → "  1. " / "  • " / "  - "
+     Enter → mục kế tiếp cùng cấp; Enter ở mục trống → lùi ra một cấp, hết cấp thì thoát
+     Tab / Shift+Tab ở một mục → thụt vào / đưa ra một cấp (mục con đánh số lại từ 1)
+     Shift+Enter trong mục → xuống dòng, chữ canh thẳng dưới chữ của mục
+     "[]" / "[x]" + dấu cách → ô tích ☐ / ☑;  "---" + dấu cách → đường kẻ
+   Số thứ tự trong cụm đang sửa luôn được đánh lại cho liền mạch.
+   Gắn một lần ở document: mọi <textarea> đều có, ô nào không muốn thì thêm
+   data-no-list. Ô đã tự xử lý phím (Enter để lưu…) gọi preventDefault trước
+   — listener gắn trên chính ô chạy trước listener ở document — nên bỏ qua. */
+const CHECK_OF = {'[]':'☐', '[ ]':'☐', '[x]':'☑', '[X]':'☑'};
+const nextMark = mark => mark === '*' ? '•' : mark === '☑' ? '☐' : mark;
+const itemLine = (indent, it, num) =>
+  indent + (it.num !== null ? (num == null ? it.num : num) + it.sep : it.mark) + it.gap + it.text;
+/* cụm danh sách chứa dòng i: các dòng liền nhau là mục, hoặc dòng thụt lề nối tiếp một mục */
+function blockRange(lines, i){
+  const inBlock = k => lines[k].trim() !== '' && (parseItem(lines[k]) || /^\s/.test(lines[k]));
+  let a = i;
+  while (a > 0 && inBlock(a - 1)) a--;
+  while (a < i && !parseItem(lines[a])) a++;
+  let b = i;
+  while (b < lines.length - 1 && inBlock(b + 1)) b++;
+  return [a, b];
+}
+/* đánh lại số trong cụm: mỗi cấp đếm liền mạch từ số của mục đầu tiên ở cấp đó */
+function renumber(lines, a, b){
+  const stack = [];
+  for (let k = a; k <= b; k++){
+    const it = parseItem(lines[k]); if (!it) continue;
+    const d = it.indent.length;
+    while (stack.length && stack[stack.length - 1].indent > d) stack.pop();
+    let top = stack[stack.length - 1];
+    if (!top || top.indent < d){ top = {indent:d, next:null}; stack.push(top); }
+    if (it.num === null){ top.next = null; continue; }
+    const n = top.next == null ? it.num : top.next;
+    if (n !== it.num) lines[k] = itemLine(it.indent, it, n);
+    top.next = n + 1;
+  }
+}
+function findAbove(lines, i, a, test){
+  for (let k = i - 1; k >= a; k--){ const it = parseItem(lines[k]); if (it && test(it.indent.length)) return it; }
+  return null;
+}
+function reindent(lines, i, a, it, indent){
+  const sib = findAbove(lines, i, a, d => d <= indent.length);
+  const num = it.num === null ? null
+            : sib && sib.indent.length === indent.length && sib.num !== null ? sib.num + 1 : 1;
+  lines[i] = itemLine(indent, it, num);
+}
+/* key: 'space' | 'enter' | 'tab'. Trả {value, caret} mới, hoặc null nếu phím này không dính tới danh sách. */
+function applyListKey(value, caret, key, shift){
+  const lineStart = value.lastIndexOf('\n', caret - 1) + 1;
+  const lines = value.split('\n');
+  const i = value.slice(0, lineStart).split('\n').length - 1;
+  const col = caret - lineStart;
+  const done = (caretLine, caretCol) => {
+    const out = lines.join('\n');
+    const pos = lines.slice(0, caretLine).reduce((n, l) => n + l.length + 1, 0) + caretCol;
+    return out === value && pos === caret ? null : {value:out, caret:pos};
+  };
+  const finish = (caretLine, colOf) => {
+    const [a, b] = blockRange(lines, caretLine);
+    renumber(lines, a, b);
+    return done(caretLine, colOf());
+  };
+
+  if (key === 'space'){
+    if (shift) return null;
+    const head = lines[i].slice(0, col);
+    if (/^\s*-{3,}$/.test(head) && !lines[i].slice(col).trim()){
+      lines.splice(i, 1, HR_LINE, '');
+      return done(i + 1, 0);
+    }
+    const m = /^(\s*)(\d{1,3}[.)]|\*|-|\[ ?\]|\[[xX]\])$/.exec(head);
+    if (!m) return null;
+    const marker = m[2] === '*' ? '•' : CHECK_OF[m[2]] || m[2];
+    if (m[1] && marker === m[2]) return null;
+    const indent = m[1] || LIST_INDENT;
+    lines[i] = indent + marker + ' ' + lines[i].slice(col);
+    return finish(i, () => indent.length + marker.length + 1);
+  }
+
+  const it = parseItem(lines[i]);
+
+  if (key === 'enter' && shift){
+    let pad;
+    if (it) pad = ' '.repeat(it.textCol);
+    else {
+      const [a] = blockRange(lines, i);
+      if (!/^\s+\S/.test(lines[i]) || !parseItem(lines[a])) return null;
+      pad = lines[i].match(/^\s*/)[0];
+    }
+    if (col < pad.length && it) return null;
+    lines.splice(i, 1, lines[i].slice(0, col), pad + lines[i].slice(col).replace(/^\s+/, ''));
+    return done(i + 1, pad.length);
+  }
+
+  if (!it){
+    if (key !== 'enter' || !/^\s+\S/.test(lines[i])) return null;
+    const [a] = blockRange(lines, i);
+    const owner = findAbove(lines, i + 1, a, () => true);
+    if (!owner || lines[i].match(/^\s*/)[0].length < owner.textCol) return null;
+    const head = lines[i].slice(0, col), tail = lines[i].slice(col).replace(/^\s+/, '');
+    const next = itemLine(owner.indent, Object.assign({}, owner, {mark:nextMark(owner.mark), gap:' ', text:tail}),
+      owner.num === null ? null : owner.num + 1);
+    lines.splice(i, 1, head, next);
+    return finish(i + 1, () => parseItem(lines[i + 1]).textCol);
+  }
+  const [a] = blockRange(lines, i);
+
+  if (key === 'tab'){
+    /* trong một mục thì Tab luôn là thụt lề — không thụt được cũng đừng nhảy sang ô khác */
+    const stay = {value, caret};
+    const d = it.indent.length;
+    let indent;
+    if (shift){
+      const parent = findAbove(lines, i, a, x => x < d);
+      if (!parent) return stay;
+      indent = parent.indent;
+    } else {
+      const prev = findAbove(lines, i, a, () => true);
+      if (!prev) return stay;
+      if (prev.indent.length > d) indent = prev.indent;
+      else if (prev.indent.length === d) indent = ' '.repeat(prev.textCol);
+      else return stay;
+    }
+    reindent(lines, i, a, it, indent);
+    return finish(i, () => parseItem(lines[i]).textCol + Math.max(0, col - it.textCol));
+  }
+
+  if (key === 'enter'){
+    if (col < it.textCol) return null;
+    if (!it.text.trim()){
+      const parent = findAbove(lines, i, a, x => x < it.indent.length);
+      if (parent){ reindent(lines, i, a, it, parent.indent); return finish(i, () => parseItem(lines[i]).textCol); }
+      lines[i] = '';
+      return finish(i, () => 0);
+    }
+    const head = lines[i].slice(0, col), tail = lines[i].slice(col).replace(/^\s+/, '');
+    const next = itemLine(it.indent, Object.assign({}, it, {mark:nextMark(it.mark), gap:it.gap.length > 1 ? it.gap : ' ', text:tail}),
+      it.num === null ? null : it.num + 1);
+    lines.splice(i, 1, head, next);
+    return finish(i + 1, () => parseItem(lines[i + 1]).textCol);
+  }
+  return null;
+}
+/* Chèn qua execCommand để Cmd+Z vẫn hoàn tác được; chỉ thay đúng đoạn khác nhau. */
+function applyListEdit(el, next){
+  const old = el.value;
+  if (old === next.value && el.selectionStart === next.caret) return;
+  let p = 0;
+  while (p < old.length && p < next.value.length && old[p] === next.value[p]) p++;
+  let s = 0;
+  while (s < old.length - p && s < next.value.length - p
+         && old[old.length - 1 - s] === next.value[next.value.length - 1 - s]) s++;
+  const text = next.value.slice(p, next.value.length - s);
+  el.setSelectionRange(p, old.length - s);
+  const ok = document.execCommand && (text ? document.execCommand('insertText', false, text)
+                                           : document.execCommand('delete'));
+  if (!ok){ el.value = next.value; el.dispatchEvent(new Event('input', {bubbles:true})); }
+  el.setSelectionRange(next.caret, next.caret);
+}
+/* Ô ghi chú trong biểu mẫu tự cao theo chữ — gõ danh sách dài mà ô chỉ
+   bốn dòng thì cứ phải cuộn trong ô. Trần ở nửa màn hình, quá thì cuộn. */
+function taFit(el){
+  if (!el.closest('.f')) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight + 2, Math.round(innerHeight * 0.5)) + 'px';
+}
+document.addEventListener('input', e => { if (e.target.tagName === 'TEXTAREA') taFit(e.target); });
+document.addEventListener('keydown', e => {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.isComposing || e.keyCode === 229) return;     /* bộ gõ tiếng Việt đang ghép chữ */
+  const key = e.key === ' ' ? 'space' : e.key === 'Enter' ? 'enter' : e.key === 'Tab' ? 'tab' : null;
+  if (!key) return;
+  const el = e.target;
+  if (!el || el.tagName !== 'TEXTAREA' || el.readOnly || el.disabled || el.hasAttribute('data-no-list')) return;
+  if (el.selectionStart !== el.selectionEnd) return;
+  const next = applyListKey(el.value, el.selectionStart, key, e.shiftKey);
+  if (!next) return;
+  e.preventDefault();
+  applyListEdit(el, next);
 });
 
 document.addEventListener('keydown', e => {

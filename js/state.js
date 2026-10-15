@@ -69,7 +69,50 @@ function norm(s){
     .normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/đ/g,'d').trim();
 }
-const nl  = s => esc(s).replace(/\n/g,'<br>');
+/* ---- danh sách trong ghi chú ----
+   Cùng luật với ô ghi chú bên Nhật ký giao dịch (lib/listContinue.js), để
+   gõ ở hai app ra một kiểu: "1." / "•" / "-" / "☐" ở đầu dòng là một mục,
+   mục con thụt vào hai dấu cách, "---" là đường kẻ chia đoạn. Phần gõ phím
+   nằm ở app.js; ở đây là phần đọc dòng và phần hiện ra. */
+const LIST_INDENT = '  ';
+const LIST_ITEM = /^(\s*)(?:(\d{1,3})([.)])|([•\-+*☐☑]))(\s+)(.*)$/;
+const HR_LINE = '────────────────────────';
+const isRuleLine = l => /^\s*(-{3,}|─{3,})\s*$/.test(l);
+function parseItem(line){
+  const m = LIST_ITEM.exec(line);
+  if (!m) return null;
+  const [, indent, num, sep, mark, gap, text] = m;
+  const marker = num ? num + sep : mark;
+  return {indent, num:num ? Number(num) : null, sep:sep || '', mark:mark || '', gap, text,
+          textCol:indent.length + marker.length + gap.length};
+}
+/* Chữ nhiều dòng → HTML. Không có danh sách thì y như trước (xuống dòng là
+   <br>). Có thì mỗi mục một hàng, dòng dài canh thẳng dưới chữ chứ không
+   chạy về sát mép, mục con lùi đúng cấp. */
+function nl(s){
+  const raw = s == null ? '' : String(s), lines = raw.split('\n');
+  if (!lines.some(l => parseItem(l) || isRuleLine(l))) return esc(raw).replace(/\n/g, '<br>');
+  let stack = [], level = -1;
+  return lines.map(line => {
+    const it = parseItem(line);
+    if (it){
+      const d = it.indent.length;
+      if (level < 0) stack = [];
+      while (stack.length && stack[stack.length - 1] > d) stack.pop();
+      if (!stack.length || stack[stack.length - 1] < d) stack.push(d);
+      level = stack.length - 1;
+      const check = it.mark === '☐' || it.mark === '☑';
+      const mark = it.num !== null ? it.num + it.sep : it.mark === '*' ? '•' : it.mark;
+      return `<span class="nt-li${it.mark === '☑' ? ' nt-done' : ''}" style="--lvl:${level}"><span class="nt-mark${
+        it.num === null ? ' nt-dot' : ''}${check ? ' nt-check' : ''}">${esc(mark)}</span><span class="nt-body">${esc(it.text)}</span></span>`;
+    }
+    if (isRuleLine(line)){ level = -1; return `<span class="nt-hr"></span>`; }
+    if (level >= 0 && /^\s+\S/.test(line))
+      return `<span class="nt-cont" style="--lvl:${level}">${esc(line.trim())}</span>`;
+    if (!line.trim() || !/^\s/.test(line)) level = -1;
+    return `<span class="nt-line">${line ? esc(line) : '&#8203;'}</span>`;
+  }).join('');
+}
 
 /* Hiểu được: 250000 · 250.000 · 300k · 1tr2 · 1,5tr · 1tr250 · 2 tỷ */
 function parseMoney(v){
@@ -333,7 +376,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-10-14.1';
+const APP_BUILD = '2026-10-15.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){

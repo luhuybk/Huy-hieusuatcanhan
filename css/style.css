@@ -787,3 +787,14 @@ body.iddrag, body.iddrag *{cursor:grabbing !important;user-select:none;-webkit-u
 .idg.dn{border-color:color-mix(in srgb,var(--ok) 45%,var(--line));background:color-mix(in srgb,var(--ok) 5%,var(--bg2))}
 .idg.dn.over{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
 .idr.done .idt{text-decoration:line-through;text-decoration-color:var(--tx3);color:var(--tx2);font-weight:600}
+
+/* ---------- danh sách trong ghi chú (cùng kiểu Nhật ký giao dịch) ---------- */
+.nt-line, .nt-li, .nt-cont{display:block}
+.nt-li{display:flex;align-items:baseline;margin-left:calc(var(--lvl, 0) * 1.75em + .4em)}
+.nt-mark{flex:0 0 auto;min-width:1.3em;margin-right:.45em;text-align:right;color:var(--tx3);font-variant-numeric:tabular-nums}
+.nt-dot{color:var(--acc)}
+.nt-check{font-size:1.05em;line-height:1;color:var(--acc)}
+.nt-body{flex:1;min-width:0}
+.nt-done .nt-body{text-decoration:line-through;opacity:.6}
+.nt-cont{margin-left:calc(var(--lvl, 0) * 1.75em + .4em + 1.75em)}
+.nt-hr{display:block;height:0;border-top:1px solid var(--line);margin:8px 0}
