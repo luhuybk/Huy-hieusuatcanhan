@@ -106,11 +106,14 @@ function setSide(open){
 /* ---------------- biểu mẫu ---------------- */
 function closeModal(){ Voice.stop(); $('#modals').innerHTML = ''; }
 
+/* Ô chữ đầu tiên của biểu mẫu (tên việc, tên ý tưởng…) cũng viết hoa chữ
+   đầu. Trừ mấy ô mã máy — mã bot, id nhóm, đường dẫn — hoa một chữ là hỏng. */
+const NO_CAP = /token|chat|topic|url|link|mail|workspace|key|pass|code/i;
 function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate, extra, top}){
-  const html = fields.map(f => {
+  const html = fields.map((f, fi) => {
     const v = values[f.k] != null ? values[f.k] : (f.def != null ? f.def : '');
     let inp;
-    if (f.type === 'textarea')      inp = `<textarea id="f_${f.k}" placeholder="${esc(f.ph||'')}">${esc(v)}</textarea>`;
+    if (f.type === 'textarea')      inp = `<textarea id="f_${f.k}" autocapitalize="sentences" placeholder="${esc(f.ph||'')}">${esc(v)}</textarea>`;
     else if (f.type === 'select')   inp = `<select id="f_${f.k}">` + f.opts.map(o =>
         `<option value="${esc(o[0])}"${String(o[0])===String(v)?' selected':''}>${esc(o[1])}</option>`).join('') + `</select>`;
     else if (f.type === 'money')    inp = `<input id="f_${f.k}" inputmode="text" placeholder="${esc(f.ph||'vd: 300k, 1tr2, 250000')}" value="${v?esc(String(v)):''}">`;
@@ -145,7 +148,8 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
         placeholder="${esc(f.ph||'')}" value="${esc(v)}"><datalist id="dl_${f.k}">` +
         f.list.map(o => `<option value="${esc(o)}"></option>`).join('') + `</datalist>`;
     }
-    else                            inp = `<input id="f_${f.k}" type="text" placeholder="${esc(f.ph||'')}" value="${esc(v)}">`;
+    else                            inp = `<input id="f_${f.k}" type="text" placeholder="${esc(f.ph||'')}" value="${esc(v)}"${
+      fi === 0 && !NO_CAP.test(f.k) ? ' data-cap autocapitalize="sentences"' : ''}>`;
     const mic = f.voice && Voice.supported()
       ? `<button type="button" class="mic" data-mic="f_${f.k}" title="Đọc thành chữ">🎤</button>` : '';
     return `<div class="f ${f.half?'half':''}"><label class="${mic?'miclbl':''}">${esc(f.label)}${mic}</label>${inp}${
@@ -3103,6 +3107,36 @@ function applyListEdit(el, next){
   if (!ok){ el.value = next.value; el.dispatchEvent(new Event('input', {bubbles:true})); }
   el.setSelectionRange(next.caret, next.caret);
 }
+/* ---- viết hoa đầu dòng ----
+   Chữ cái đầu tiên của mỗi dòng — hoặc ngay sau dấu "1." / "•" / "☐" của một
+   mục — tự viết hoa. Chỉ đụng tới đúng chữ VỪA gõ ở đầu dòng: chữ đã có
+   sẵn trong ô không bị đổi, "iPhone" giữa câu cũng để yên. Bộ gõ tiếng Việt đang ghép chữ ("dd" → "đ") thì
+   chờ ghép xong mới viết hoa, đụng vào giữa chừng là vỡ chữ. Trên điện thoại
+   bàn phím tự lo nhờ autocapitalize, ở đây thấy đã hoa rồi thì thôi. */
+function capTarget(el){
+  if (el.tagName === 'TEXTAREA') return !el.readOnly && !el.disabled && !el.hasAttribute('data-no-cap');
+  return el.tagName === 'INPUT' && el.hasAttribute('data-cap');
+}
+function autoCap(el, n){
+  const pos = el.selectionStart;
+  if (!n || pos !== el.selectionEnd) return;
+  const v = el.value, ls = v.lastIndexOf('\n', pos - 1) + 1;
+  const le = v.indexOf('\n', ls), line = v.slice(ls, le < 0 ? v.length : le);
+  const it = parseItem(line);
+  const st = ls + (it ? it.textCol : line.match(/^\s*/)[0].length);
+  if (pos - n !== st) return;                 /* chữ vừa gõ không nằm ở đầu dòng */
+  const ch = v[st], up = ch ? ch.toLocaleUpperCase('vi') : ch;
+  if (!ch || up === ch || ch.toLocaleLowerCase('vi') !== ch) return;   /* đã hoa, hoặc không phải chữ cái */
+  el.setRangeText(up, st, st + 1, 'preserve');
+}
+document.addEventListener('input', e => {
+  if (e.isComposing || e.inputType !== 'insertText' || !capTarget(e.target)) return;
+  autoCap(e.target, (e.data || '').length);
+});
+document.addEventListener('compositionend', e => {
+  if (capTarget(e.target)) autoCap(e.target, (e.data || '').length);
+});
+
 /* Ô ghi chú trong biểu mẫu tự cao theo chữ — gõ danh sách dài mà ô chỉ
    bốn dòng thì cứ phải cuộn trong ô. Trần ở nửa màn hình, quá thì cuộn. */
 function taFit(el){
@@ -3131,6 +3165,15 @@ document.addEventListener('keydown', e => {
      thanh đầu — nó là chỗ trút ý nghĩ, còn phím tắt thì nên dành cho thứ
      mình gõ nhiều lần trong ngày. */
   else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j'){ e.preventDefault(); addTask(); }
+  /* Cmd/Ctrl + E = bấm nút + tròn của màn đang mở: Ý tưởng thì thêm ý tưởng,
+     Công việc thì thêm việc… Màn nào không có nút + thì mở Thêm nhanh.
+     Đang mở biểu mẫu thì thôi — bấm nhầm là mất chữ đang gõ dở. */
+  else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.code === 'KeyE' || e.key.toLowerCase() === 'e')){
+    e.preventDefault();
+    if ($('#modals').innerHTML) return;
+    const fab = $('#fab');
+    if (fab && fab.style.display !== 'none') fab.click(); else quickAdd();
+  }
   else if (e.key === 'Escape') closeModal();
 });
 
