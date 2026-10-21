@@ -798,3 +798,13 @@ body.iddrag, body.iddrag *{cursor:grabbing !important;user-select:none;-webkit-u
 .nt-done .nt-body{text-decoration:line-through;opacity:.6}
 .nt-cont{margin-left:calc(var(--lvl, 0) * 1.75em + .4em + 1.75em)}
 .nt-hr{display:block;height:0;border-top:1px solid var(--line);margin:8px 0}
+
+/* ---------- cân nặng: ghi chú của ngày cân ---------- */
+.wnote{width:100%;margin-top:8px;padding:9px 12px;border-radius:10px;background:var(--bg3);
+  border:1px solid var(--line);font-size:14px;outline:0}
+.wnote:focus{border-color:var(--acc)}
+.wnote::placeholder{color:var(--tx3)}
+#wchart .wdot.wn{fill:var(--warn);opacity:1}
+#wchart .wtipt3{fill:var(--warn);font-size:11px}
+.wln{margin-top:4px;font-size:12.5px;color:var(--tx2);line-height:1.45}
+.wkey.dot.wn{background:var(--warn);opacity:1}

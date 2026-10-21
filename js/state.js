@@ -376,7 +376,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-10-21.1';
+const APP_BUILD = '2026-10-21.2';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -610,6 +610,7 @@ function ensure(){
     if (typeof w.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w.date)) { w.deleted = true; return; }
     w.kg = Math.round((+w.kg || 0) * 10) / 10;
     if (!(w.kg >= 20 && w.kg <= 300)) w.deleted = true;
+    if (typeof w.note !== 'string') w.note = '';      /* "hôm qua đi ăn cùng vợ" */
   });
   db.wgoal.forEach(g => {
     if (g.id === 'motto'){ g.text = typeof g.text === 'string' ? g.text.slice(0, 400) : ''; return; }
@@ -1963,11 +1964,12 @@ const mottoLines = s => String(s || '').split(/\n|\s+-\s+/).map(x => x.trim()).f
 function weightTrend(){
   const list = weights(); if (!list.length) return [];
   const by = new Map(list.map(w => [w.date, w.kg]));
+  const notes = new Map(list.filter(w => w.note).map(w => [w.date, w.note]));
   const out = []; let t = list[0].kg;
   const end = today() > list[list.length - 1].date ? today() : list[list.length - 1].date;
   for (let d = list[0].date, i = 0; d <= end && i < 4000; d = addDays(d, 1), i++){
     if (by.has(d)) t += WEIGHT_ALPHA * (by.get(d) - t);
-    out.push({date:d, kg:by.has(d) ? by.get(d) : null, trend:t});
+    out.push({date:d, kg:by.has(d) ? by.get(d) : null, trend:t, note:notes.get(d) || ''});
   }
   return out;
 }

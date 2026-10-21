@@ -2611,14 +2611,16 @@ function wChart(series, goal){
   const raw = pts.map((p, i) => p.kg === null ? null : `${xs(i).toFixed(1)},${ys(p.kg).toFixed(1)}`).filter(Boolean);
   const tr = pts.map((p, i) => `${xs(i).toFixed(1)},${ys(p.trend).toFixed(1)}`);
   g += `<polyline points="${raw.join(' ')}" class="wraw"/>`;
-  g += pts.map((p, i) => p.kg === null ? '' : `<circle cx="${xs(i).toFixed(1)}" cy="${ys(p.kg).toFixed(1)}" r="${n > 120 ? 1.6 : 2.6}" class="wdot"/>`).join('');
+  /* ngày có ghi chú thì chấm to hơn, có màu — liếc là thấy ngày nào có chuyện */
+  g += pts.map((p, i) => p.kg === null ? '' : `<circle cx="${xs(i).toFixed(1)}" cy="${ys(p.kg).toFixed(1)}" r="${
+    p.note ? (n > 120 ? 2.6 : 3.6) : (n > 120 ? 1.6 : 2.6)}" class="wdot${p.note ? ' wn' : ''}"/>`).join('');
   g += `<polyline points="${tr.join(' ')}" class="wtrend"/>`;
   /* chỗ để app.js vẽ chú thích khi chạm/rê chuột */
   window._wchart = {pts, L, R, W, xs, ys, showGoal, below: goal && goal.target < lo};
   return `<svg id="wchart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
       aria-label="Biểu đồ cân nặng ${esc(W_RANGES.find(r => r[0] === S.wrange)[1])}">${g}
     <g id="wtip" style="display:none"><line class="wtipl" y1="${T}" y2="${H - B}"/><circle r="4.5" class="wtipc"/>
-      <rect rx="7" class="wtipb" height="36"/><text class="wtipt"></text><text class="wtipt2"></text></g>
+      <rect rx="7" class="wtipb" height="36"/><text class="wtipt"></text><text class="wtipt2"></text><text class="wtipt3"></text></g>
     <rect x="0" y="0" width="${W}" height="${H}" fill="transparent" id="whit"/></svg>`;
 }
 function wEtaLine(label, rate, now, goal){
@@ -2646,6 +2648,8 @@ function vWeight(){
         aria-label="Số ký"><span>kg</span></div>
       <button type="submit" class="btn pri" style="height:50px;padding:0 22px">Lưu</button>
     </div>
+    <input id="w_note" class="wnote" maxlength="300" autocomplete="off" data-cap autocapitalize="sentences"
+      placeholder="${todayW && todayW.note ? esc('📝 ' + todayW.note) : 'Ghi chú (tuỳ chọn) — vd: hôm qua đi ăn cùng vợ'}">
     <label class="wday dim">Ngày cân <input id="w_date" type="date" value="${today()}" max="${today()}"></label>
   </form>`;
 
@@ -2713,6 +2717,7 @@ function vWeight(){
   h += `<div class="card wcard">${wChart(series, goal)}
     <div class="row dim" style="gap:14px;margin-top:6px;flex-wrap:wrap">
       <span><i class="wkey dot"></i>từng lần cân</span><span><i class="wkey line"></i>xu hướng</span>
+      ${window._wchart && window._wchart.pts.some(p => p.note) ? `<span><i class="wkey dot wn"></i>có ghi chú</span>` : ''}
       ${goal ? (window._wchart && window._wchart.showGoal ? `<span><i class="wkey goal"></i>mục tiêu</span>`
         : `<span>🎯 ${fmtKg(goal.target)} kg ở ${window._wchart && window._wchart.below ? 'dưới' : 'trên'} khung</span>`) : ''}</div></div>`;
 
@@ -2741,9 +2746,10 @@ function vWeight(){
     ? `<button data-act="wall">${S.wall ? 'Thu gọn ▲' : 'Xem hết ▼'}</button>` : '');
   h += `<div class="card" style="padding:4px 14px">` + shown.map(w => {
     const i = list.indexOf(w), prev = i > 0 ? list[i - 1] : null;
-    return `<div class="wrow wlog" data-act="wEdit" data-id="${w.id}">
+    return `<div class="wlog" data-act="wEdit" data-id="${w.id}"><div class="wrow" style="padding:0">
       <span>${WDAY_NAME[new Date(w.date + 'T00:00:00').getDay()]}, ${fmtDate(w.date)}</span>
-      <span><b>${fmtKg(w.kg)}</b>${prev ? `<span class="dim wdl">${fmtDelta(w.kg - prev.kg)}</span>` : '<span class="wdl"></span>'}</span></div>`;
+      <span><b>${fmtKg(w.kg)}</b>${prev ? `<span class="dim wdl">${fmtDelta(w.kg - prev.kg)}</span>` : '<span class="wdl"></span>'}</span></div>${
+      w.note ? `<div class="wln">📝 ${esc(w.note)}</div>` : ''}</div>`;
   }).join('') + `</div>`;
   return h + `<div style="height:56px"></div>`;
 }

@@ -36,6 +36,23 @@ const TITLES = {
 /* Chỉ cuộn lên đầu khi thật sự đổi màn hình. Nếu vẫn đang ở cùng màn
    (tick một ô, đánh dấu đã trả…) thì giữ nguyên chỗ đang xem. */
 let _renderKey = '';
+/* Nhớ đang ở màn nào để tải lại trang (hay mở lại app) thì về đúng chỗ đó,
+   không phải lần nào cũng bị đá về Tổng quan. Chỉ là tiện ích của riêng
+   máy này nên để localStorage; đọc/ghi hỏng thì thôi, không sao cả. */
+const VIEW_KEY = 'lifehub.view';
+const VIEWS = ['dash','people','person','work','ideas','daily','journey','insights','weight','board',
+               'review','occasions','calendar','inbox','staff','myday','money','settings'];
+function viewSave(){
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify({v:S.view, p:S.personId || '', s:S.staffId || ''})); } catch(e){}
+}
+function viewRestore(){
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); } catch(e){}
+  if (!o || !VIEWS.includes(o.v) || o.v === 'myday') return;
+  if (o.v === 'person'){ if (!people().some(p => p.id === o.p)) return void (S.view = 'people'); S.personId = o.p; }
+  if (o.v === 'staff'){ if (!staff().some(x => x.id === o.s)) return void (S.view = 'board'); S.staffId = o.s; }
+  S.view = o.v;
+}
 function render(){
   if (idDrag) return;          /* đồng bộ chạy ngầm giữa lúc đang cầm ý tưởng — vẽ sau khi thả */
   const v = S.view;
@@ -65,6 +82,7 @@ function render(){
     else                       html = vSettings();
   } catch(e){ panic(e); return; }
   $('#view').innerHTML = html;
+  viewSave();
   try { renderSide(); } catch(e){}
 
   /* Hỏi máy chủ một lần cho mỗi lần mở app, và chỉ khi vào Cài đặt — không
@@ -255,6 +273,17 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
     }
     closeModal(); onSave(out);
   });
+
+  /* Ô đầu tiên nhận con trỏ luôn: bấm ⌘E (hay nút +) là gõ được ngay, khỏi
+     phải bấm chuột vào ô. Trên điện thoại thì chỉ khi ô đang trống — mở ra
+     sửa cái cũ mà bàn phím bật lên là che mất nội dung đang muốn xem. */
+  const f0 = fields[0] && document.getElementById('f_' + fields[0].k);
+  const fine = window.matchMedia && matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if (f0 && (f0.tagName === 'TEXTAREA' || (f0.tagName === 'INPUT' && /^(text|number|tel|)$/.test(f0.type)))
+      && (fine || !f0.value)){
+    f0.focus();
+    try { const n = f0.value.length; f0.setSelectionRange(n, n); } catch(e){}   /* ô số không đặt được con trỏ */
+  }
 }
 function confirmBox(text, onYes, label){
   $('#modals').innerHTML = `<div class="ov" data-ovclose><div class="sheet">
@@ -1488,28 +1517,34 @@ function delJourney(id){
 /* Lệch xu hướng quá 3 kg trong một lần cân thì gần như chắc là gõ nhầm
    (72 thành 27, 68,5 thành 86,5) — hỏi lại một câu, vẫn cho lưu nếu đúng
    thật. Một con số nhầm lọt vào là kéo lệch đường xu hướng cả tuần sau. */
-function weightSave(kg, date, force){
+/* note: chữ ghi chú của ngày đó. Ô nhập nhanh để trống thì GIỮ ghi chú cũ
+   (gõ lại số ký cho đúng không làm mất ghi chú); form sửa thì ghi đè hẳn,
+   xoá trắng là bỏ ghi chú. */
+function weightSave(kg, date, force, note, replaceNote){
   if (!(kg >= 20 && kg <= 300)){ toast('Số ký phải trong khoảng 20–300'); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || date > today()) date = today();
   const tr = weightTrend(), near = tr.length ? tr[tr.length - 1].trend : null;
   if (!force && near !== null && Math.abs(kg - near) > 3){
     confirmBox(fmtKg(kg) + ' kg — lệch ' + fmtKg(Math.abs(kg - near)) + ' kg so với xu hướng ' + fmtKg(near)
-      + ' kg. Có gõ nhầm không?', () => weightSave(kg, date, true), 'Đúng rồi, lưu');
+      + ' kg. Có gõ nhầm không?', () => weightSave(kg, date, true, note, replaceNote), 'Đúng rồi, lưu');
     return;
   }
-  const id = wId(date);
+  const id = wId(date), n = String(note || '').trim().slice(0, 300);
   const w = db.weights.find(x => x.id === id);
-  if (w){ w.kg = kg; w.date = date; w.deleted = false; stamp(w); }
-  else db.weights.push(stamp({id, date, kg}));
+  /* bản ghi đã xoá mà dựng lại thì ghi chú cũ cũng coi như đã xoá theo */
+  if (w){ if (replaceNote || n || w.deleted) w.note = n; w.kg = kg; w.date = date; w.deleted = false; stamp(w); }
+  else db.weights.push(stamp({id, date, kg, note:n}));
   save(); render();
   toast('Đã lưu ' + fmtKg(kg) + ' kg' + (date === today() ? '' : ' cho ngày ' + fmtDate(date)));
 }
 function weightEdit(id){
   const w = db.weights.find(x => x.id === id); if (!w) return;
   openForm({title:'Lần cân ' + fmtDate(w.date), submit:'Lưu',
-    fields:[{k:'kg', label:'Số ký', ph:fmtKg(w.kg)}], values:{kg:fmtKg(w.kg)},
+    fields:[{k:'kg', label:'Số ký', ph:fmtKg(w.kg)},
+            {k:'note', label:'Ghi chú', req:false, ph:'vd: hôm qua đi ăn cùng vợ', hint:'để trống là bỏ ghi chú'}],
+    values:{kg:fmtKg(w.kg), note:w.note || ''},
     extra:`<button type="button" class="btn full dngr" style="margin-bottom:10px" data-act="wDel" data-id="${id}">Xoá lần cân này</button>`,
-    onSave(v){ weightSave(parseKg(v.kg), w.date); }});
+    onSave(v){ weightSave(parseKg(v.kg), w.date, false, v.note, true); }});
 }
 function weightDel(id){
   const w = db.weights.find(x => x.id === id); if (!w) return;
@@ -1569,7 +1604,7 @@ function weightGoalDel(){
 document.addEventListener('submit', e => {
   if (e.target.id !== 'wform') return;
   e.preventDefault();
-  weightSave(parseKg($('#w_kg').value), $('#w_date').value || today());
+  weightSave(parseKg($('#w_kg').value), $('#w_date').value || today(), false, ($('#w_note') || {}).value || '');
 });
 /* Chạm hay rê lên biểu đồ: hiện đúng ngày đó cân bao nhiêu. Ngày không cân
    thì bám sang lần cân gần nhất — rơi vào chỗ trống mà báo "không cân" thì
@@ -1595,10 +1630,15 @@ function wTip(e){
   const [t1, t2] = tip.querySelectorAll('text');
   t1.textContent = p.date.slice(8, 10) + '/' + p.date.slice(5, 7) + ' · ' + (p.kg !== null ? fmtKg(p.kg) + ' kg' : 'không cân');
   t2.textContent = 'xu hướng ' + fmtKg(p.trend);
-  const bw = Math.max(t1.getComputedTextLength(), t2.getComputedTextLength()) + 16;
+  const t3 = tip.querySelector('.wtipt3');
+  t3.textContent = p.note ? '📝 ' + (p.note.length > 34 ? p.note.slice(0, 33) + '…' : p.note) : '';
+  const bw = Math.max(t1.getComputedTextLength(), t2.getComputedTextLength(), t3.getComputedTextLength()) + 16;
   const bx = Math.max(C.L, Math.min(C.W - C.R - bw, px - bw / 2));
-  const by = py > 60 ? py - 48 : py + 12;
+  const bh = p.note ? 50 : 36;
+  const by = py > bh + 24 ? py - bh - 12 : py + 12;
   const b = tip.querySelector('rect'); b.setAttribute('x', bx); b.setAttribute('y', by); b.setAttribute('width', bw);
+  b.setAttribute('height', bh);
+  t3.setAttribute('x', bx + 8); t3.setAttribute('y', by + 43);
   t1.setAttribute('x', bx + 8); t1.setAttribute('y', by + 15);
   t2.setAttribute('x', bx + 8); t2.setAttribute('y', by + 29);
 }
@@ -3394,6 +3434,7 @@ function boot(){
      "mình đang có bao nhiêu việc". */
   if (db.settings.role === 'staff')
     S.view = staffByName(db.settings.staffName) ? 'myday' : 'board';
+  else viewRestore();
   /* mở kèm ?demo để nạp sẵn dữ liệu mẫu (chỉ khi còn trống, không đè dữ liệu thật) */
   const wantDemo = /[?&]demo\b/.test(location.search);
   const isEmpty  = COLLECTIONS.every(k => !alive(db[k]).length);
