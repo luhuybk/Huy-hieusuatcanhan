@@ -3127,7 +3127,11 @@ function autoCap(el, n){
   if (pos - n !== st) return;                 /* chữ vừa gõ không nằm ở đầu dòng */
   const ch = v[st], up = ch ? ch.toLocaleUpperCase('vi') : ch;
   if (!ch || up === ch || ch.toLocaleLowerCase('vi') !== ch) return;   /* đã hoa, hoặc không phải chữ cái */
-  el.setRangeText(up, st, st + 1, 'preserve');
+  /* Đặt lại con trỏ bằng tay. Đừng tin chế độ 'preserve' của setRangeText:
+     con trỏ nằm ngay sau chữ bị thay thì nó BÔI ĐEN luôn chữ đó, phím kế
+     tiếp đè mất chữ vừa gõ — gõ "mua" chỉ còn lại "A". */
+  el.setRangeText(up, st, st + 1);
+  el.setSelectionRange(pos, pos);
 }
 document.addEventListener('input', e => {
   if (e.isComposing || e.inputType !== 'insertText' || !capTarget(e.target)) return;
