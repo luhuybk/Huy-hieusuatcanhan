@@ -808,3 +808,11 @@ body.iddrag, body.iddrag *{cursor:grabbing !important;user-select:none;-webkit-u
 #wchart .wtipt3{fill:var(--warn);font-size:11px}
 .wln{margin-top:4px;font-size:12.5px;color:var(--tx2);line-height:1.45}
 .wkey.dot.wn{background:var(--warn);opacity:1}
+/* ý tưởng có sao: nền ấm, viền trái vàng, ngôi sao sáng */
+.idstar{flex:none;width:36px;height:36px;display:grid;place-items:center;border-radius:9px;
+  font-size:19px;line-height:1;color:var(--tx3);opacity:.55;background:none}
+.idstar:hover{opacity:1;background:var(--bg3)}
+.idr.star{background:color-mix(in srgb,var(--warn) 9%,transparent);box-shadow:inset 3px 0 0 var(--warn);border-radius:10px}
+.idr.star .idt{color:var(--tx)}
+.idr.star .idstar{color:var(--warn);opacity:1}
+.idgh .idsn{color:var(--warn);font-size:12.5px;font-weight:700}

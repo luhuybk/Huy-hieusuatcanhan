@@ -2556,6 +2556,12 @@ document.addEventListener('click', e => {
     case 'ideaFold': S.ideaFold[id] = !S.ideaFold[id]; render(); break;
     case 'ideaGroupAdd':   ideaGroupAdd(); break;
     case 'ideaDone':       ideaToggleDone(id); break;
+    case 'ideaStar': {
+      const i = db.ideas.find(x => x.id === id); if (!i) break;
+      i.star = !i.star; stamp(i); save(); render();
+      toast(i.star ? '★ Ý tưởng triển vọng: ' + i.title : 'Đã bỏ sao');
+      break;
+    }
     case 'ideaGroupQuick': ideaGroupNew(id); break;
     case 'ideaGroupEdit':  ideaGroupEdit(id); break;
     case 'ideaGroupMove':  closeModal(); ideaGroupMove(id, +el.dataset.d); break;

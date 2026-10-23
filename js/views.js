@@ -644,12 +644,16 @@ function ideaRow(i){
   /* ở ô Hoàn thành thì nói nó từ mục nào ra và xong hôm nào */
   if (done){ const g = ideaGroupOf(i);
     t = [g ? g.name : '', i.doneAt ? 'xong ' + fmtDate(String(i.doneAt).slice(0,10)) : ''].filter(Boolean).join(' · '); }
-  return `<div class="idr ${done ? 'done' : ''}" data-iid="${i.id}">
+  /* Ngôi sao = ý tưởng triển vọng, đáng dồn sức. Chỉ làm nổi bật, không tự
+     đẩy lên đầu — thứ tự trong mục vẫn là thứ tự mình tự kéo. */
+  return `<div class="idr ${done ? 'done' : ''} ${i.star ? 'star' : ''}" data-iid="${i.id}">
     <span class="idh" data-idrag="${i.id}" title="Kéo để chuyển mục hoặc đổi thứ tự">⠿</span>
     <div class="idb" data-act="editIdea" data-id="${i.id}">
       <div class="idt">${esc(i.title)}</div>
       ${t ? `<div class="idd">${esc(t)}</div>` : ''}
     </div>
+    <button class="idstar" data-act="ideaStar" data-id="${i.id}"
+      title="${i.star ? 'Bỏ đánh dấu sao' : 'Đánh dấu sao — ý tưởng triển vọng'}">${i.star ? '★' : '☆'}</button>
   </div>`;
 }
 function ideaBlock(gid, name, list){
@@ -657,7 +661,8 @@ function ideaBlock(gid, name, list){
   return `<div class="idg ${!gid ? 'un' : dn ? 'dn' : ''} ${fold ? 'fold' : ''}" data-gid="${esc(gid)}">
     <div class="idgh">
       <div class="grow ell" data-act="ideaFold" data-id="${esc(key)}">
-        <span class="idc">${fold ? '▸' : '▾'}</span><b>${esc(name)}</b><span class="n">${list.length}</span></div>
+        <span class="idc">${fold ? '▸' : '▾'}</span><b>${esc(name)}</b><span class="n">${list.length}</span>${
+        list.some(i => i.star) && !dn ? `<span class="idsn" title="ý tưởng có sao">★ ${list.filter(i => i.star).length}</span>` : ''}</div>
       ${gid && !dn ? `<button class="iconbtn sm" data-act="ideaGroupEdit" data-id="${gid}" title="Sửa mục">✎</button>` : ''}
     </div>
     ${fold ? '' : `<div class="idl">${list.map(ideaRow).join('')

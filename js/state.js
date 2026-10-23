@@ -376,7 +376,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-10-21.2';
+const APP_BUILD = '2026-10-23.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -2186,7 +2186,7 @@ function searchAll(q, limit){
   ideas().forEach(i => { const g = ideaGroupOf(i);
     if (hit(i.title, i.detail, i.plan, g && g.name))
     out.push({kind:'idea', id:i.id, title:i.title,
-      sub:'Ý tưởng · ' + (ideaDone(i) ? 'đã hoàn thành' : g ? g.name : 'chưa xếp mục'), color:'var(--warn)'}); });
+      sub:(i.star ? '★ ' : '') + 'Ý tưởng · ' + (ideaDone(i) ? 'đã hoàn thành' : g ? g.name : 'chưa xếp mục'), color:'var(--warn)'}); });
 
   cards().forEach(c => { if (hit(c.title, c.desc, cardWho(c), areaName(c.areaId)))
     out.push({kind:'card', id:c.id, title:c.title,
