@@ -816,3 +816,7 @@ body.iddrag, body.iddrag *{cursor:grabbing !important;user-select:none;-webkit-u
 .idr.star .idt{color:var(--tx)}
 .idr.star .idstar{color:var(--warn);opacity:1}
 .idgh .idsn{color:var(--warn);font-size:12.5px;font-weight:700}
+/* Sổ bài học: "điều nhận ra" luôn hiện IN HOA — trong danh sách lẫn lúc gõ */
+.ihd .it{text-transform:uppercase;letter-spacing:.2px}
+.f textarea.up{text-transform:uppercase}
+.f textarea.up::placeholder{text-transform:none}

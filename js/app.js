@@ -131,7 +131,8 @@ function openForm({title, fields, values = {}, submit = 'Lưu', onSave, validate
   const html = fields.map((f, fi) => {
     const v = values[f.k] != null ? values[f.k] : (f.def != null ? f.def : '');
     let inp;
-    if (f.type === 'textarea')      inp = `<textarea id="f_${f.k}" autocapitalize="sentences" placeholder="${esc(f.ph||'')}">${esc(v)}</textarea>`;
+    if (f.type === 'textarea')      inp = `<textarea id="f_${f.k}" autocapitalize="sentences" placeholder="${esc(f.ph||'')}"${
+      f.upper ? ' class="up"' : ''}>${esc(v)}</textarea>`;
     else if (f.type === 'select')   inp = `<select id="f_${f.k}">` + f.opts.map(o =>
         `<option value="${esc(o[0])}"${String(o[0])===String(v)?' selected':''}>${esc(o[1])}</option>`).join('') + `</select>`;
     else if (f.type === 'money')    inp = `<input id="f_${f.k}" inputmode="text" placeholder="${esc(f.ph||'vd: 300k, 1tr2, 250000')}" value="${v?esc(String(v)):''}">`;
@@ -1647,7 +1648,8 @@ document.addEventListener('pointerdown', wTip);
 
 /* ---------------- sổ bài học ---------------- */
 const insightFields = () => [
-  {k:'text',  label:'Điều nhận ra', type:'textarea', voice:true,
+  /* hiện IN HOA cho đập vào mắt — chỉ là cách hiện, chữ lưu vẫn y như gõ */
+  {k:'text',  label:'Điều nhận ra', type:'textarea', voice:true, upper:true,
    ph:'vd: giao việc lớn trong 3 ngày sau khi nhận lương — lúc đó nhân viên làm hăng nhất',
    hint:'viết thành một câu dùng được cho lần sau, không phải kể lại chuyện'},
   {k:'lv',    label:'Mức quan trọng', type:'select', half:true,
@@ -3153,38 +3155,89 @@ function applyListEdit(el, next){
   if (!ok){ el.value = next.value; el.dispatchEvent(new Event('input', {bubbles:true})); }
   el.setSelectionRange(next.caret, next.caret);
 }
-/* ---- viết hoa đầu dòng ----
-   Chữ cái đầu tiên của mỗi dòng — hoặc ngay sau dấu "1." / "•" / "☐" của một
-   mục — tự viết hoa. Chỉ đụng tới đúng chữ VỪA gõ ở đầu dòng: chữ đã có
-   sẵn trong ô không bị đổi, "iPhone" giữa câu cũng để yên. Bộ gõ tiếng Việt đang ghép chữ ("dd" → "đ") thì
-   chờ ghép xong mới viết hoa, đụng vào giữa chừng là vỡ chữ. Trên điện thoại
-   bàn phím tự lo nhờ autocapitalize, ở đây thấy đã hoa rồi thì thôi. */
+/* ---- viết hoa đầu câu ----
+   Bản chép từ lib/autoCap.js của Nhật ký giao dịch. Viết hoa chữ cái đầu câu
+   ngay lúc gõ: đầu ô, đầu dòng, ngay sau "1." / "•" / "☐" của một mục, và
+   sau dấu kết câu . ! ? có dấu cách. Không đụng "..." (câu bỏ lửng), số thập
+   phân, đường dẫn (không có dấu cách sau dấu chấm).
+   Chỉ sửa khi con trỏ đứng ở CUỐI chữ đầu câu (đang gõ tới) — sửa giữa chữ
+   cũ thì để yên, nên muốn viết thường ("iPhone") thì sửa lại chữ cái đó là
+   xong. Bộ gõ macOS ghép chữ thì sửa lúc chốt chữ; EVKey / Unikey xoá rồi gõ
+   lại cả chữ bằng chữ thường thì lần gõ lại đó cũng được viết hoa lại.
+   Mọi <textarea> đều có (trừ data-no-cap); ô một dòng thì chỉ ô có data-cap. */
+const CAP_LETTER = /\p{L}/u;
 function capTarget(el){
-  if (el.tagName === 'TEXTAREA') return !el.readOnly && !el.disabled && !el.hasAttribute('data-no-cap');
-  return el.tagName === 'INPUT' && el.hasAttribute('data-cap');
+  if (!el || el.readOnly || el.disabled || el.hasAttribute('data-no-cap')) return false;
+  return el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.hasAttribute('data-cap'));
 }
-function autoCap(el, n){
-  const pos = el.selectionStart;
-  if (!n || pos !== el.selectionEnd) return;
-  const v = el.value, ls = v.lastIndexOf('\n', pos - 1) + 1;
-  const le = v.indexOf('\n', ls), line = v.slice(ls, le < 0 ? v.length : le);
-  const it = parseItem(line);
-  const st = ls + (it ? it.textCol : line.match(/^\s*/)[0].length);
-  if (pos - n !== st) return;                 /* chữ vừa gõ không nằm ở đầu dòng */
-  const ch = v[st], up = ch ? ch.toLocaleUpperCase('vi') : ch;
-  if (!ch || up === ch || ch.toLocaleLowerCase('vi') !== ch) return;   /* đã hoa, hoặc không phải chữ cái */
-  /* Đặt lại con trỏ bằng tay. Đừng tin chế độ 'preserve' của setRangeText:
-     con trỏ nằm ngay sau chữ bị thay thì nó BÔI ĐEN luôn chữ đó, phím kế
-     tiếp đè mất chữ vừa gõ — gõ "mua" chỉ còn lại "A". */
-  el.setRangeText(up, st, st + 1);
-  el.setSelectionRange(pos, pos);
+/* vị trí chữ cái cần viết hoa (đầu câu, đang thường, con trỏ ở cuối chữ đó), hoặc -1 */
+function autoCapIndex(value, caret){
+  let w = caret;
+  while (w > 0 && CAP_LETTER.test(value[w - 1])) w--;
+  if (w === caret) return -1;
+  if (CAP_LETTER.test(value[caret] || '')) return -1;
+  const ch = value[w];
+  if (ch === ch.toLocaleUpperCase('vi') || ch !== ch.toLocaleLowerCase('vi')) return -1;
+  const lineStart = value.lastIndexOf('\n', w - 1) + 1;
+  const head = value.slice(lineStart, w);
+  if (/^\s*$/.test(head)) return w;
+  const it = parseItem(head + 'x');
+  if (it && it.textCol === head.length) return w;
+  /* dấu kết câu (không phải "..."), có thể kèm ngoặc / nháy đóng, rồi ít nhất một dấu cách */
+  if (/(^|[^.])[.!?]["'”’)\]]*[ \t]+$/.test(head)) return w;
+  return -1;
+}
+let capBusy = false;
+function autoCap(el){
+  if (capBusy || listBusy || !capTarget(el) || el.selectionStart !== el.selectionEnd) return;
+  const caret = el.selectionStart, i = autoCapIndex(el.value, caret);
+  if (i < 0) return;
+  const up = el.value[i].toLocaleUpperCase('vi');
+  capBusy = true;
+  try {
+    /* qua execCommand để Cmd+Z vẫn hoàn tác được; xong thì đặt con trỏ lại
+       đúng chỗ cũ — không thì chữ vừa sửa bị bôi đen, phím kế tiếp đè mất */
+    el.setSelectionRange(i, i + 1);
+    const ok = document.execCommand && document.execCommand('insertText', false, up);
+    if (!ok) el.setRangeText(up, i, i + 1);
+    el.setSelectionRange(caret, caret);
+  } finally { capBusy = false; }
+}
+
+/* ---- danh sách khi bộ gõ tiếng Việt đang ghép chữ ----
+   Bộ gõ đang ghép chữ thì phím Enter / dấu cách đến tay mình dưới dạng
+   "đang ghép" (keyCode 229) — đoạn bắt phím ở trên phải bỏ qua, không thì vỡ
+   chữ. Hậu quả: gõ "1. Mở tài khoản" rồi Enter thì không ra "2." — đúng lỗi
+   đã gặp. Nên đọc lại SAU khi bộ gõ đã chốt xong: vừa có một dấu xuống dòng
+   (hay dấu cách) mà đoạn trên không xử lý, thì bỏ nó ra, tính như thể vừa
+   bấm phím đó, rồi ghi kết quả vào. Không phải danh sách thì để nguyên. */
+let listBusy = false, enterShift = false;
+/* Shift+Enter là cố ý xuống dòng trong cùng một mục — đừng biến nó thành mục mới */
+document.addEventListener('keydown', e => { if (e.key === 'Enter') enterShift = e.shiftKey; }, true);
+function listAfter(el, key){
+  if (key === 'enter' && enterShift) return;
+  if (listBusy || !el || el.tagName !== 'TEXTAREA' || el.readOnly || el.disabled || el.hasAttribute('data-no-list')) return;
+  const caret = el.selectionStart, v = el.value;
+  if (caret !== el.selectionEnd || !caret || v[caret - 1] !== (key === 'enter' ? '\n' : ' ')) return;
+  const next = applyListKey(v.slice(0, caret - 1) + v.slice(caret), caret - 1, key, false);
+  if (!next) return;
+  listBusy = true;
+  try { applyListEdit(el, next); } finally { listBusy = false; }
 }
 document.addEventListener('input', e => {
-  if (e.isComposing || e.inputType !== 'insertText' || !capTarget(e.target)) return;
-  autoCap(e.target, (e.data || '').length);
+  if (e.isComposing) return;
+  const t = e.inputType || '';
+  if (t === 'insertLineBreak' || t === 'insertParagraph') listAfter(e.target, 'enter');
+  else if (t === 'insertText' && e.data === ' ') listAfter(e.target, 'space');
+  if (t === '' || t === 'insertText' || t === 'insertReplacementText') autoCap(e.target);
 });
 document.addEventListener('compositionend', e => {
-  if (capTarget(e.target)) autoCap(e.target, (e.data || '').length);
+  const el = e.target, d = e.data || '';
+  setTimeout(() => {
+    if (d.endsWith('\n')) listAfter(el, 'enter');
+    else if (d.endsWith(' ')) listAfter(el, 'space');
+    autoCap(el);
+  }, 0);
 });
 
 /* Ô ghi chú trong biểu mẫu tự cao theo chữ — gõ danh sách dài mà ô chỉ
@@ -3210,6 +3263,10 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keydown', e => {
+  /* ⌘S / ⌘Enter khi đang mở biểu mẫu = bấm Lưu (như form lệnh bên Nhật ký) */
+  if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 's' || e.key === 'Enter') && $('#theform')){
+    e.preventDefault(); $('#theform').requestSubmit(); return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){ e.preventDefault(); searchBox(); }
   /* Ctrl/Cmd + J mở thẳng ô "Việc cần làm". Ghi nhanh vẫn còn nút ✎ trên
      thanh đầu — nó là chỗ trút ý nghĩ, còn phím tắt thì nên dành cho thứ
