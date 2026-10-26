@@ -644,8 +644,8 @@ function ideaRow(i){
   /* ở ô Hoàn thành thì nói nó từ mục nào ra và xong hôm nào */
   if (done){ const g = ideaGroupOf(i);
     t = [g ? g.name : '', i.doneAt ? 'xong ' + fmtDate(String(i.doneAt).slice(0,10)) : ''].filter(Boolean).join(' · '); }
-  /* Ngôi sao = ý tưởng triển vọng, đáng dồn sức. Chỉ làm nổi bật, không tự
-     đẩy lên đầu — thứ tự trong mục vẫn là thứ tự mình tự kéo. */
+  /* Ngôi sao = ý tưởng triển vọng, đáng dồn sức: nền sáng lên và ghim lên
+     đầu mục (xếp ở ideasIn). */
   return `<div class="idr ${done ? 'done' : ''} ${i.star ? 'star' : ''}" data-iid="${i.id}">
     <span class="idh" data-idrag="${i.id}" title="Kéo để chuyển mục hoặc đổi thứ tự">⠿</span>
     <div class="idb" data-act="editIdea" data-id="${i.id}">

@@ -2561,7 +2561,7 @@ document.addEventListener('click', e => {
     case 'ideaStar': {
       const i = db.ideas.find(x => x.id === id); if (!i) break;
       i.star = !i.star; stamp(i); save(); render();
-      toast(i.star ? '★ Ý tưởng triển vọng: ' + i.title : 'Đã bỏ sao');
+      toast(i.star ? '★ Ghim lên đầu mục: ' + i.title : 'Đã bỏ sao');
       break;
     }
     case 'ideaGroupQuick': ideaGroupNew(id); break;

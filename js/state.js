@@ -376,7 +376,7 @@ function toast(msg, ms){
    máy chủ, để biết web đã kéo bản mới về chưa hay chỉ là máy mình còn giữ
    bản cũ. Dạng: ngày.lần-trong-ngày — so bằng buildNewer() trong app.js,
    phần ngày so bằng chữ còn phần lần-trong-ngày so bằng số. */
-const APP_BUILD = '2026-10-25.1';
+const APP_BUILD = '2026-10-26.1';
 
 /* Giờ trong header Last-Modified của máy chủ → "14:32 21/08/2026" */
 function httpTime(v){
@@ -672,8 +672,12 @@ const ideaCmp = (a, b) => (ideaOrd(a) - ideaOrd(b))
    Bản cũ có trạng thái "Đã xong" — những cái đó tự vào ô này luôn. */
 const IDEA_DONE = '__done';
 const ideaDone = i => i.done !== undefined ? !!i.done : i.status === 'done';
+/* Ý tưởng có sao được ghim lên đầu mục của nó; trong nhóm có sao và nhóm
+   không sao thì vẫn giữ thứ tự mình tự kéo. Kéo một ý tưởng không sao lên
+   trên ý tưởng có sao thì nó vẫn nằm ngay dưới nhóm có sao. */
 function ideasIn(gid){
-  return ideas().filter(i => !ideaDone(i) && ((ideaGroupOf(i) || {}).id || '') === gid).sort(ideaCmp);
+  return ideas().filter(i => !ideaDone(i) && ((ideaGroupOf(i) || {}).id || '') === gid)
+    .sort((a, b) => ((b.star ? 1 : 0) - (a.star ? 1 : 0)) || ideaCmp(a, b));
 }
 function ideasDone(){
   return ideas().filter(ideaDone).sort((a, b) =>
